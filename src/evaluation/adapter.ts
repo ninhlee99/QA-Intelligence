@@ -285,6 +285,10 @@ export type EvaluationAdapterResult<Operation extends EvaluationAdapterOperation
       | Readonly<{ ok: false; failure: EvaluationAdapterFailure }>
     );
 
+export type AnyEvaluationAdapterResult = {
+  readonly [Operation in EvaluationAdapterOperation]: EvaluationAdapterResult<Operation>;
+}[EvaluationAdapterOperation];
+
 export interface EvaluationAdapter {
   descriptor(request: DescriptorRequest): Promise<EvaluationAdapterResult<"descriptor">>;
   prepareEnvironment(

@@ -22,6 +22,7 @@ implemented_modules:
   core:
     - src/requirement-review/assess-requirement-quality.ts
     - src/evaluation/evaluation-manager.ts
+    - src/evaluation/evaluation-campaign-runner.ts
   adapters:
     - src/adapters/deterministic/workspace-authorizer.ts
     - src/adapters/memory/knowledge-search.ts
@@ -81,6 +82,10 @@ gate_evidence:
       - Requirement Review Skill execution through the runtime while preserving the separate QA verdict
       - SPEC-511 provider-neutral Interface with complete operation surface
       - scripted Evaluation Adapter common-envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability, observation-only result, and fail-closed cleanup tests
+      - single-trial Evaluation Campaign orchestration through SPEC-511 capability discovery, environment preparation, execution, evidence collection, and cleanup
+      - pre-side-effect campaign identity, deadline, assertion-matrix, and exact-version validation
+      - fail-closed Adapter response-envelope and environment-version verification
+      - deterministic assertion Oracle preserves subject failures while provider, evidence, and cleanup failures remain non-subject and cannot recommend release
     pending:
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
       - persistence, provider, Tool, and shared adapter conformance suites
@@ -92,6 +97,8 @@ gate_evidence:
       - minimum trial enforcement prevents premature release recommendation
       - subject and non-subject failure attribution
       - trusted evidence-verifier boundary prevents caller-fabricated favorable trials
+      - the collected-evidence integrity and provenance verification boundary precedes deterministic assertion facts
+      - critical negative observations dominate the trial and cleanup failure overrides favorable observations
     pending:
       - complete evaluation dataset and repeated trials
       - holdout, contamination, robustness, security, recovery, and load campaigns
@@ -116,12 +123,12 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 112
+  tests_passed: 122
   tests_failed: 0
   schemas_compiled: 26
   valid_examples_accepted: 22
   invalid_examples_rejected: 15
-  yaml_files_checked: 36
+  yaml_files_checked: 37
   json_files_checked: 75
   full_repository_validation: pass
   dependency_vulnerabilities: 0
@@ -143,3 +150,19 @@ current_increment_review:
     - exact policy and used Skill/Tool version binding
     - schema-valid completed, failed, blocked, cancelled, and timed-out results
     - authoritative blocked result after rejected high-consequence approval
+evaluation_campaign_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - Adapter observations never carry or decide a QA verdict
+    - the Evaluation Manager remains the only verdict and recommendation authority
+    - campaign, Workspace, trial, attempt, idempotency, deadline, and contract identities remain bound across operations
+    - mismatched Adapter envelopes stop before their values can influence execution or evaluation
+    - conflicting environment versions stop further execution and trigger cleanup
+    - evidence integrity failure produces invalid-test evidence and no favorable recommendation
+    - provider failure remains infrastructure evidence and still triggers evidence collection and cleanup
+    - cleanup failure or residual resources cannot produce a favorable recommendation
+    - cleanup failure retains complete operation evidence and cannot erase an independently verified subject failure
+    - implementation remains a development-only single-trial slice; multi-trial lifecycle, Judge, persistence, recovery, and production conformance remain explicit blockers
