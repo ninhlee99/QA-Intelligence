@@ -63,13 +63,14 @@ checks:
     build: pass
   implementation_tests:
     outcome: pass
-    tests_passed: 86
+    tests_passed: 99
     tests_failed: 0
     coverage_scope:
       - requirement assessment ordering and failure attribution
       - Workspace integrity, least privilege, and isolation
       - deterministic Knowledge Search and reasoning replay
       - evaluation suite integrity and premature-release prevention
+      - Evaluation Adapter envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability declaration, observation-only results, and fail-closed cleanup
       - Agent Runtime authorization, idempotency, budgets, cancellation, and event replay
       - schema validation and development-harness composition
       - runtime envelope versioning, event payload discrimination, approval/checkpoint identity, and lifecycle invariants
@@ -92,5 +93,5 @@ readiness:
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence
 limitations:
   - this validation proves repository consistency and the tested deterministic development surface, not deployed-runtime or production-adapter conformance
-  - runtime execution composition, production identity, persistence, provider, Tool, sandbox, load, recovery, cleanup, monitoring, and shared adapter evidence remain pending
+  - runtime execution composition, production identity, persistence, provider, Tool, sandbox, load, recovery, monitoring, and shared production-adapter evidence remain pending
 authority: validates and technically approves the deterministic development slice only; it does not enable an Agent or Skill or approve production release

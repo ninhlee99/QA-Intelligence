@@ -40,6 +40,8 @@ gates:
       - SPEC-510
       - SPEC-511
       - tests/validate-json-schemas.mjs
+      - src/evaluation/adapter.ts
+      - tests/evaluation/scripted-evaluation-adapter.test.ts
       - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G4_evaluation_readiness:
     suite_design: complete_for_initial_tracer_cases

@@ -25,7 +25,10 @@ implemented_modules:
     - src/adapters/deterministic/workspace-authorizer.ts
     - src/adapters/memory/knowledge-search.ts
     - src/adapters/replay/scripted-reasoning-provider.ts
+    - src/adapters/replay/scripted-evaluation-adapter.ts
     - src/runtime/in-memory-agent-runtime.ts
+  evaluation_adapter_interface:
+    - src/evaluation/adapter.ts
   validation:
     - src/schema/schema-validator.ts
     - schemas/agent-run-start.schema.json
@@ -60,9 +63,11 @@ gate_evidence:
       - reasoning replay binds the full authorized request and enforces Tool and usage limits
       - evaluation rejects incomplete suites, duplicate trials, contradictory outcomes, and unresolved versions
       - versioned runtime envelopes and discriminated, evidence-bearing event payloads
+      - SPEC-511 provider-neutral Interface with complete operation surface
+      - scripted Evaluation Adapter common-envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability, observation-only result, and fail-closed cleanup tests
     pending:
       - SPEC-508 runtime execution composition for the Skill
-      - SPEC-511 production Evaluation Adapter
+      - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
       - persistence, provider, Tool, and shared adapter conformance suites
       - timeout, recovery, no-progress, cleanup, and partial-effect execution paths
   G4_evaluation_readiness:
@@ -95,3 +100,20 @@ independent_review:
     json_files_checked: 72
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
+current_increment_validation:
+  tests_passed: 99
+  tests_failed: 0
+  full_repository_validation: pass
+  dependency_vulnerabilities: 0
+current_increment_review:
+  outcome: pass
+  reviewer: independent remediation reviewer
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - operation-and-resource-scoped authorization and consequence classification
+    - fail-closed denial and incomplete authorization coverage
+    - retained cleanup_incomplete outcome with residual details
+    - authorization decision evidence retention
+    - strict RFC 3339 UTC deadline and late-result semantics
+    - truthful development-only governance claims with production blockers preserved

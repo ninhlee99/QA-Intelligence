@@ -28,14 +28,14 @@ Specification acceptance is not implementation conformance or release approval. 
 
 Start with the advisory `Requirement Review Agent` and its `Assess Requirement Quality` Skill because it exercises Discovery, deterministic rules before LLM reasoning, governed knowledge retrieval, evidence, uncertainty, evaluation, and Workspace isolation without production write side effects.
 
-The first deterministic development increment is implemented. The direct composition remains a development harness while SPEC-508 runtime execution and the SPEC-511 evaluation adapter are integrated. Production adapters must conform to the same contracts. G1–G4 must pass before enablement beyond development.
+The first deterministic development increment is implemented. The SPEC-511 provider-neutral Interface and scripted deterministic/replay Adapter now enforce common envelopes, operation-and-resource-scoped Workspace authorization, canonical request digests, idempotency, strict UTC deadlines, late-result retention, capability declaration, observation-only execution results, and fail-closed cleanup. The direct composition remains a development harness while SPEC-508 runtime execution and Evaluation Engine orchestration through SPEC-511 are integrated. Production adapters must conform to the same contracts. G1–G4 must pass before enablement beyond development.
 
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
 
 1. **In progress:** create contract and state-machine tests from SPEC-508–511 and SPEC-606–607
-2. **In progress:** implement deterministic fake/replay adapters and make failure, cancellation, budget, and isolation cases pass
+2. **In progress:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, and cleanup cases pass, while cancellation, partial-failure, evidence-integrity, replay-divergence, and full isolation campaigns remain
 3. **Completed for the development slice:** implement deep core modules for requirement assessment and evaluation without provider SDK leakage
 4. add PostgreSQL/outbox persistence and OIDC/internal authorization through accepted interfaces
 5. add production provider, Tool, and repository adapters and run the same conformance suites

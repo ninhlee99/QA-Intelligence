@@ -40,10 +40,11 @@ implementation_entry:
     - deterministic Workspace authorization with integrity-bound claims and fail-closed policy evaluation
     - memory Knowledge Search and scripted reasoning replay adapters
     - schema validation, Evaluation Manager suite guards, and in-memory Agent Runtime contract tests
+    - provider-neutral SPEC-511 Interface and scripted deterministic/replay Evaluation Adapter with operation-and-resource authorization, denial, digest, idempotency, strict UTC deadline and late-result retention, capability, trial-observation, and fail-closed cleanup contract tests
     - development-only end-to-end composition harness
     - independent development-slice review with no remaining P0 or P1 findings
   remaining_increment:
-    - execute the Skill through the SPEC-508 Agent Runtime and SPEC-511 Evaluation Adapter
+    - execute the Skill through the SPEC-508 Agent Runtime and orchestrate retained trial evidence through the SPEC-511 Evaluation Adapter
     - implement production identity, persistence, provider, Tool, and Knowledge adapters
     - complete security, recovery, cleanup, load, and shared adapter conformance evidence
 blocking_before_enablement_beyond_development:

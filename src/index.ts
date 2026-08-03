@@ -1,5 +1,6 @@
 export * from "./requirement-review/public.js";
 export * from "./runtime/public.js";
+export * from "./evaluation/adapter.js";
 
 export {
   AssessRequirementQuality,
@@ -24,6 +25,11 @@ export {
   EvaluationManager,
   StaticEvaluationSuitePolicyRegistry,
 } from "./evaluation/evaluation-manager.js";
+export { ScriptedEvaluationAdapter } from "./adapters/replay/scripted-evaluation-adapter.js";
+export type {
+  Clock as EvaluationAdapterClock,
+  ScriptedEvaluationCase,
+} from "./adapters/replay/scripted-evaluation-adapter.js";
 export type {
   EvaluationInput,
   EvaluationEvidenceVerifier,

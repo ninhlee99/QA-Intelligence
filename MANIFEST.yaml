@@ -43,7 +43,7 @@ counts:
   runtime_specs: 7
 implementation:
   status: requirement_review_development_slice_in_progress
-  reason: deterministic assessment, authorization, knowledge, reasoning replay, schema validation, evaluation, and in-memory runtime modules now exist; production adapters and complete GOV-012 conformance evidence remain pending
+  reason: deterministic assessment, authorization, knowledge, reasoning replay, schema validation, evaluation, in-memory runtime, and scripted Evaluation Adapter modules now exist; runtime execution composition, production adapters, and complete GOV-012 conformance evidence remain pending
 readiness:
   foundation: accepted
   governance: accepted
