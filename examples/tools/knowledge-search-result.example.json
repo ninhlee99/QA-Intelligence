@@ -1,0 +1,14 @@
+{
+  "knowledge_snapshot": "workspace-evaluation-001@0.1.0",
+  "items": [
+    {
+      "id": "quality-rule-source-001",
+      "version": "1.0.0",
+      "status": "accepted",
+      "score": 0.98,
+      "claim_refs": ["claim-observable-acceptance-criteria"],
+      "provenance": ["SPEC-203"]
+    }
+  ],
+  "evidence": ["search-query-digest:example", "policy-decision:allow"]
+}

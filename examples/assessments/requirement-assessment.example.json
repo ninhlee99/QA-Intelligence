@@ -1,0 +1,20 @@
+{
+  "id": "assessment-001",
+  "requirement_ref": "REQ-001@1.0.0",
+  "workspace_id": "workspace-evaluation-001",
+  "outcome": "completed",
+  "findings": [
+    {
+      "id": "finding-001",
+      "category": "testability",
+      "severity": "high",
+      "message": "The expected outcome is not observable.",
+      "evidence": ["rule-result:testability-observable-outcome"]
+    }
+  ],
+  "questions": ["Which observable state proves the requirement is satisfied?"],
+  "rule_results": ["testability-observable-outcome:failed"],
+  "evidence": ["REQ-001@1.0.0", "rule-result:testability-observable-outcome"],
+  "uncertainty": {"level": "medium", "reasons": ["Business intent cannot be inferred from available evidence"]},
+  "resolved_versions": {"agent": "requirement-review-agent@0.1.0", "skill": "assess-requirement-quality@0.1.0", "policy": "test-policy@0.1.0"}
+}

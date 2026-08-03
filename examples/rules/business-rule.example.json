@@ -1,0 +1,15 @@
+{
+  "id": "RULE-DEMO-LOCKOUT",
+  "version": "0.1.0",
+  "status": "draft",
+  "title": "Demo lockout threshold",
+  "authority": ["REQ-DEMO-001"],
+  "owner": "Demo Domain Owner",
+  "workspace_scope": "WORKSPACE-DEMO",
+  "inputs": [{"name": "failed_attempts", "type": "integer"}, {"name": "threshold", "type": "integer"}],
+  "applies_when": {"all_inputs_present": true},
+  "decision": {"operator": ">=", "left": "failed_attempts", "right": "threshold"},
+  "outputs": [{"name": "lock_required", "type": "boolean"}],
+  "priority": 100,
+  "tests": ["RULE-TEST-DEMO-001"]
+}

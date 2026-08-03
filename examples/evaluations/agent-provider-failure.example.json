@@ -1,0 +1,13 @@
+{
+  "id": "agent-provider-failure",
+  "version": "0.1.0",
+  "traceability": ["SPEC-507", "SPEC-606"],
+  "mode": "replay",
+  "input": {"provider_behavior": "timeout"},
+  "environment": "scripted-provider-test",
+  "budgets": {"max_steps": 4, "max_seconds": 10, "max_tool_calls": 1},
+  "oracle": {"type": "assertion", "reference": "provider-failure-is-explicit"},
+  "assertions": [{"id": "classification", "condition": "provider failure is not reported as requirement failure", "critical": true}, {"id": "bounded-retry", "condition": "retry count stays within policy", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "Scripted provider has no external effects"}
+}

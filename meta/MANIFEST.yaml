@@ -1,0 +1,17 @@
+generated: true
+generated_at: 2026-08-03
+source: ../MANIFEST.yaml
+repository_id: QA-INTELLIGENCE
+authoritative_manifest: ../MANIFEST.yaml
+indexes:
+  specifications: SPEC_INDEX.yaml
+  decisions: ADR_INDEX.yaml
+  ontology: ONTOLOGY_INDEX.yaml
+  schemas: SCHEMA_INDEX.yaml
+  rules: RULE_INDEX.yaml
+  playbooks: PLAYBOOK_INDEX.yaml
+  graph: REPOSITORY_GRAPH.yaml
+  readiness: SPEC_READINESS.yaml
+  validation: VALIDATION_REPORT.yaml
+  agent_skill_readiness: AGENT_SKILL_READINESS.yaml
+precedence: authoritative artifacts override derived indexes

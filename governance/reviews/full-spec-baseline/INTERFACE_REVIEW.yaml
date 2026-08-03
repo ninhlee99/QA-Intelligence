@@ -1,0 +1,20 @@
+id: REVIEW-INTERFACE-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: SPEC-501 through SPEC-511
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  single_source_contract_ownership: pass
+  provider_neutral_semantics: pass
+  schemas_versions_and_compatibility: pass
+  authorization_workspace_and_redaction: pass
+  idempotency_timeout_cancellation_and_partial_effects: pass
+  stable_failure_taxonomy: pass
+  evidence_provenance_and_observability: pass
+  production_and_deterministic_replay_conformance: pass
+  migration_and_retirement: pass
+  unresolved_blocking_decisions: 0
+decision: approved
+authority: approves Interface contract semantics; does not certify an implementation or approve runtime release

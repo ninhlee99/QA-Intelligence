@@ -1,0 +1,20 @@
+generated: true
+generated_at: 2026-08-03
+status: accepted
+playbooks:
+  - { id: PB-001, path: ../playbooks/PB-001-create-spec.md }
+  - { id: PB-002, path: ../playbooks/PB-002-create-adr.md }
+  - { id: PB-003, path: ../playbooks/PB-003-add-knowledge-object.md }
+  - { id: PB-004, path: ../playbooks/PB-004-create-plugin.md }
+  - { id: PB-005, path: ../playbooks/PB-005-create-workspace.md }
+  - { id: PB-006, path: ../playbooks/PB-006-create-schema.md }
+  - { id: PB-007, path: ../playbooks/PB-007-breaking-change.md }
+  - { id: PB-008, path: ../playbooks/PB-008-release.md }
+  - { id: PB-009, path: ../playbooks/PB-009-refactor.md }
+  - { id: PB-010, path: ../playbooks/PB-010-add-capability.md }
+  - { id: PB-011, path: ../playbooks/PB-011-create-agent.md }
+  - { id: PB-012, path: ../playbooks/PB-012-create-skill.md }
+  - { id: PB-013, path: ../playbooks/PB-013-test-agent.md }
+  - { id: PB-014, path: ../playbooks/PB-014-test-skill.md }
+  - { id: PB-015, path: ../playbooks/PB-015-release-agent-or-skill.md }
+  - { id: PB-016, path: ../playbooks/PB-016-handle-evaluation-failure.md }

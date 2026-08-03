@@ -1,0 +1,21 @@
+id: REVIEW-COMPONENT-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: SPEC-401 through SPEC-411
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  responsibility_and_non_ownership: pass
+  implemented_and_consumed_interfaces: pass
+  domain_policy_not_hidden_in_components: pass
+  persistence_transaction_and_idempotency: pass
+  plugin_provider_and_storage_encapsulation: pass
+  deterministic_replay_and_production_conformance: pass
+  failure_recovery_and_unknown_effects: pass
+  workspace_security_privacy_and_evidence: pass
+  configuration_limits_migration_and_observability: pass
+  open_decisions_resolved_or_bounded: pass
+  unresolved_blocking_decisions: 0
+decision: approved
+authority: approves Component specification semantics; does not certify implementation or approve runtime release

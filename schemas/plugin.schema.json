@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/plugin.schema.json",
+  "title": "Plugin Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "status", "interfaces", "capabilities", "permissions", "configuration_schema", "owner", "integrity"],
+  "properties": {
+    "id": {"type": "string"},
+    "version": {"type": "string"},
+    "status": {"enum": ["discovered", "validated", "installed", "enabled", "disabled", "retired"]},
+    "interfaces": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "capabilities": {"type": "array", "items": {"type": "string"}},
+    "permissions": {"type": "array", "items": {"type": "string"}},
+    "configuration_schema": {"type": "string"},
+    "owner": {"type": "string"},
+    "integrity": {"type": "object", "additionalProperties": false, "required": ["algorithm", "digest"], "properties": {"algorithm": {"type": "string"}, "digest": {"type": "string"}}}
+  }
+}

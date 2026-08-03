@@ -1,0 +1,13 @@
+{
+  "id": "TC-DEMO-LOCKOUT-001",
+  "version": "0.1.0",
+  "status": "draft",
+  "purpose": "Verify governed lockout behavior at the boundary.",
+  "traceability": ["REQ-DEMO-001", "RULE-DEMO-LOCKOUT"],
+  "preconditions": ["A demo account exists and is not locked."],
+  "workspace_scope": "WORKSPACE-DEMO",
+  "data_requirements": ["threshold and failed-attempt boundary values"],
+  "steps": [{"action": "Attempt authentication with invalid credentials until the threshold."}],
+  "expected_results": [{"assertion": "The account becomes locked exactly at the governed threshold.", "authority": "RULE-DEMO-LOCKOUT"}],
+  "owner": "Demo Quality Owner"
+}

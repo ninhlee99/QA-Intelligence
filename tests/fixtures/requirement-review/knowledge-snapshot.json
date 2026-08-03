@@ -1,0 +1,14 @@
+{
+  "workspace_id": "workspace-evaluation-001",
+  "snapshot_version": "0.1.0",
+  "objects": [
+    {
+      "id": "quality-rule-source-001",
+      "version": "1.0.0",
+      "status": "accepted",
+      "claim": "A testable requirement has observable acceptance criteria",
+      "provenance": ["SPEC-203"]
+    }
+  ],
+  "cross_workspace_objects_visible": 0
+}

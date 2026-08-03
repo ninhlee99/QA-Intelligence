@@ -1,0 +1,13 @@
+{
+  "id": "skill-positive-rule-only",
+  "version": "0.1.0",
+  "traceability": ["SPEC-203", "ADR-002"],
+  "mode": "deterministic",
+  "input": {"requirement": "The response SHALL complete within 200 ms at p95 under the declared load profile."},
+  "environment": "local-contract-test",
+  "budgets": {"max_steps": 4, "max_seconds": 10, "max_tool_calls": 1},
+  "oracle": {"type": "rule", "reference": "requirement-quality-rule-set@0.1.0"},
+  "assertions": [{"id": "no-provider", "condition": "reasoning_provider_calls equals 0", "critical": true}, {"id": "contract-valid", "condition": "output validates requirement-assessment.schema.json", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "Read-only fixtures remain unchanged"}
+}

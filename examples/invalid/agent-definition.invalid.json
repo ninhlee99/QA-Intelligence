@@ -1,0 +1,19 @@
+{
+  "id": "Requirement Review Agent",
+  "version": "latest",
+  "status": "accepted",
+  "owner": "",
+  "role": "Review requirements",
+  "goals": [],
+  "non_goals": [],
+  "workspace_scope": "all_workspaces",
+  "consequence_class": "unlimited",
+  "skills": [],
+  "tools": [],
+  "input_schema": "requirement.schema.json",
+  "output_schema": "result.schema.json",
+  "evidence_requirements": [],
+  "limits": {"max_steps": 0, "max_duration_seconds": 0, "max_tool_calls": 0, "max_retries": 0},
+  "escalation": {"conditions": [], "owner": ""},
+  "evaluation_suites": []
+}

@@ -1,0 +1,18 @@
+id: REVIEW-MACHINE-READABLE-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: ontology, schemas, rules, indexes, examples, fixtures, and playbooks supporting the accepted specification baseline
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  ontology_alignment_and_workspace_constraints: pass
+  schema_strict_compilation: pass
+  positive_and_negative_examples: pass
+  deterministic_rule_authority_and_precedence: pass
+  indexes_and_paths: pass
+  playbook_alignment_with_GOV_012: pass
+  repository_graph_targets_and_cycles: pass
+  no_machine_artifact_self_grants_authority: pass
+decision: approved_as_baseline_support_artifacts
+authority: does not certify unimplemented runtime behavior or approve production release

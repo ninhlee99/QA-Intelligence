@@ -1,0 +1,6 @@
+{
+  "query": "observable acceptance criteria",
+  "limit": 5,
+  "knowledge_snapshot": "workspace-evaluation-001@0.1.0",
+  "types": ["QualityStandard", "BusinessRule"]
+}

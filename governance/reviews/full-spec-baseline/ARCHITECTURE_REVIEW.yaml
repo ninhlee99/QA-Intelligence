@@ -1,0 +1,21 @@
+id: REVIEW-ARCHITECTURE-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: SPEC-301 through SPEC-310
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  original_QA_intelligence_vision: pass
+  module_responsibility_and_non_goals: pass
+  knowledge_rule_reasoning_authority_separation: pass
+  semantic_UI_graph_and_selector_independence: pass
+  small_interface_and_deep_module_boundaries: pass
+  plugin_and_provider_adapter_boundaries: pass
+  production_and_deterministic_replay_substitution: pass
+  workspace_isolation_and_security: pass
+  failure_recovery_configuration_limits_and_observability: pass
+  compatibility_migration_and_conformance: pass
+  unresolved_blocking_decisions: 0
+decision: approved
+authority: approves Architecture specification semantics; does not approve implementation or runtime release

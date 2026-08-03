@@ -1,0 +1,21 @@
+{
+  "name": "qa-intelligence",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "validate": "npm run validate:repository && npm run validate:schemas && npm run validate:dependencies",
+    "validate:repository": "python3 tests/validate_repository.py",
+    "validate:schemas": "node tests/validate-json-schemas.mjs",
+    "validate:dependencies": "npm audit --audit-level=high"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "7.0.2"
+  }
+}

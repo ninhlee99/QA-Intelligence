@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/knowledge-candidate.schema.json",
+  "title": "Knowledge Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "status", "workspace_id", "proposed_claims", "discovery_source", "evidence", "confidence", "uncertainty", "owner", "expires_at"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["discovered", "proposed", "validating", "promoted", "rejected", "expired"]},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "proposed_claims": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "discovery_source": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "counterevidence": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "uncertainty": {"type": "string", "minLength": 1},
+    "owner": {"type": "string", "minLength": 1},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "promotion_result_id": {"oneOf": [{"type": "string"}, {"type": "null"}]}
+  }
+}

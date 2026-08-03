@@ -1,0 +1,40 @@
+ontology_version: 1.0.0
+status: accepted
+governing_spec: SPEC-101
+constraints:
+  - id: stable_identity
+    rule: identifiers are not reused after retirement
+  - id: requirement_capability
+    rule: every Requirement has exactly one primary Capability
+  - id: test_traceability
+    rule: every TestCase validates at least one Requirement or Risk
+  - id: automation_traceability
+    rule: every AutomationAsset implements at least one TestCase
+  - id: execution_identity
+    rule: every Execution identifies exact asset, plugin, environment, data, and policy versions
+  - id: evidence_origin
+    rule: every Evidence item identifies its producing Execution or review activity
+  - id: candidate_non_authority
+    rule: KnowledgeCandidate cannot satisfy an authoritative dependency
+  - id: workspace_edge
+    rule: Workspace-scoped nodes cannot have ungoverned cross-Workspace relationships
+  - id: provenance_required
+    rule: accepted KnowledgeObjects and derived authoritative artifacts have provenance
+  - id: agent_version_resolution
+    rule: every AgentRun resolves exact Agent, Skill, Prompt, Tool, rule, knowledge, policy, model, and environment versions
+  - id: least_privilege_intersection
+    rule: effective Agent authority is the intersection of all governing policies and definitions and cannot be widened by prompts or Tools
+  - id: ephemeral_agent_memory
+    rule: Agent working context is not authoritative knowledge and reusable observations enter the KnowledgeCandidate lifecycle
+  - id: skill_plugin_separation
+    rule: SkillDefinition owns procedure while Plugin owns only technology adaptation
+  - id: evaluation_traceability
+    rule: every EvaluationCase traces to at least one Requirement, Risk, Rule, Contract, or architecture invariant
+  - id: critical_gate_dominance
+    rule: a failed critical evaluation invariant cannot be hidden by an aggregate score
+  - id: judge_authority_limit
+    rule: an LLM Judge cannot be the sole authority for critical security, safety, destructive-action, acceptance, or release decisions
+  - id: evaluation_failure_classification
+    rule: evaluator, infrastructure, invalid-test, and policy-denial failures are distinct from subject failures
+  - id: evaluation_isolation
+    rule: trials do not share mutable state unless the EvaluationCase explicitly tests concurrency

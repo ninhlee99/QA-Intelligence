@@ -1,0 +1,12 @@
+{
+  "id": "assessment-invalid",
+  "requirement_ref": "REQ-001",
+  "workspace_id": "",
+  "outcome": "approved",
+  "findings": [{"id": "unsupported", "category": "opinion", "severity": "urgent", "message": "Looks bad", "evidence": []}],
+  "questions": [],
+  "rule_results": [],
+  "evidence": [],
+  "uncertainty": {"level": "certain", "reasons": []},
+  "resolved_versions": {}
+}

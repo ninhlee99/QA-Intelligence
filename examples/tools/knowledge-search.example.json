@@ -1,0 +1,16 @@
+{
+  "id": "knowledge-search",
+  "version": "0.1.0",
+  "owner": "Knowledge Governance",
+  "interface": "SPEC-510",
+  "input_schema": "knowledge-search-input.schema.json",
+  "output_schema": "knowledge-search-result.schema.json",
+  "side_effect_class": "read_only",
+  "permissions": ["knowledge:read"],
+  "approval_required": false,
+  "data_classes": ["workspace_knowledge"],
+  "idempotency": "supported",
+  "compensation": null,
+  "timeouts": {"default_seconds": 5, "maximum_seconds": 15},
+  "evidence_requirements": ["query digest", "knowledge snapshot", "result references", "Workspace policy decision"]
+}

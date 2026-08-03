@@ -1,0 +1,20 @@
+ontology_version: 1.0.0
+status: accepted
+enumerations:
+  artifact_status: [draft, in_review, accepted, deprecated, superseded, rejected, archived]
+  candidate_status: [discovered, proposed, validating, promoted, rejected, expired]
+  execution_status: [planned, queued, preparing, running, collecting_evidence, completed, failed, cancelled, timed_out, blocked]
+  execution_outcome: [passed, failed, blocked, skipped, cancelled, infrastructure_error, indeterminate]
+  severity: [critical, high, medium, low]
+  confidence: [high, medium, low]
+  workspace_status: [provisioning, active, suspended, retiring, archived]
+  plugin_status: [discovered, validated, installed, enabled, disabled, retired]
+  agent_definition_status: [draft, in_review, accepted, deprecated, retired, rejected]
+  skill_definition_status: [draft, in_review, accepted, deprecated, retired, rejected]
+  agent_run_status: [requested, resolving, awaiting_authorization, ready, running, awaiting_approval, suspended, validating, completed, failed, cancelled, timed_out, blocked]
+  agent_step_status: [proposed, authorized, executing, observed, validated, committed, denied, failed, cancelled]
+  evaluation_campaign_status: [draft, validating, ready, running, analyzing, awaiting_review, approved, conditionally_approved, rejected, indeterminate, blocked, cancelled, failed]
+  evaluation_failure_class: [none, subject, evaluator, infrastructure, invalid_test, policy_denial, indeterminate]
+  release_recommendation: [recommend_release, recommend_conditional_release, reject_release, indeterminate]
+  side_effect_class: [none, read_only, reversible, irreversible]
+  consequence_class: [advisory, reversible, controlled_side_effect, high_consequence]

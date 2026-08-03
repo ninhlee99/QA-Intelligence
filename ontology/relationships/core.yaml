@@ -1,0 +1,32 @@
+ontology_version: 1.0.0
+status: accepted
+governing_spec: SPEC-101
+relationships:
+  - { id: depends_on, source: Artifact, target: Artifact, inverse: required_by }
+  - { id: governs, source: Authority, target: Artifact, inverse: governed_by }
+  - { id: satisfies, source: Artifact, target: Requirement, inverse: satisfied_by }
+  - { id: validates, source: TestOrEvidence, target: Artifact, inverse: validated_by }
+  - { id: implements, source: ComponentOrAsset, target: InterfaceOrTestCase, inverse: implemented_by }
+  - { id: produces, source: ProcessOrExecution, target: Artifact, inverse: produced_by }
+  - { id: derived_from, source: Artifact, target: Source, inverse: source_of }
+  - { id: supported_by, source: Claim, target: Evidence, inverse: supports }
+  - { id: contradicts, source: Artifact, target: Artifact, symmetric: true }
+  - { id: supersedes, source: ArtifactVersion, target: ArtifactVersion, inverse: superseded_by }
+  - { id: affects, source: ChangeOrRisk, target: Artifact, inverse: affected_by }
+  - { id: belongs_to, source: WorkspaceScopedEntity, target: Workspace, inverse: contains }
+  - { id: executed_by, source: Execution, target: PluginOrEngine, inverse: executes }
+  - { id: observed_in, source: Observation, target: Execution, inverse: produced_observation }
+  - { id: navigates_to, source: SemanticUIEntity, target: Page, inverse: navigated_from }
+  - { id: triggers, source: ActionOrEvent, target: WorkflowOrState, inverse: triggered_by }
+  - { id: composes, source: AgentDefinition, target: SkillDefinition, inverse: composed_in }
+  - { id: permits, source: AgentOrSkillDefinition, target: ToolDefinition, inverse: permitted_by }
+  - { id: instantiates, source: AgentRun, target: AgentDefinition, inverse: instantiated_as }
+  - { id: contains_step, source: AgentRun, target: AgentStep, inverse: step_of }
+  - { id: constrained_by, source: AgentRunOrStep, target: PolicyDecision, inverse: constrains }
+  - { id: evaluates, source: EvaluationSuite, target: AgentOrSkillDefinition, inverse: evaluated_by }
+  - { id: contains_case, source: EvaluationSuite, target: EvaluationCase, inverse: case_of }
+  - { id: contains_trial, source: EvaluationRun, target: EvaluationTrial, inverse: trial_of }
+  - { id: applies_oracle, source: EvaluationCase, target: Oracle, inverse: applied_by }
+  - { id: judged_by, source: EvaluationTrial, target: Judge, inverse: judges }
+  - { id: compares_with, source: EvaluationRun, target: EvaluationBaseline, inverse: compared_by }
+  - { id: results_in, source: EvaluationRun, target: EvaluationResult, inverse: result_of }

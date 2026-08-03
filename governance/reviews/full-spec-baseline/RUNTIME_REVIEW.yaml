@@ -1,0 +1,21 @@
+id: REVIEW-RUNTIME-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: SPEC-601 through SPEC-607
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  canonical_state_and_transition_ownership: pass
+  delivery_idempotency_ordering_and_transactional_handoff: pass
+  scheduling_capacity_fairness_and_backpressure: pass
+  cancellation_timeout_cleanup_and_unknown_effects: pass
+  crash_recovery_continuity_and_version_migration: pass
+  observability_SLI_SLO_alerting_and_retention: pass
+  workspace_isolation_security_and_privacy: pass
+  agent_budget_authority_and_evidence: pass
+  evaluation_failure_attribution_and_critical_invariants: pass
+  controlled_learning_and_release_separation: pass
+  unresolved_blocking_decisions: 0
+decision: approved
+authority: approves Runtime specification semantics; does not certify a deployment or approve production release

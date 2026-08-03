@@ -1,0 +1,16 @@
+{
+  "script_id": "requirement-review-reasoning-001",
+  "request_match": {
+    "purpose": "assess unresolved semantic gaps",
+    "workspace_id": "workspace-evaluation-001",
+    "allowed_tools": []
+  },
+  "response": {
+    "status": "completed",
+    "claims": [],
+    "uncertainty": "insufficient evidence for business intent",
+    "required_human_action": "clarify the observable outcome"
+  },
+  "usage": {"tokens": 100, "cost": 0},
+  "unexpected_request": "fail_test"
+}

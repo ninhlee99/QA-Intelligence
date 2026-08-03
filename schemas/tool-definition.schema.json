@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/tool-definition.schema.json",
+  "title": "Agent Tool Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "owner", "interface", "input_schema", "output_schema", "side_effect_class", "permissions", "data_classes", "idempotency", "timeouts", "evidence_requirements"],
+  "properties": {
+    "id": {"type": "string"},
+    "version": {"type": "string"},
+    "owner": {"type": "string"},
+    "interface": {"const": "SPEC-510"},
+    "input_schema": {"type": "string"},
+    "output_schema": {"type": "string"},
+    "side_effect_class": {"enum": ["read_only", "reversible", "irreversible"]},
+    "permissions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "approval_required": {"type": "boolean"},
+    "data_classes": {"type": "array", "items": {"type": "string"}},
+    "idempotency": {"enum": ["supported", "required", "unsupported"]},
+    "compensation": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+    "timeouts": {"type": "object", "required": ["default_seconds", "maximum_seconds"], "properties": {"default_seconds": {"type": "integer", "minimum": 1}, "maximum_seconds": {"type": "integer", "minimum": 1}}},
+    "evidence_requirements": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }
+}

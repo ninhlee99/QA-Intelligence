@@ -1,0 +1,27 @@
+{
+  "id": "assess-requirement-quality",
+  "version": "0.1.0",
+  "status": "draft",
+  "owner": "Quality Engineering",
+  "purpose": "Assess one requirement against deterministic quality rules and governed evidence",
+  "non_goals": ["Approve the requirement", "Invent business intent"],
+  "positive_triggers": ["User asks to review, assess, or test the quality of a requirement"],
+  "negative_triggers": ["User asks to implement an already accepted requirement"],
+  "input_schema": "requirement.schema.json",
+  "output_schema": "requirement-assessment.schema.json",
+  "preconditions": ["Workspace is authorized", "Requirement identity and version are resolved"],
+  "procedure": [
+    {"id": "discover", "instruction": "Discover available requirement, rule, and source evidence before asking questions", "evidence": ["discovery references"]},
+    {"id": "rules", "instruction": "Run deterministic quality rules before bounded inference", "evidence": ["rule results"]},
+    {"id": "assess", "instruction": "Assess unresolved semantic gaps with citations and uncertainty", "decision_rule": "Never infer missing business intent as fact", "evidence": ["source citations"]}
+  ],
+  "postconditions": ["Every finding has severity, evidence, and proposed next action"],
+  "knowledge_scopes": ["requirements", "business-rules"],
+  "rule_sets": ["requirement-quality@0.1.0"],
+  "tools": ["knowledge-search@0.1.0"],
+  "evidence_requirements": ["rule results", "source citations", "uncertainty"],
+  "side_effect_class": "none",
+  "idempotency": "not_applicable",
+  "failure_behavior": {"on_uncertainty": "escalate", "on_failure": "fail"},
+  "evaluation_suites": ["assess-requirement-quality-core@0.1.0"]
+}

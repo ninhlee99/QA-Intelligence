@@ -1,0 +1,60 @@
+generated: true
+generated_at: 2026-08-03
+status: accepted
+authoritative_sources:
+  - ../specs
+  - ../adr
+  - ../governance
+layer_order:
+  - foundation
+  - governance
+  - decisions
+  - knowledge
+  - product
+  - architecture
+  - interfaces
+  - components
+  - runtime
+  - implementation
+critical_edges:
+  - { from: ADR-001, relationship: realized_by, to: SPEC-103 }
+  - { from: ADR-002, relationship: realized_by, to: SPEC-104 }
+  - { from: ADR-003, relationship: realized_by, to: SPEC-302 }
+  - { from: ADR-004, relationship: realized_by, to: SPEC-307 }
+  - { from: ADR-005, relationship: realized_by, to: SPEC-102 }
+  - { from: ADR-006, relationship: realized_by, to: SPEC-201 }
+  - { from: ADR-007, relationship: realized_by, to: SPEC-503 }
+  - { from: ADR-008, relationship: realized_by, to: SPEC-506 }
+  - { from: ADR-009, relationship: realized_by, to: SPEC-504 }
+  - { from: ADR-010, relationship: realized_by, to: SPEC-105 }
+  - { from: ADR-011, relationship: realized_by, to: SPEC-309 }
+  - { from: ADR-012, relationship: realized_by, to: SPEC-601 }
+  - { from: ADR-013, relationship: realized_by, to: SPEC-601 }
+  - { from: ADR-014, relationship: realized_by, to: SPEC-506 }
+  - { from: ADR-015, relationship: realized_by, to: SPEC-213 }
+  - { from: SPEC-501, relationship: implemented_by, to: SPEC-401 }
+  - { from: SPEC-502, relationship: implemented_by, to: SPEC-402 }
+  - { from: SPEC-503, relationship: implemented_by, to: SPEC-405 }
+  - { from: SPEC-503, relationship: implemented_by, to: SPEC-407 }
+  - { from: SPEC-503, relationship: implemented_by, to: SPEC-409 }
+  - { from: SPEC-504, relationship: implemented_by, to: SPEC-404 }
+  - { from: SPEC-506, relationship: implemented_by, to: SPEC-406 }
+  - { from: SPEC-004, relationship: realized_by, to: SPEC-106 }
+  - { from: SPEC-106, relationship: specialized_by, to: SPEC-107 }
+  - { from: SPEC-106, relationship: enabled_by, to: SPEC-213 }
+  - { from: SPEC-107, relationship: enabled_by, to: SPEC-213 }
+  - { from: SPEC-213, relationship: realized_by, to: SPEC-310 }
+  - { from: SPEC-309, relationship: exposed_by, to: SPEC-508 }
+  - { from: SPEC-106, relationship: exposed_by, to: SPEC-509 }
+  - { from: SPEC-309, relationship: exposed_by, to: SPEC-510 }
+  - { from: SPEC-310, relationship: exposed_by, to: SPEC-511 }
+  - { from: SPEC-508, relationship: implemented_by, to: SPEC-410 }
+  - { from: SPEC-509, relationship: consumed_by, to: SPEC-410 }
+  - { from: SPEC-510, relationship: consumed_by, to: SPEC-410 }
+  - { from: SPEC-511, relationship: implemented_by, to: SPEC-411 }
+  - { from: SPEC-410, relationship: operated_by, to: SPEC-606 }
+  - { from: SPEC-411, relationship: operated_by, to: SPEC-607 }
+validation:
+  cycles_allowed: false
+  unresolved_targets_allowed: false
+  workspace_boundary_required: true

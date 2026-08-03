@@ -1,0 +1,12 @@
+{
+  "id": "unbounded-live-case",
+  "version": "0.1.0",
+  "traceability": [],
+  "mode": "production",
+  "input": {},
+  "environment": "production",
+  "budgets": {"max_steps": 0, "max_seconds": 0, "max_tool_calls": -1},
+  "oracle": {"type": "llm_only", "reference": "self-judge"},
+  "assertions": [],
+  "cleanup": {"required": false, "verification": ""}
+}

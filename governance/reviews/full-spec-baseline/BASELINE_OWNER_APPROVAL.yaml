@@ -1,0 +1,34 @@
+id: OWNER-APPROVAL-FULL-BASELINE-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+source: explicit Repository Owner instruction in the active Codex task
+approved_scope:
+  - Knowledge specifications SPEC-101 through SPEC-107
+  - Product specifications SPEC-201 through SPEC-213
+  - Architecture specifications SPEC-301 through SPEC-310
+  - Interface specifications SPEC-501 through SPEC-511
+  - Component specifications SPEC-401 through SPEC-411
+  - Runtime specifications SPEC-601 through SPEC-607
+  - GOV-011 Architecture Decision Graph
+  - GOV-012 Agent and Skill Quality Gates
+conditions:
+  - preserve the original comprehensive QA/QC platform vision
+  - preserve experienced Senior QA and Test Engineer discipline
+  - correct any inconsistency before acceptance
+  - do not convert specification acceptance into implementation or release approval
+preserved_invariants:
+  - Knowledge Store is authoritative and conversation is not knowledge
+  - deterministic Rule Engine precedes bounded LLM reasoning
+  - semantic UI and UI Knowledge Graph remain independent of raw selectors
+  - Knowledge Candidates cannot bypass review and promotion
+  - Discovery precedes questions when evidence can be found
+  - Plugins are adapters and Skills are QA procedures
+  - Workspace isolation and least privilege apply end to end
+  - execution providers remain replaceable behind contracts
+  - learning is evidence-driven and controlled
+decision: approved_as_documentation_and_implementation_baseline
+excluded_authority:
+  - no claim that source code exists or conforms
+  - no GOV-012 G3 through G6 implementation or release gate approval
+  - no production deployment or release approval

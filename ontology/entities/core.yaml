@@ -1,0 +1,51 @@
+ontology_version: 1.0.0
+status: accepted
+governing_spec: SPEC-101
+entities:
+  - { id: Specification, family: governance, workspace_scope: global }
+  - { id: ArchitectureDecision, family: governance, workspace_scope: global }
+  - { id: QualityGate, family: governance, workspace_scope: global_or_workspace }
+  - { id: Requirement, family: product, workspace_scope: workspace }
+  - { id: AcceptanceCriterion, family: product, workspace_scope: workspace }
+  - { id: BusinessRule, family: product, workspace_scope: global_or_workspace }
+  - { id: Risk, family: quality, workspace_scope: workspace }
+  - { id: KnowledgeObject, family: knowledge, workspace_scope: global_or_workspace }
+  - { id: KnowledgeCandidate, family: knowledge, workspace_scope: workspace }
+  - { id: Source, family: knowledge, workspace_scope: global_or_workspace }
+  - { id: Claim, family: knowledge, workspace_scope: global_or_workspace }
+  - { id: TestStrategy, family: quality, workspace_scope: workspace }
+  - { id: TestCase, family: quality, workspace_scope: workspace }
+  - { id: TestData, family: quality, workspace_scope: workspace }
+  - { id: AutomationAsset, family: quality, workspace_scope: workspace }
+  - { id: Execution, family: runtime, workspace_scope: workspace }
+  - { id: Evidence, family: runtime, workspace_scope: workspace }
+  - { id: Defect, family: quality, workspace_scope: workspace }
+  - { id: Workspace, family: platform, workspace_scope: global }
+  - { id: Component, family: platform, workspace_scope: global }
+  - { id: Interface, family: platform, workspace_scope: global }
+  - { id: Plugin, family: platform, workspace_scope: global_or_workspace }
+  - { id: AgentDefinition, family: agent, workspace_scope: global_or_workspace }
+  - { id: SkillDefinition, family: agent, workspace_scope: global_or_workspace }
+  - { id: ToolDefinition, family: agent, workspace_scope: global_or_workspace }
+  - { id: PromptTemplate, family: agent, workspace_scope: global_or_workspace }
+  - { id: AgentRun, family: runtime, workspace_scope: workspace }
+  - { id: AgentStep, family: runtime, workspace_scope: workspace }
+  - { id: PolicyDecision, family: governance, workspace_scope: workspace }
+  - { id: SandboxPolicy, family: governance, workspace_scope: global_or_workspace }
+  - { id: EvaluationSuite, family: evaluation, workspace_scope: global_or_workspace }
+  - { id: EvaluationCase, family: evaluation, workspace_scope: global_or_workspace }
+  - { id: EvaluationRun, family: evaluation, workspace_scope: workspace }
+  - { id: EvaluationTrial, family: evaluation, workspace_scope: workspace }
+  - { id: EvaluationResult, family: evaluation, workspace_scope: workspace }
+  - { id: Oracle, family: evaluation, workspace_scope: global_or_workspace }
+  - { id: Judge, family: evaluation, workspace_scope: global_or_workspace }
+  - { id: EvaluationBaseline, family: evaluation, workspace_scope: global_or_workspace }
+  - { id: Page, family: semantic_ui, workspace_scope: workspace }
+  - { id: Region, family: semantic_ui, workspace_scope: workspace }
+  - { id: Feature, family: semantic_ui, workspace_scope: workspace }
+  - { id: Field, family: semantic_ui, workspace_scope: workspace }
+  - { id: Action, family: semantic_ui, workspace_scope: workspace }
+  - { id: State, family: semantic_ui, workspace_scope: workspace }
+  - { id: Workflow, family: semantic_ui, workspace_scope: workspace }
+  - { id: Observation, family: learning, workspace_scope: workspace }
+  - { id: ImprovementProposal, family: learning, workspace_scope: workspace }

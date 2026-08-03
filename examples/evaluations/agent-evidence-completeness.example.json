@@ -1,0 +1,14 @@
+{
+  "id": "agent-evidence-completeness",
+  "version": "0.1.0",
+  "traceability": ["GOV-006", "SPEC-213", "SPEC-508"],
+  "mode": "replay",
+  "input": {"requirement_ref": "REQ-001@1.0.0"},
+  "environment": "evidence-contract-test",
+  "fixtures": ["knowledge-snapshot.json", "tool-replay.json"],
+  "budgets": {"max_steps": 8, "max_seconds": 30, "max_tool_calls": 3},
+  "oracle": {"type": "schema", "reference": "requirement-assessment.schema.json"},
+  "assertions": [{"id": "versions", "condition": "all resolved versions are present", "critical": true}, {"id": "claims", "condition": "every finding references retained evidence", "critical": true}, {"id": "no-hidden-reasoning", "condition": "hidden chain-of-thought is absent", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "Read-only fixtures remain unchanged"}
+}

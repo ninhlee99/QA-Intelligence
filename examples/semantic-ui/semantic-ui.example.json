@@ -1,0 +1,12 @@
+{
+  "id": "UI-DEMO-LOGIN-SUBMIT",
+  "type": "Action",
+  "name": "Submit login",
+  "purpose": "Request authentication using entered credentials.",
+  "workspace_id": "WORKSPACE-DEMO",
+  "applicability": {"page": "Login", "role": "Anonymous"},
+  "relationships": [{"type": "triggers", "target_id": "WORKFLOW-DEMO-AUTH"}],
+  "evidence": ["CAPTURE-DEMO-001#node-42"],
+  "confidence": 0.92,
+  "binding_hints": [{"role": "button", "accessible_name": "Sign in"}]
+}

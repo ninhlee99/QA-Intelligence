@@ -1,0 +1,79 @@
+generated: true
+generated_at: 2026-08-03
+command: npx --yes -p node@24 -c 'node --version && npm run validate'
+runtime: Node.js 24.18.1
+scope: accepted documentation baseline, machine-readable artifacts, and selected Agent/Skill tracer-bullet contracts
+outcome: pass
+checks:
+  yaml_parse:
+    outcome: pass
+    files_checked: 34
+    failures: 0
+  json_parse:
+    outcome: pass
+    files_checked: 56
+    failures: 0
+  governed_metadata_and_identity:
+    outcome: pass
+    artifacts_checked: 93
+    duplicate_ids: 0
+    unresolved_references: 0
+    dependency_cycles: 0
+    accepted_artifacts_with_unaccepted_dependencies: 0
+  specification_dependencies_and_lifecycle:
+    outcome: pass
+    specifications_checked: 66
+    downstream_specifications_checked: 59
+    accepted_families: [knowledge, product, architecture, interfaces, components, runtime]
+    readiness_mismatches: 0
+  repository_graph:
+    outcome: pass
+    critical_edges_checked: 37
+    unresolved_targets: 0
+    duplicate_edges: 0
+    cycles: 0
+  indexes_and_manifest:
+    outcome: pass
+    specification_index_exact_match: true
+    adr_index_exact_match: true
+    schema_index_exact_match: true
+    playbook_index_exact_match: true
+    rule_and_ontology_artifacts_accepted: true
+    missing_paths: 0
+    manifest_count_mismatches: 0
+  repository_schema_subset:
+    outcome: pass
+    valid_examples_accepted: 4
+    invalid_examples_rejected: 4
+    failures: 0
+  json_schema_draft_2020_12_strict:
+    validator: Ajv 8.20.0
+    outcome: pass
+    schemas_compiled: 20
+    valid_examples_accepted: 16
+    invalid_examples_rejected: 9
+    failures: 0
+  dependency_security:
+    outcome: pass
+    npm_audit_vulnerabilities: 0
+approval_evidence:
+  owner: ../governance/reviews/full-spec-baseline/BASELINE_OWNER_APPROVAL.yaml
+  knowledge: ../governance/reviews/full-spec-baseline/KNOWLEDGE_REVIEW.yaml
+  product: ../governance/reviews/full-spec-baseline/PRODUCT_REVIEW.yaml
+  architecture: ../governance/reviews/full-spec-baseline/ARCHITECTURE_REVIEW.yaml
+  interfaces: ../governance/reviews/full-spec-baseline/INTERFACE_REVIEW.yaml
+  components: ../governance/reviews/full-spec-baseline/COMPONENT_REVIEW.yaml
+  runtime: ../governance/reviews/full-spec-baseline/RUNTIME_REVIEW.yaml
+  governance: ../governance/reviews/full-spec-baseline/GOVERNANCE_REVIEW.yaml
+  machine_readable: ../governance/reviews/full-spec-baseline/MACHINE_READABLE_REVIEW.yaml
+readiness:
+  documentation_and_machine_readable_baseline: accepted
+  original_product_vision: comprehensive_QA_QC_and_experienced_Senior_Test_Engineer_identity_preserved
+  initial_tracer_bullet: ready_to_start_implementation
+  implementation_conformance: pending_source_code_and_shared_adapter_contract_tests
+  enablement_beyond_development: blocked_pending_GOV_012_G1_to_G4_evidence
+  production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence
+limitations:
+  - this validation proves repository consistency and machine-readable contract quality, not source-code or deployed-runtime conformance
+  - production contract, sandbox, security, load, recovery, monitoring, and provider conformance evidence requires implementation
+authority: validates and records the accepted documentation baseline; does not certify implementation, enable an Agent or Skill, or approve production release

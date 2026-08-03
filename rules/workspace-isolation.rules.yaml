@@ -1,0 +1,23 @@
+rule_set:
+  id: workspace-isolation
+  version: 1.0.0
+  status: accepted
+  authority: [ADR-008, SPEC-306, SPEC-506, GOV-009]
+  owner: Security
+rules:
+  - id: WI-001
+    title: Workspace context required
+    severity: critical
+    decision: every Workspace-scoped operation has validated unexpired context
+  - id: WI-002
+    title: Cross-Workspace access denied
+    severity: critical
+    decision: source and target Workspace match unless explicit administrative policy authorizes bounded access
+  - id: WI-003
+    title: Workspace scope propagates
+    severity: critical
+    decision: jobs, events, plugins, caches, indexes, evidence, telemetry, and AI context preserve Workspace identity
+  - id: WI-004
+    title: Global promotion is explicit
+    severity: high
+    decision: Workspace knowledge cannot become global without governed anonymization and approval

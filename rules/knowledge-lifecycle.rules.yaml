@@ -1,0 +1,23 @@
+rule_set:
+  id: knowledge-lifecycle
+  version: 1.0.0
+  status: accepted
+  authority: [SPEC-102, SPEC-105, ADR-005, ADR-010]
+  owner: Knowledge Governance
+rules:
+  - id: KL-001
+    title: Observation is not knowledge
+    severity: critical
+    decision: observations and AI outputs enter as candidates, never accepted KnowledgeObjects
+  - id: KL-002
+    title: Promotion requires provenance
+    severity: critical
+    decision: promoted candidate has sources, evidence, owner, applicability, review, and QG-08 result
+  - id: KL-003
+    title: Confidence is not authority
+    severity: high
+    decision: confidence value alone never changes lifecycle status or authority
+  - id: KL-004
+    title: Rejection remains traceable
+    severity: medium
+    decision: rejected candidates retain evidence, reviewer, reason, time, and Workspace

@@ -1,0 +1,18 @@
+{
+  "id": "unsafe-skill",
+  "version": "0.1.0",
+  "status": "draft",
+  "owner": "Quality Engineering",
+  "purpose": "Do anything requested",
+  "non_goals": [],
+  "positive_triggers": ["Always"],
+  "input_schema": "input.schema.json",
+  "output_schema": "output.schema.json",
+  "preconditions": [],
+  "procedure": [],
+  "postconditions": [],
+  "evidence_requirements": [],
+  "side_effect_class": "irreversible",
+  "failure_behavior": {"on_uncertainty": "continue", "on_failure": "ignore"},
+  "evaluation_suites": []
+}

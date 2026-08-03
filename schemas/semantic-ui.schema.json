@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/semantic-ui.schema.json",
+  "title": "Semantic UI Entity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "name", "workspace_id", "applicability", "evidence", "confidence"],
+  "properties": {
+    "id": {"type": "string"},
+    "type": {"enum": ["Page", "Region", "Feature", "Field", "Action", "Validation", "Navigation", "Workflow", "State", "Permission"]},
+    "name": {"type": "string"},
+    "purpose": {"type": "string"},
+    "workspace_id": {"type": "string"},
+    "applicability": {"type": "object"},
+    "relationships": {"type": "array", "items": {"type": "object"}},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "binding_hints": {"type": "array", "items": {"type": "object"}}
+  }
+}

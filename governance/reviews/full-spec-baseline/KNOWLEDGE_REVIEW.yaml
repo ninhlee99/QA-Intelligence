@@ -1,0 +1,21 @@
+id: REVIEW-KNOWLEDGE-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+scope: SPEC-101 through SPEC-107
+authorization_source: explicit Repository Owner instruction
+reviewer: Codex Technical and Governance Review
+checks:
+  comprehensive_QA_QC_alignment: pass
+  knowledge_store_authority: pass
+  deterministic_rules_before_LLM: pass
+  controlled_learning: pass
+  agent_skill_plugin_tool_separation: pass
+  workspace_isolation: pass
+  provenance_and_evidence: pass
+  lifecycle_and_compatibility: pass
+  failure_recovery_observability_limits: pass
+  ontology_and_schema_support: pass
+  unresolved_blocking_decisions: 0
+decision: approved
+authority: approves Knowledge specification semantics; does not approve implementation or runtime release

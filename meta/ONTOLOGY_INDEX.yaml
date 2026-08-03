@@ -1,0 +1,10 @@
+generated: true
+generated_at: 2026-08-03
+governing_spec: SPEC-101
+status: accepted
+artifacts:
+  - { type: overview, path: ../ontology/README.md }
+  - { type: entities, path: ../ontology/entities/core.yaml }
+  - { type: relationships, path: ../ontology/relationships/core.yaml }
+  - { type: enumerations, path: ../ontology/enumerations/lifecycle.yaml }
+  - { type: constraints, path: ../ontology/constraints/core.yaml }

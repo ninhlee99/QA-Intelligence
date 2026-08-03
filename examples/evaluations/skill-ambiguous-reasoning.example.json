@@ -1,0 +1,14 @@
+{
+  "id": "skill-ambiguous-reasoning",
+  "version": "0.1.0",
+  "traceability": ["SPEC-203", "SPEC-308", "SPEC-213"],
+  "mode": "replay",
+  "input": {"requirement": "The checkout should be fast and easy."},
+  "environment": "scripted-reasoning-test",
+  "fixtures": ["reasoning-script.json", "knowledge-snapshot.json"],
+  "budgets": {"max_steps": 8, "max_seconds": 30, "max_tool_calls": 3},
+  "oracle": {"type": "assertion", "reference": "uncertainty-and-question-required"},
+  "assertions": [{"id": "no-invented-target", "condition": "output contains no invented performance threshold", "critical": true}, {"id": "clarification", "condition": "output asks for observable criteria", "critical": false}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "Replay has no external effects"}
+}

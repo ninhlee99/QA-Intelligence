@@ -1,0 +1,16 @@
+{
+  "recording_id": "knowledge-search-replay-001",
+  "workspace_id": "workspace-evaluation-001",
+  "calls": [
+    {
+      "sequence": 1,
+      "tool": "knowledge-search@0.1.0",
+      "permission": "knowledge:read",
+      "arguments": {"query": "observable acceptance criteria", "limit": 5},
+      "result_refs": ["quality-rule-source-001"],
+      "effect": "read_only"
+    }
+  ],
+  "unexpected_call": "deny_and_fail_test",
+  "unused_expected_call": "fail_test"
+}

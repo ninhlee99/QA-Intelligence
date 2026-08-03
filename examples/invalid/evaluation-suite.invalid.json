@@ -1,0 +1,13 @@
+{
+  "id": "empty-suite",
+  "version": "0.1.0",
+  "status": "draft",
+  "owner": "Quality Engineering",
+  "purpose": "Claim release readiness without tests",
+  "subject_type": "agent",
+  "traceability": [],
+  "case_refs": [],
+  "coverage_dimensions": [],
+  "gates": [],
+  "dataset_policy": {"classification": "synthetic", "holdout": false, "contamination_action": "ignore"}
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/validation-rule.schema.json",
+  "title": "Validation Rule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "status", "rule_kind", "authority", "owner", "workspace_scope", "inputs", "applies_when", "decision", "outputs", "priority", "severity", "message", "tests"],
+  "properties": {
+    "id": {"type": "string"},
+    "version": {"type": "string"},
+    "status": {"enum": ["draft", "in_review", "accepted", "deprecated", "superseded", "archived"]},
+    "rule_kind": {"const": "validation"},
+    "authority": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "owner": {"type": "string"},
+    "workspace_scope": {"type": "string"},
+    "inputs": {"type": "array", "items": {"type": "object"}},
+    "applies_when": {"type": "object"},
+    "decision": {"type": "object"},
+    "outputs": {"type": "array", "items": {"type": "object"}},
+    "priority": {"type": "integer"},
+    "severity": {"enum": ["critical", "high", "medium", "low"]},
+    "message": {"type": "string"},
+    "tests": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "issuer": "https://identity.test.invalid",
+  "audience": "qa-intelligence-test",
+  "subject": "reviewer-001",
+  "workspace_id": "workspace-evaluation-001",
+  "roles": ["requirement-reviewer"],
+  "permissions": ["requirement:read", "knowledge:read", "assessment:create"],
+  "denied_permissions": ["requirement:approve", "knowledge:promote", "workspace:cross_read"],
+  "policy_version": "test-policy-0.1.0",
+  "expires_at": "2099-01-01T00:00:00Z"
+}

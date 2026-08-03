@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/knowledge-search-result.schema.json",
+  "title": "Knowledge Search Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["knowledge_snapshot", "items", "evidence"],
+  "properties": {
+    "knowledge_snapshot": {"type": "string", "minLength": 1},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version", "status", "score", "claim_refs", "provenance"],
+        "properties": {
+          "id": {"type": "string"},
+          "version": {"type": "string"},
+          "status": {"const": "accepted"},
+          "score": {"type": "number", "minimum": 0, "maximum": 1},
+          "claim_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "provenance": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
+      }
+    },
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }
+}

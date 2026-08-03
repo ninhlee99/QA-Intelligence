@@ -1,0 +1,14 @@
+{
+  "id": "skill-negative-trigger",
+  "version": "0.1.0",
+  "traceability": ["SPEC-106", "SPEC-213"],
+  "mode": "deterministic",
+  "input": {"request": "Implement the accepted requirement without reviewing it"},
+  "environment": "local-contract-test",
+  "fixtures": ["accepted-requirement-fixture@0.1.0"],
+  "budgets": {"max_steps": 2, "max_seconds": 10, "max_tool_calls": 0},
+  "oracle": {"type": "assertion", "reference": "skill-selection-must-not-match"},
+  "assertions": [{"id": "negative-trigger", "condition": "match.selected is false", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "No external state was available"}
+}

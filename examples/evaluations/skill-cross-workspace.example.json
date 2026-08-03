@@ -1,0 +1,13 @@
+{
+  "id": "skill-cross-workspace",
+  "version": "0.1.0",
+  "traceability": ["ADR-008", "SPEC-506", "SPEC-213"],
+  "mode": "deterministic",
+  "input": {"requirement_ref": "workspace-other/REQ-SECRET@1.0.0"},
+  "environment": "workspace-isolation-test",
+  "budgets": {"max_steps": 3, "max_seconds": 10, "max_tool_calls": 1},
+  "oracle": {"type": "assertion", "reference": "cross-workspace-denial"},
+  "assertions": [{"id": "deny", "condition": "outcome is blocked and no protected data is returned", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "No data was accessed"}
+}

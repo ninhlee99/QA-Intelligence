@@ -1,0 +1,41 @@
+id: GATE-RRA-GOV009-001
+version: 0.1.0
+date: 2026-08-03
+status: open
+governing_policy: GOV-009
+profile: high
+subject_revision: documentation-baseline-2026-08-03
+gates:
+  QG-01_intake_readiness:
+    outcome: pass
+    evidence: [ADR-015, governance/reviews/requirement-review-tracer-bullet/SCOPE.md, meta/AGENT_SKILL_READINESS.yaml]
+  QG-02_design_readiness:
+    outcome: blocked
+    completed_evidence: [ADR-011, ADR-012, ADR-013, ADR-014, ADR-015, SPEC-309, SPEC-310, tests/contracts/requirement-review-adapter-plan.yaml]
+    blocking_reason: ADR-011 through ADR-015 are accepted; selected downstream specifications and interfaces remain draft and require individual review
+  QG-03_implementation_readiness:
+    outcome: blocked
+    completed_evidence: [SPEC-508, SPEC-509, SPEC-510, SPEC-511, schemas, examples, tests/validate_repository.py, tests/validate-json-schemas.mjs]
+    blocking_reasons:
+      - QG-02 has not passed
+      - production and deterministic adapter implementations require accepted contracts
+  QG-04_change_acceptance:
+    outcome: not_applicable
+    reason: implementation has not started
+  QG-05_to_QG-07:
+    outcome: not_applicable
+    reason: no release or deployment exists
+  QG-08_knowledge_promotion:
+    outcome: not_applicable
+    reason: no Knowledge Candidate is being promoted
+  QG-09_ai_change_acceptance:
+    outcome: conditional_pass
+    scope: product direction and architecture decisions only
+    remaining_condition: Agent, Skill, interface, adapter, and evaluation implementation evidence must pass GOV-012
+non_exceptionable_controls:
+  workspace_isolation: required
+  least_privilege: required
+  evidence_integrity: required
+  no_direct_learning: required
+result: technology_and_tracer_decisions_approved_implementation_blocked_by_draft_contracts
+authority: gate evidence only; only declared gate owners may change outcomes

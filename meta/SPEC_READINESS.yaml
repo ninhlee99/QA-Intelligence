@@ -1,0 +1,54 @@
+generated: false
+version: 1.0.0
+last_updated: 2026-08-03
+purpose: prevent draft completeness from being confused with accepted authority
+baseline_status: accepted
+baseline_approval: ../governance/reviews/full-spec-baseline/BASELINE_OWNER_APPROVAL.yaml
+acceptance_requirements:
+  - accountable owner resolved to a governed role and named approver
+  - purpose, scope, non-goals, actors, inputs, outputs, and lifecycle are complete
+  - security, privacy, AI authority, and Workspace isolation are assessed
+  - failure, recovery, compatibility, migration, configuration, limits, and observability are defined where applicable
+  - ontology and schemas exist and validate
+  - dependency direction and single-source contract ownership pass
+  - ownership, dependency, traceability, impact, and repository indexes are updated
+  - positive, negative, boundary, isolation, and failure examples exist
+  - GOV-008 review has no blocking findings
+  - GOV-009 gate evidence is retained
+families:
+  knowledge:
+    range: SPEC-101-107
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/KNOWLEDGE_REVIEW.yaml
+    next_gate: implementation_conformance
+  product:
+    range: SPEC-201-213
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/PRODUCT_REVIEW.yaml
+    next_gate: implementation_conformance
+  architecture:
+    range: SPEC-301-310
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/ARCHITECTURE_REVIEW.yaml
+    next_gate: implementation_conformance
+  interfaces:
+    range: SPEC-501-511
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/INTERFACE_REVIEW.yaml
+    next_gate: implementation_conformance
+  components:
+    range: SPEC-401-411
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/COMPONENT_REVIEW.yaml
+    next_gate: implementation_conformance
+  runtime:
+    range: SPEC-601-607
+    status: accepted
+    approval_evidence: ../governance/reviews/full-spec-baseline/RUNTIME_REVIEW.yaml
+    next_gate: implementation_conformance
+acceptance_method: each family received a separate semantic review and approval record; acceptance was applied only after required corrections and dependency validation
+technology_and_slice_decisions:
+  range: ADR-011-015
+  status: accepted
+  approval_evidence: ../governance/reviews/requirement-review-tracer-bullet/OWNER_APPROVAL.yaml
+  next_gate: downstream_selected_slice_specification_review

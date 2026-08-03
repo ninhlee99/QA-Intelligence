@@ -1,0 +1,43 @@
+id: ADAPTER-PLAN-RRA-001
+version: 0.1.0
+status: design_complete_implementation_pending
+date: 2026-08-03
+subject: Requirement Review Agent tracer bullet
+principle: every remote seam has a production adapter and deterministic fake or replay adapter tested through the same interface
+seams:
+  - interface: SPEC-501
+    dependency_category: local_substitutable
+    production_adapter: PostgreSQL Knowledge Repository
+    test_adapter: isolated PostgreSQL fixture adapter
+    fixtures: tests/fixtures/requirement-review/knowledge-snapshot.json
+    conformance: authorization, provenance, version_resolution, query_order, workspace_denial, unavailable
+  - interface: SPEC-502
+    dependency_category: in_process
+    production_adapter: deterministic Rule Repository
+    test_adapter: not_applicable
+    rationale: pure deterministic logic remains inside the module; fixtures test the same public interface
+  - interface: SPEC-507
+    dependency_category: true_external
+    production_adapter: approved reasoning provider adapter
+    test_adapter: scripted reasoning adapter
+    fixtures: tests/fixtures/requirement-review/reasoning-script.json
+    conformance: structured_output, refusal, timeout, invalid_output, injection, usage_limit, cancellation
+  - interface: SPEC-506
+    dependency_category: remote_but_owned
+    production_adapter: OIDC identity plus internal authorization adapter
+    test_adapter: deterministic signed-claims and policy adapter
+    fixtures: tests/fixtures/requirement-review/identity-and-policy.json
+    conformance: issuer, audience, expiry, mapping, least_privilege, workspace_denial, separation_of_duties
+  - interface: SPEC-510
+    dependency_category: local_substitutable
+    production_adapter: governed knowledge-search Tool adapter
+    test_adapter: strict replay Tool adapter
+    fixtures: tests/fixtures/requirement-review/tool-replay.json
+    conformance: schema, exact_sequence, permission, timeout, cancellation, redaction, unexpected_call
+  - interface: SPEC-508
+    dependency_category: in_process_for_initial_slice
+    production_adapter: Agent Runner
+    test_adapter: deterministic clock, identity, provider, Tool and repository adapters injected internally
+    rationale: Agent Runtime remains the deep module and its interface is the test surface
+implementation_rule: adapters SHALL NOT be implemented or declared conformant until their governing interfaces and ADR-011 through ADR-015 are accepted
+

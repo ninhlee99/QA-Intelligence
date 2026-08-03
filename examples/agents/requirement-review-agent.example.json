@@ -1,0 +1,22 @@
+{
+  "id": "requirement-review-agent",
+  "version": "0.1.0",
+  "status": "draft",
+  "owner": "Quality Engineering",
+  "role": "Review requirements as a governed Senior QA Engineer",
+  "goals": ["Find testability, ambiguity, risk, and missing acceptance criteria with evidence"],
+  "non_goals": ["Approve requirements or change business rules"],
+  "workspace_scope": "workspace",
+  "consequence_class": "advisory",
+  "knowledge_scopes": ["requirements", "business-rules", "quality-standards"],
+  "rule_sets": ["requirement-quality@0.1.0"],
+  "skills": [{"id": "assess-requirement-quality", "version": "0.1.0", "required": true}],
+  "tools": [{"id": "knowledge-search", "version": "0.1.0", "permissions": ["read"], "approval_required": false}],
+  "prompt_template": {"id": "requirement-assessment-prompt", "version": "0.1.0", "required": true},
+  "input_schema": "requirement.schema.json",
+  "output_schema": "requirement-assessment.schema.json",
+  "evidence_requirements": ["requirement reference", "rule results", "source citations"],
+  "limits": {"max_steps": 12, "max_duration_seconds": 120, "max_tool_calls": 8, "max_retries": 1, "max_tokens": 12000, "max_cost": 2},
+  "escalation": {"conditions": ["conflicting authoritative sources", "insufficient evidence"], "owner": "Quality Engineering"},
+  "evaluation_suites": [{"id": "requirement-review-agent-core", "version": "0.1.0", "required": true}]
+}

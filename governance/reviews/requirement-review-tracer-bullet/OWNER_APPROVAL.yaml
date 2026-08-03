@@ -1,0 +1,34 @@
+id: APPROVAL-RRA-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+authorization_source: explicit instruction from the Repository Owner in the governing conversation
+technical_reviewer: Codex Technical and Governance Review
+approved_scope:
+  - clarification of SPEC-001 comprehensive QA/QC capability commitment
+  - ADR-011 TypeScript and Node.js runtime baseline
+  - ADR-012 PostgreSQL persistence and transactional outbox baseline
+  - ADR-013 modular monolith and worker deployment baseline
+  - ADR-014 OIDC identity and internal authorization baseline
+  - ADR-015 Requirement Review Agent initial tracer bullet
+preserved_intent:
+  product_identity: comprehensive AI QA/QC Engineer and experienced Senior Test Engineer
+  complete_lifecycle: Discovery through governed Learning
+  invariants:
+    - Knowledge Store remains the source of truth
+    - deterministic rules execute before bounded LLM reasoning
+    - Discovery occurs before asking
+    - evidence precedes assumptions
+    - Plugins remain technology adapters
+    - Workspace isolation and least privilege are mandatory
+    - observations become Knowledge Candidates rather than direct authority
+interpretation:
+  tracer_bullet: first low-risk vertical slice only
+  not_a_scope_reduction: true
+  comprehensive_does_not_mean_unbounded_authority_or_claimed_omniscience: true
+not_approved_by_this_record:
+  - bulk acceptance of downstream draft specifications
+  - implementation that depends on unaccepted interfaces
+  - production release or autonomous high-consequence actions
+  - bypass of contract, security, isolation, evaluation, or evidence gates
+decision: approved

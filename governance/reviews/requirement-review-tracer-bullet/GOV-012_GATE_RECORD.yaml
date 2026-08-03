@@ -1,0 +1,58 @@
+id: GATE-RRA-GOV012-001
+version: 0.1.0
+date: 2026-08-03
+status: open
+governing_policy: GOV-012
+subject:
+  agent: requirement-review-agent@0.1.0
+  skill: assess-requirement-quality@0.1.0
+gates:
+  G1_intent_and_definition:
+    design_evidence: complete
+    product_intent_approval: approved
+    artifact_acceptance: pending_selected_specification_review
+    evidence:
+      - examples/agents/requirement-review-agent.example.json
+      - examples/skills/assess-requirement-quality.example.json
+      - ADR-015
+      - SPEC-106
+  G2_authority_and_sandbox:
+    design_evidence: complete
+    implementation_evidence: pending
+    architecture_direction_approval: approved
+    gate_approval: pending_adapter_conformance
+    evidence:
+      - ADR-014
+      - SPEC-506
+      - SPEC-606
+      - tests/contracts/requirement-review-adapter-plan.yaml
+  G3_contract_and_determinism:
+    design_evidence: complete
+    full_schema_validation: pass
+    adapter_conformance: pending_accepted_contracts_and_implementation
+    architecture_direction_approval: approved
+    gate_approval: pending_contract_acceptance_and_adapter_conformance
+    evidence:
+      - SPEC-508
+      - SPEC-509
+      - SPEC-510
+      - SPEC-511
+      - tests/validate-json-schemas.mjs
+  G4_evaluation_readiness:
+    suite_design: complete_for_initial_tracer_cases
+    product_direction_approval: approved
+    gate_approval: pending_selected_specification_acceptance
+    evidence:
+      - SPEC-107
+      - SPEC-213
+      - examples/evaluations/skill-core-suite.example.json
+      - examples/evaluations/skill-negative-trigger.example.json
+  G5_regression_and_release_recommendation:
+    outcome: not_applicable
+    reason: implementation has not started
+  G6_controlled_release_and_monitoring:
+    outcome: not_applicable
+    reason: no release candidate exists
+blocking_critical_findings: []
+result: product_and_architecture_direction_approved_implementation_gates_pending
+authority: gate preparation only; this record cannot approve or release its subject

@@ -1,0 +1,78 @@
+generated: true
+generated_at: 2026-08-03
+source_roots:
+  - ../specs
+artifacts:
+  foundation:
+    - { id: SPEC-001, status: accepted, path: ../specs/foundation/SPEC-001-vision.md }
+    - { id: SPEC-002, status: accepted, path: ../specs/foundation/SPEC-002-product-principles.md }
+    - { id: SPEC-003, status: accepted, path: ../specs/foundation/SPEC-003-engineering-laws.md }
+    - { id: SPEC-004, status: accepted, path: ../specs/foundation/SPEC-004-ai-governance.md }
+    - { id: SPEC-005, status: accepted, path: ../specs/foundation/SPEC-005-canonical-glossary.md }
+    - { id: SPEC-006, status: accepted, path: ../specs/foundation/SPEC-006-system-landscape.md }
+    - { id: SPEC-007, status: accepted, path: ../specs/foundation/SPEC-007-repository-governance.md }
+  knowledge:
+    - { id: SPEC-101, status: accepted, path: ../specs/knowledge/SPEC-101-ontology.md }
+    - { id: SPEC-102, status: accepted, path: ../specs/knowledge/SPEC-102-knowledge-object.md }
+    - { id: SPEC-103, status: accepted, path: ../specs/knowledge/SPEC-103-knowledge-store.md }
+    - { id: SPEC-104, status: accepted, path: ../specs/knowledge/SPEC-104-rule-engine.md }
+    - { id: SPEC-105, status: accepted, path: ../specs/knowledge/SPEC-105-learning-engine.md }
+    - { id: SPEC-106, status: accepted, path: ../specs/knowledge/SPEC-106-agent-and-skill-model.md }
+    - { id: SPEC-107, status: accepted, path: ../specs/knowledge/SPEC-107-evaluation-model.md }
+  product:
+    - { id: SPEC-201, status: accepted, path: ../specs/product/SPEC-201-discovery.md }
+    - { id: SPEC-202, status: accepted, path: ../specs/product/SPEC-202-requirement-intelligence.md }
+    - { id: SPEC-203, status: accepted, path: ../specs/product/SPEC-203-requirement-quality-assessment.md }
+    - { id: SPEC-204, status: accepted, path: ../specs/product/SPEC-204-business-analysis.md }
+    - { id: SPEC-205, status: accepted, path: ../specs/product/SPEC-205-risk-analysis.md }
+    - { id: SPEC-206, status: accepted, path: ../specs/product/SPEC-206-test-strategy.md }
+    - { id: SPEC-207, status: accepted, path: ../specs/product/SPEC-207-test-design.md }
+    - { id: SPEC-208, status: accepted, path: ../specs/product/SPEC-208-test-data.md }
+    - { id: SPEC-209, status: accepted, path: ../specs/product/SPEC-209-automation.md }
+    - { id: SPEC-210, status: accepted, path: ../specs/product/SPEC-210-execution.md }
+    - { id: SPEC-211, status: accepted, path: ../specs/product/SPEC-211-bug-analysis.md }
+    - { id: SPEC-212, status: accepted, path: ../specs/product/SPEC-212-reporting.md }
+    - { id: SPEC-213, status: accepted, path: ../specs/product/SPEC-213-agent-and-skill-quality-assessment.md }
+  architecture:
+    - { id: SPEC-301, status: accepted, path: ../specs/architecture/SPEC-301-semantic-analyzer.md }
+    - { id: SPEC-302, status: accepted, path: ../specs/architecture/SPEC-302-dom-cleaner.md }
+    - { id: SPEC-303, status: accepted, path: ../specs/architecture/SPEC-303-feature-extractor.md }
+    - { id: SPEC-304, status: accepted, path: ../specs/architecture/SPEC-304-workflow-engine.md }
+    - { id: SPEC-305, status: accepted, path: ../specs/architecture/SPEC-305-plugin-manager.md }
+    - { id: SPEC-306, status: accepted, path: ../specs/architecture/SPEC-306-workspace-manager.md }
+    - { id: SPEC-307, status: accepted, path: ../specs/architecture/SPEC-307-knowledge-graph-builder.md }
+    - { id: SPEC-308, status: accepted, path: ../specs/architecture/SPEC-308-reasoning-engine.md }
+    - { id: SPEC-309, status: accepted, path: ../specs/architecture/SPEC-309-agent-runtime.md }
+    - { id: SPEC-310, status: accepted, path: ../specs/architecture/SPEC-310-evaluation-engine.md }
+  interfaces:
+    - { id: SPEC-501, status: accepted, path: ../specs/interfaces/SPEC-501-knowledge-store-interface.md }
+    - { id: SPEC-502, status: accepted, path: ../specs/interfaces/SPEC-502-rule-engine-interface.md }
+    - { id: SPEC-503, status: accepted, path: ../specs/interfaces/SPEC-503-plugin-contract.md }
+    - { id: SPEC-504, status: accepted, path: ../specs/interfaces/SPEC-504-execution-engine-contract.md }
+    - { id: SPEC-505, status: accepted, path: ../specs/interfaces/SPEC-505-event-contract.md }
+    - { id: SPEC-506, status: accepted, path: ../specs/interfaces/SPEC-506-workspace-context-contract.md }
+    - { id: SPEC-507, status: accepted, path: ../specs/interfaces/SPEC-507-reasoning-provider-contract.md }
+    - { id: SPEC-508, status: accepted, path: ../specs/interfaces/SPEC-508-agent-runtime-contract.md }
+    - { id: SPEC-509, status: accepted, path: ../specs/interfaces/SPEC-509-skill-contract.md }
+    - { id: SPEC-510, status: accepted, path: ../specs/interfaces/SPEC-510-tool-contract.md }
+    - { id: SPEC-511, status: accepted, path: ../specs/interfaces/SPEC-511-evaluation-adapter-contract.md }
+  components:
+    - { id: SPEC-401, status: accepted, path: ../specs/components/SPEC-401-knowledge-repository.md }
+    - { id: SPEC-402, status: accepted, path: ../specs/components/SPEC-402-rule-repository.md }
+    - { id: SPEC-403, status: accepted, path: ../specs/components/SPEC-403-candidate-repository.md }
+    - { id: SPEC-404, status: accepted, path: ../specs/components/SPEC-404-execution-manager.md }
+    - { id: SPEC-405, status: accepted, path: ../specs/components/SPEC-405-plugin-registry.md }
+    - { id: SPEC-406, status: accepted, path: ../specs/components/SPEC-406-workspace-manager-component.md }
+    - { id: SPEC-407, status: accepted, path: ../specs/components/SPEC-407-playwright-plugin.md }
+    - { id: SPEC-408, status: accepted, path: ../specs/components/SPEC-408-ontology-repository.md }
+    - { id: SPEC-409, status: accepted, path: ../specs/components/SPEC-409-git-plugin.md }
+    - { id: SPEC-410, status: accepted, path: ../specs/components/SPEC-410-agent-runner.md }
+    - { id: SPEC-411, status: accepted, path: ../specs/components/SPEC-411-evaluation-manager.md }
+  runtime:
+    - { id: SPEC-601, status: accepted, path: ../specs/runtime/SPEC-601-runtime-orchestration.md }
+    - { id: SPEC-602, status: accepted, path: ../specs/runtime/SPEC-602-execution-lifecycle.md }
+    - { id: SPEC-603, status: accepted, path: ../specs/runtime/SPEC-603-scheduling-and-capacity.md }
+    - { id: SPEC-604, status: accepted, path: ../specs/runtime/SPEC-604-observability-and-monitoring.md }
+    - { id: SPEC-605, status: accepted, path: ../specs/runtime/SPEC-605-recovery-and-continuity.md }
+    - { id: SPEC-606, status: accepted, path: ../specs/runtime/SPEC-606-agent-execution-lifecycle.md }
+    - { id: SPEC-607, status: accepted, path: ../specs/runtime/SPEC-607-evaluation-campaign-lifecycle.md }

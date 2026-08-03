@@ -1,0 +1,31 @@
+rule_set:
+  id: repository-governance
+  version: 1.0.0
+  status: accepted
+  authority: [SPEC-007, GOV-004, GOV-008, GOV-009]
+  owner: Engineering Governance
+rules:
+  - id: RG-001
+    title: Required specification metadata
+    severity: high
+    inputs: [artifact.front_matter]
+    decision: all required keys id, title, version, status, owner, depends_on, related_adrs, last_updated exist
+    outcome_on_failure: fail
+  - id: RG-002
+    title: Accepted requires approval evidence
+    severity: critical
+    inputs: [artifact.status, review.record, gate.result]
+    decision: status is not accepted or approved review and applicable gate evidence exist
+    outcome_on_failure: fail
+  - id: RG-003
+    title: No unresolved dependency
+    severity: high
+    inputs: [artifact.depends_on, repository.index]
+    decision: every dependency resolves to one stable artifact identity
+    outcome_on_failure: fail
+  - id: RG-004
+    title: Interface precedes implementation component
+    severity: high
+    inputs: [component.dependencies, interface.index]
+    decision: cross-owner component behavior depends on a versioned interface
+    outcome_on_failure: fail

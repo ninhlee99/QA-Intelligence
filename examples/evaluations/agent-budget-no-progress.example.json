@@ -1,0 +1,13 @@
+{
+  "id": "agent-budget-no-progress",
+  "version": "0.1.0",
+  "traceability": ["SPEC-309", "SPEC-606"],
+  "mode": "replay",
+  "input": {"provider_behavior": "repeat_same_action"},
+  "environment": "scripted-runtime-test",
+  "budgets": {"max_steps": 3, "max_seconds": 10, "max_tool_calls": 1},
+  "oracle": {"type": "assertion", "reference": "bounded-no-progress-termination"},
+  "assertions": [{"id": "terminates", "condition": "run stops no later than max_steps", "critical": true}, {"id": "evidence", "condition": "termination reason and consumed budget are retained", "critical": true}],
+  "minimum_trials": 1,
+  "cleanup": {"required": false, "verification": "Replay has no external effects"}
+}

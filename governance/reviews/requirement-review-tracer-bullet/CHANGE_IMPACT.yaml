@@ -1,0 +1,30 @@
+id: IMPACT-RRA-001
+version: 0.1.0
+date: 2026-08-03
+status: assessed
+governing_process: GOV-007
+change: initial Requirement Review Agent tracer bullet
+risk: high
+directly_affected:
+  foundation: [SPEC-004, SPEC-006, SPEC-007]
+  decisions: [ADR-001, ADR-002, ADR-005, ADR-006, ADR-008, ADR-010, ADR-011, ADR-012, ADR-013, ADR-014, ADR-015]
+  knowledge: [SPEC-101, SPEC-102, SPEC-103, SPEC-104, SPEC-106, SPEC-107]
+  product: [SPEC-202, SPEC-203, SPEC-213]
+  architecture: [SPEC-306, SPEC-308, SPEC-309, SPEC-310]
+  interfaces: [SPEC-501, SPEC-502, SPEC-506, SPEC-507, SPEC-508, SPEC-509, SPEC-510, SPEC-511]
+  components: [SPEC-401, SPEC-402, SPEC-406, SPEC-410, SPEC-411]
+  runtime: [SPEC-601, SPEC-604, SPEC-605, SPEC-606, SPEC-607]
+  governance: [GOV-004, GOV-006, GOV-007, GOV-008, GOV-009, GOV-012]
+compatibility:
+  existing_consumers: none
+  breaking_change: false
+  migration: initial_schema_creation_only
+mandatory_validation:
+  - repository and full JSON Schema validation
+  - contract conformance for production and deterministic adapters
+  - deterministic Rule Engine before reasoning
+  - trigger, grounding, injection, authority, budget, cancellation, recovery and Workspace isolation suites
+  - evidence replay and Knowledge Candidate lifecycle
+required_reviewers: [Product Governance, Architecture, AI Governance, Security, Knowledge Governance, Quality Engineering, Runtime Platform]
+result: impact_scope_defined_pending_approvals
+

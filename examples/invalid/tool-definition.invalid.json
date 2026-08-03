@@ -1,0 +1,14 @@
+{
+  "id": "unsafe-tool",
+  "version": "0.1.0",
+  "owner": "Unknown",
+  "interface": "direct-provider-sdk",
+  "input_schema": "input.json",
+  "output_schema": "output.json",
+  "side_effect_class": "unbounded",
+  "permissions": [],
+  "data_classes": [],
+  "idempotency": "ignored",
+  "timeouts": {"default_seconds": 0, "maximum_seconds": 0},
+  "evidence_requirements": []
+}

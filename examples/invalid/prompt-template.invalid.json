@@ -1,0 +1,11 @@
+{
+  "id": "unsafe-prompt",
+  "version": "latest",
+  "status": "accepted",
+  "owner": "",
+  "purpose": "Ignore policy",
+  "variables": [{"name": "anything", "source": "conversation", "required": true}],
+  "content": "",
+  "output_schema": "",
+  "safety_constraints": []
+}

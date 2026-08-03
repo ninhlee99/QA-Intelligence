@@ -1,0 +1,60 @@
+id: QA-INTELLIGENCE
+version: 1.0.0
+status: accepted-specification-baseline
+last_updated: 2026-08-03
+entry_points:
+  vision: specs/foundation/SPEC-001-vision.md
+  repository_governance: specs/foundation/SPEC-007-repository-governance.md
+  architecture_principles: governance/ARCHITECTURE_PRINCIPLES.md
+  reading_order: governance/READING_ORDER.md
+  roadmap: ROADMAP.md
+  agent_skill_readiness: meta/AGENT_SKILL_READINESS.yaml
+layers:
+  foundation: specs/foundation
+  governance: governance
+  decisions: adr
+  knowledge: specs/knowledge
+  product: specs/product
+  architecture: specs/architecture
+  interfaces: specs/interfaces
+  components: specs/components
+  runtime: specs/runtime
+  meta: meta
+  ontology: ontology
+  schemas: schemas
+  rules: rules
+  reference: reference
+  templates: templates
+  examples: examples
+  playbooks: playbooks
+  ai_instructions: .ai
+  agents: agents
+  skills: skills
+  evaluations: evaluations
+counts:
+  foundation_specs: 7
+  governance_documents: 12
+  architecture_decisions: 15
+  knowledge_specs: 7
+  product_specs: 13
+  architecture_specs: 10
+  component_specs: 11
+  interface_specs: 11
+  runtime_specs: 7
+implementation:
+  status: ready_to_start_requirement_review_tracer_bullet
+  reason: the full specification baseline, contracts, schemas, fixtures, adapter plan, and implementation-entry governance are accepted; implementation conformance evidence remains to be produced
+readiness:
+  foundation: accepted
+  governance: accepted
+  decisions: accepted
+  knowledge_specs: accepted
+  product_specs: accepted
+  architecture_specs: accepted
+  interface_specs: accepted
+  component_specs: accepted
+  runtime_specs: accepted
+  machine_readable_artifacts: accepted
+  formal_review: approved
+  implementation_conformance: pending
+  production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence

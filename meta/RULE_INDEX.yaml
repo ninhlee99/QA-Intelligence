@@ -1,0 +1,8 @@
+generated: true
+generated_at: 2026-08-03
+governing_spec: SPEC-104
+status: accepted
+rule_sets:
+  - { id: repository-governance, path: ../rules/repository-governance.rules.yaml }
+  - { id: knowledge-lifecycle, path: ../rules/knowledge-lifecycle.rules.yaml }
+  - { id: workspace-isolation, path: ../rules/workspace-isolation.rules.yaml }

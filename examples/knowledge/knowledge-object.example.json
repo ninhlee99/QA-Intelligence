@@ -1,0 +1,18 @@
+{
+  "id": "KO-LOGIN-LOCKOUT",
+  "type": "BusinessRuleKnowledge",
+  "version": "1.0.0",
+  "status": "accepted",
+  "workspace_id": "WORKSPACE-DEMO",
+  "title": "Login lockout policy",
+  "summary": "Demonstration object; not repository authority.",
+  "claims": [{"id": "CLAIM-1", "statement": "The demo login locks after the governed threshold.", "sources": ["REQ-DEMO-001"]}],
+  "provenance": [{"source_id": "REQ-DEMO-001", "method": "reviewed_requirement"}],
+  "authority": "accepted_requirement",
+  "confidence": 1.0,
+  "owner": "Demo Product Owner",
+  "applicability": {"environment": "demo"},
+  "relationships": [{"type": "derived_from", "target_id": "REQ-DEMO-001"}],
+  "valid_from": "2026-07-31T00:00:00Z",
+  "valid_until": null
+}
