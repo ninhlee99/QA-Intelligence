@@ -5,8 +5,11 @@ import type {
   AgentRunEvent,
   AgentRunEventCursor,
   AgentRunEventPage,
+  AgentRunExecution,
   AgentRunFailure,
+  AgentRunFailureClass,
   AgentRunReference,
+  AgentRunResult,
   AgentRunResume,
   AgentRunSnapshot,
   AgentRunStartRequest,
@@ -15,6 +18,11 @@ import type {
   AgentRuntime,
   AgentRuntimeResult,
 } from "./public.js";
+import type {
+  AgentRunExecutor,
+  AgentRunExecutorResult,
+  AgentRunExecutorValue,
+} from "./executor.js";
 import type {
   ConsequenceClass,
   JsonObject,
@@ -34,13 +42,21 @@ export interface IdFactory {
 type RunRecord = {
   snapshot: AgentRunSnapshot;
   events: readonly AgentRunEvent[];
+  startRequest: AgentRunStartRequest;
+  startedAt: string;
   startFingerprint: string;
+  result?: AgentRunResult;
   cancellation?: AgentRunTransition;
 };
 
 type StoredCommand = Readonly<{
   fingerprint: string;
   transition: AgentRunTransition;
+}>;
+
+type StoredExecution = Readonly<{
+  fingerprint: string;
+  result: AgentRunResult;
 }>;
 
 const MAX_EVENT_PAGE_SIZE = 100;
@@ -60,14 +76,22 @@ export class InMemoryAgentRuntime implements AgentRuntime {
   readonly #clock: Clock;
   readonly #ids: IdFactory;
   readonly #authorizer: WorkspaceAuthorizer;
+  readonly #executor: AgentRunExecutor | undefined;
   readonly #runs = new Map<string, RunRecord>();
   readonly #starts = new Map<string, Readonly<{ fingerprint: string; runId: string }>>();
   readonly #commands = new Map<string, StoredCommand>();
+  readonly #executions = new Map<string, StoredExecution>();
 
-  constructor(clock: Clock, ids: IdFactory, authorizer: WorkspaceAuthorizer) {
+  constructor(
+    clock: Clock,
+    ids: IdFactory,
+    authorizer: WorkspaceAuthorizer,
+    executor?: AgentRunExecutor,
+  ) {
     this.#clock = clock;
     this.#ids = ids;
     this.#authorizer = authorizer;
+    this.#executor = executor;
   }
 
   async start(
@@ -104,6 +128,8 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       agent: `${request.agent.id}@${request.agent.version}`,
       policy: request.policy_version,
     });
+    const approvalId = `approval:${runId}:1`;
+    const requiresApproval = request.consequence_class === "high_consequence";
     const events = [
       this.#event(reference, 1, "run_requested", {
         operation_id: request.operation_id,
@@ -125,9 +151,15 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         decision: "allow",
         evidence: [...authorization.value.decision_evidence],
       }),
-      this.#event(reference, 5, "run_ready", {
-        operation_id: request.operation_id,
-      }),
+      requiresApproval
+        ? this.#event(reference, 5, "approval_requested", {
+            operation_id: request.operation_id,
+            approval_id: approvalId,
+            consequence_class: request.consequence_class,
+          })
+        : this.#event(reference, 5, "run_ready", {
+            operation_id: request.operation_id,
+          }),
     ] as const;
     const evidence = Object.freeze(events.map((event) => `event://${event.event_id}`));
     const snapshot = freezeSnapshot({
@@ -135,7 +167,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       run_id: runId,
       workspace_id: request.workspace_id,
       revision: 3,
-      state: "ready",
+      state: requiresApproval ? "awaiting_approval" : "ready",
       objective: request.purpose,
       consumed_budgets: Object.freeze({
         steps: 0,
@@ -143,7 +175,15 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         tool_calls: 0,
         retries: 0,
       }),
-      pending_approval: null,
+      pending_approval: requiresApproval
+        ? Object.freeze({
+            approval_id: approvalId,
+            requested_action: request.purpose,
+            consequence_class: request.consequence_class,
+            required_permissions: Object.freeze(["agent:approve"]),
+            evidence: Object.freeze([...evidence]),
+          })
+        : null,
       checkpoint: null,
       failure_class: null,
       evidence,
@@ -153,6 +193,8 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     this.#runs.set(runId, {
       snapshot,
       events: Object.freeze([...events]),
+      startRequest: immutableCopy(request),
+      startedAt: events[0].occurred_at,
       startFingerprint: fingerprint,
     });
     this.#starts.set(startKey, Object.freeze({ fingerprint, runId }));
@@ -175,6 +217,272 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     return found.ok ? success(found.value.snapshot) : found;
   }
 
+  async execute(
+    reference: AgentRunReference,
+    execution: AgentRunExecution,
+  ): Promise<AgentRuntimeResult<AgentRunResult>> {
+    const baseAuthorization = await this.#authorizeRun<AgentRunResult>(
+      reference,
+      execution,
+      "agent:execute",
+      "execute Agent run",
+      "controlled_side_effect",
+    );
+    if (!baseAuthorization.ok) return baseAuthorization;
+
+    const found = this.#find(reference);
+    if (!found.ok) return found;
+    const retainedAuthorization = await this.#authorizeRetainedExecution(
+      reference,
+      execution,
+      found.value,
+    );
+    if (!retainedAuthorization.ok) return retainedAuthorization;
+
+    const available = this.#find(reference);
+    if (!available.ok) return available;
+    if (
+      !Number.isInteger(execution.expected_revision) ||
+      execution.expected_revision < 0 ||
+      execution.idempotency_key.trim().length === 0
+    ) {
+      return failure(invalidRequest("execute requires a non-negative expected revision and idempotency key"));
+    }
+
+    const commandKey = executionScopedKey(
+      execution.workspace_id,
+      reference.run_id,
+      execution.idempotency_key,
+    );
+    const fingerprint = stableFingerprint(execution);
+    const duplicate = this.#executions.get(commandKey);
+    if (duplicate) {
+      return duplicate.fingerprint === fingerprint
+        ? success(duplicate.result)
+        : failure(idempotencyConflict("execute", execution.idempotency_key));
+    }
+    if (execution.expected_revision !== available.value.snapshot.revision) {
+      return failure(
+        staleRevision(execution.expected_revision, available.value.snapshot.revision),
+      );
+    }
+    if (available.value.snapshot.state !== "ready") {
+      return failure(invalidTransition(available.value.snapshot.state, "execute"));
+    }
+    if (new Date(available.value.startRequest.deadline).valueOf() <= this.#clock.now().valueOf()) {
+      return this.#finalizeExecutionFailure(
+        reference,
+        available.value,
+        execution,
+        runtimeFailure("orchestration", "timed_out", "Agent run deadline elapsed before execution."),
+        commandKey,
+        fingerprint,
+      );
+    }
+    if (!this.#executor) {
+      return failure({
+        class: "infrastructure",
+        code: "unavailable",
+        message: "Agent run executor is unavailable.",
+        retryable: true,
+        evidence: [],
+      });
+    }
+
+    let current = this.#appendEvent(reference, available.value, "step_proposed", {
+      operation_id: execution.operation_id,
+      actor_id: execution.actor_id,
+      step: 1,
+    });
+    this.#transition(reference, current, "running", "step_authorized", {
+      operation_id: execution.operation_id,
+      actor_id: execution.actor_id,
+      step: 1,
+      evidence: [...retainedAuthorization.value.decision_evidence],
+    });
+    const running = this.#find(reference);
+    if (!running.ok) return running;
+
+    let observed: AgentRunExecutorResult;
+    try {
+      observed = await this.#executor.execute(
+        immutableCopy({
+          reference,
+          start_request: running.value.startRequest,
+          execution,
+        }),
+      );
+    } catch {
+      observed = {
+        ok: false,
+        failure: runtimeFailure(
+          "infrastructure",
+          "infrastructure_failure",
+          "Agent run executor failed unexpectedly.",
+          true,
+        ),
+      };
+    }
+
+    const reservedRevision = running.value.snapshot.revision;
+    const active = this.#find(reference);
+    if (!active.ok) return active;
+    if (
+      active.value.snapshot.state !== "running" ||
+      active.value.snapshot.revision !== reservedRevision
+    ) {
+      if (active.value.result) {
+        this.#executions.set(
+          commandKey,
+          Object.freeze({ fingerprint, result: active.value.result }),
+        );
+        return success(active.value.result);
+      }
+      return failure(
+        staleRevision(reservedRevision, active.value.snapshot.revision),
+      );
+    }
+
+    if (
+      new Date(active.value.startRequest.deadline).valueOf() <=
+      this.#clock.now().valueOf()
+    ) {
+      const lateEvidence = observed.ok
+        ? []
+        : [
+            ...observed.failure.evidence,
+            `late-executor-failure:${observed.failure.code}`,
+          ];
+      const timeout = runtimeFailure(
+        "orchestration",
+        "timed_out",
+        "Agent execution completed after the retained deadline.",
+        false,
+        lateEvidence,
+      );
+      const withLateUsage =
+        observed.ok && validUsage(observed.value.usage)
+          ? this.#applyUsage(reference, active.value, observed.value)
+          : active.value;
+      return this.#finalizeExecutionFailure(
+        reference,
+        withLateUsage,
+        execution,
+        timeout,
+        commandKey,
+        fingerprint,
+        observed.ok ? observed.value : undefined,
+      );
+    }
+
+    if (!observed.ok) {
+      return this.#finalizeExecutionFailure(
+        reference,
+        active.value,
+        execution,
+        observed.failure,
+        commandKey,
+        fingerprint,
+      );
+    }
+    const invalidObservation = validateExecutionValue(
+      observed.value,
+      active.value.startRequest,
+    );
+    const withUsage = validUsage(observed.value.usage)
+      ? this.#applyUsage(reference, active.value, observed.value)
+      : active.value;
+    if (invalidObservation) {
+      return this.#finalizeExecutionFailure(
+        reference,
+        withUsage,
+        execution,
+        invalidObservation,
+        commandKey,
+        fingerprint,
+        observed.value,
+      );
+    }
+
+    current = this.#appendEvent(reference, withUsage, "step_observed", {
+      operation_id: execution.operation_id,
+      step: 1,
+      evidence: [...observed.value.evidence],
+    });
+    this.#transition(reference, current, "validating", "run_validating", {
+      operation_id: execution.operation_id,
+    });
+    const validating = this.#find(reference);
+    if (!validating.ok) return validating;
+    current = this.#appendEvent(reference, validating.value, "step_validated", {
+      operation_id: execution.operation_id,
+      step: 1,
+      output_validated: true,
+      evidence: [...observed.value.evidence],
+    });
+    if (observed.value.cleanup_status === "completed") {
+      current = this.#appendEvent(reference, current, "cleanup_completed", {
+        operation_id: execution.operation_id,
+        cleanup_status: "completed",
+      });
+    }
+    this.#transition(reference, current, "completed", "run_completed", {
+      operation_id: execution.operation_id,
+      outcome: "completed",
+      evidence: [...observed.value.evidence],
+    });
+    const completed = this.#find(reference);
+    if (!completed.ok) return completed;
+    const result = freezeRunResult({
+      schema_version: "1.0.0",
+      run_id: reference.run_id,
+      workspace_id: reference.workspace_id,
+      outcome: "completed",
+      output: observed.value.output,
+      failure_class: null,
+      resolved_versions: observed.value.resolved_versions,
+      rule_results: observed.value.rule_results,
+      skill_usage: observed.value.skill_usage,
+      tool_usage: observed.value.tool_usage,
+      citations: observed.value.citations,
+      uncertainty: observed.value.uncertainty,
+      policy_events: observed.value.policy_events,
+      usage: observed.value.usage,
+      evidence: unique([...observed.value.evidence, ...completed.value.snapshot.evidence]),
+      cleanup_status: observed.value.cleanup_status,
+      started_at: completed.value.startedAt,
+      completed_at: completed.value.snapshot.updated_at,
+    });
+    this.#storeResult(reference.run_id, completed.value, result);
+    this.#executions.set(commandKey, Object.freeze({ fingerprint, result }));
+    return success(result);
+  }
+
+  async result(
+    reference: AgentRunReference,
+    access: AgentRunAccessRequest,
+  ): Promise<AgentRuntimeResult<AgentRunResult>> {
+    const authorized = await this.#authorizeRun<AgentRunResult>(
+      reference,
+      access,
+      "agent:read",
+      "read Agent run result",
+      "advisory",
+    );
+    if (!authorized.ok) return authorized;
+    const found = this.#find(reference);
+    if (!found.ok) return found;
+    return found.value.result
+      ? success(found.value.result)
+      : failure({
+          class: "orchestration",
+          code: "unavailable",
+          message: "Agent run result is not terminally available.",
+          retryable: true,
+          evidence: [...found.value.snapshot.evidence],
+        });
+  }
+
   async approve(
     reference: AgentRunReference,
     approval: AgentRunApproval,
@@ -184,7 +492,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       reference,
       approval,
       "awaiting_approval",
-      approval.decision === "approved" ? "running" : "blocked",
+      approval.decision === "approved" ? "ready" : "blocked",
       approval.decision === "approved" ? "step_authorized" : "run_blocked",
       "agent:approve",
       "approve Agent run",
@@ -262,6 +570,38 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         evidence: [...cancellation.evidence],
       },
     );
+    const terminal = this.#find(reference);
+    if (!terminal.ok) return terminal;
+    const result = freezeRunResult({
+      schema_version: "1.0.0",
+      run_id: reference.run_id,
+      workspace_id: reference.workspace_id,
+      outcome: "cancelled",
+      output: null,
+      failure_class: "orchestration",
+      resolved_versions: {
+        agent: `${found.value.startRequest.agent.id}@${found.value.startRequest.agent.version}`,
+        policy: found.value.startRequest.policy_version,
+      },
+      rule_results: [],
+      skill_usage: [],
+      tool_usage: [],
+      citations: [],
+      uncertainty: {
+        level: "high",
+        reasons: [cancellation.reason],
+      },
+      policy_events: [],
+      usage: usageFromSnapshot(terminal.value.snapshot),
+      evidence: unique([
+        ...cancellation.evidence,
+        ...terminal.value.snapshot.evidence,
+      ]),
+      cleanup_status: "not_required",
+      started_at: terminal.value.startedAt,
+      completed_at: terminal.value.snapshot.updated_at,
+    });
+    this.#storeResult(reference.run_id, terminal.value, result);
     this.#commands.set(commandKey, Object.freeze({ fingerprint, transition }));
     return success(transition);
   }
@@ -451,6 +791,38 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       eventType,
       payload,
     );
+    if (nextState === "blocked") {
+      const terminal = this.#find(reference);
+      if (!terminal.ok) return terminal;
+      const approval = command as AgentRunApproval;
+      const result = freezeRunResult({
+        schema_version: "1.0.0",
+        run_id: reference.run_id,
+        workspace_id: reference.workspace_id,
+        outcome: "blocked",
+        output: null,
+        failure_class: "policy",
+        resolved_versions: retainedResolvedVersions(found.value.startRequest),
+        rule_results: [],
+        skill_usage: [],
+        tool_usage: [],
+        citations: [],
+        uncertainty: {
+          level: "high",
+          reasons: [approval.reason],
+        },
+        policy_events: [...approval.evidence],
+        usage: usageFromSnapshot(terminal.value.snapshot),
+        evidence: unique([
+          ...approval.evidence,
+          ...terminal.value.snapshot.evidence,
+        ]),
+        cleanup_status: "not_required",
+        started_at: terminal.value.startedAt,
+        completed_at: terminal.value.snapshot.updated_at,
+      });
+      this.#storeResult(reference.run_id, terminal.value, result);
+    }
     this.#commands.set(commandKey, Object.freeze({ fingerprint, transition }));
     return success(transition);
   }
@@ -498,12 +870,166 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     return success(undefined as Value);
   }
 
+  async #authorizeRetainedExecution(
+    reference: AgentRunReference,
+    execution: AgentRunExecution,
+    record: RunRecord,
+  ): Promise<AgentRuntimeResult<WorkspaceAuthorization>> {
+    const request: WorkspaceAuthorizationRequest = Object.freeze({
+      operation_id: execution.operation_id,
+      context: execution.workspace_context,
+      purpose: record.startRequest.purpose,
+      consequence_class: record.startRequest.consequence_class,
+      required_permissions: Object.freeze(["agent:execute"]),
+      resource_refs: Object.freeze([
+        `workspace:${reference.workspace_id}`,
+        `agent-run:${reference.run_id}`,
+        `agent:${record.startRequest.agent.id}@${record.startRequest.agent.version}`,
+        ...(record.startRequest.allowed_skills ?? []).map(
+          (skill) => `skill:${skill.id}@${skill.version}`,
+        ),
+        ...(record.startRequest.allowed_tools ?? []).map(
+          (tool) => `tool:${tool.id}@${tool.version}`,
+        ),
+        ...inputResourceRefs(record.startRequest.input),
+      ]),
+    });
+    const authorization = await this.#authorizer.authorize(request);
+    if (!authorization.ok) {
+      return failure(authorizationDenied(authorization.failure.code));
+    }
+    if (!authorizationCovers(authorization.value, request)) {
+      return failure(authorizationDenied("incomplete_authorization"));
+    }
+    return success(authorization.value);
+  }
+
+  #appendEvent(
+    reference: AgentRunReference,
+    record: RunRecord,
+    eventType: AgentRunEvent["type"],
+    payload: JsonObject,
+  ): RunRecord {
+    const event = this.#event(
+      reference,
+      (record.events.at(-1)?.sequence ?? 0) + 1,
+      eventType,
+      payload,
+    );
+    const updated: RunRecord = {
+      ...record,
+      snapshot: freezeSnapshot({
+        ...record.snapshot,
+        evidence: Object.freeze([
+          ...record.snapshot.evidence,
+          `event://${event.event_id}`,
+        ]),
+        updated_at: event.occurred_at,
+      }),
+      events: Object.freeze([...record.events, event]),
+    };
+    this.#runs.set(reference.run_id, updated);
+    return updated;
+  }
+
+  #storeResult(runId: string, record: RunRecord, result: AgentRunResult): void {
+    this.#runs.set(runId, { ...record, result });
+  }
+
+  #applyUsage(
+    reference: AgentRunReference,
+    record: RunRecord,
+    observed: AgentRunExecutorValue,
+  ): RunRecord {
+    const updated: RunRecord = {
+      ...record,
+      snapshot: freezeSnapshot({
+        ...record.snapshot,
+        consumed_budgets: {
+          ...record.snapshot.consumed_budgets,
+          ...observed.usage,
+        },
+        updated_at: this.#clock.now().toISOString(),
+      }),
+    };
+    this.#runs.set(reference.run_id, updated);
+    return updated;
+  }
+
+  #finalizeExecutionFailure(
+    reference: AgentRunReference,
+    record: RunRecord,
+    execution: AgentRunExecution,
+    failureValue: AgentRunFailure,
+    commandKey: string,
+    fingerprint: string,
+    observation?: AgentRunExecutorValue,
+  ): AgentRuntimeResult<AgentRunResult> {
+    const state = terminalStateForFailure(failureValue);
+    const eventType = terminalEventForState(state);
+    const terminalInput =
+      failureValue.code === "cleanup_failure"
+        ? this.#appendEvent(reference, record, "cleanup_failed", {
+            operation_id: execution.operation_id,
+            cleanup_status: observation?.cleanup_status ?? "failed",
+            evidence: observation?.evidence ?? [],
+          })
+        : record;
+    this.#transition(
+      reference,
+      terminalInput,
+      state,
+      eventType,
+      {
+        operation_id: execution.operation_id,
+        failure_class: failureValue.class,
+        failure_code: failureValue.code,
+        evidence: [...failureValue.evidence],
+      },
+      failureValue.class,
+    );
+    const terminal = this.#find(reference);
+    if (!terminal.ok) return terminal;
+    const result = freezeRunResult({
+      schema_version: "1.0.0",
+      run_id: reference.run_id,
+      workspace_id: reference.workspace_id,
+      outcome: outcomeForState(state),
+      output: null,
+      failure_class: failureValue.class,
+      resolved_versions: retainedResolvedVersions(record.startRequest, observation),
+      rule_results: observation?.rule_results ?? [],
+      skill_usage: observation?.skill_usage ?? [],
+      tool_usage: observation?.tool_usage ?? [],
+      citations: observation?.citations ?? [],
+      uncertainty: observation?.uncertainty ?? {
+        level: "high",
+        reasons: [failureValue.message],
+      },
+      policy_events: observation?.policy_events ?? [],
+      usage: usageFromSnapshot(terminal.value.snapshot),
+      evidence: unique([
+        ...failureValue.evidence,
+        ...(observation?.evidence ?? []),
+        ...observedVersionEvidence(observation),
+        ...terminal.value.snapshot.evidence,
+      ]),
+      cleanup_status: observation?.cleanup_status ?? "not_required",
+      started_at: terminal.value.startedAt,
+      completed_at: terminal.value.snapshot.updated_at,
+    });
+    this.#storeResult(reference.run_id, terminal.value, result);
+    this.#executions.set(commandKey, Object.freeze({ fingerprint, result }));
+    return success(result);
+  }
+
   #transition(
     reference: AgentRunReference,
     record: RunRecord,
     nextState: AgentRunState,
     eventType: AgentRunEvent["type"],
     payload: JsonObject,
+    failureClass?: AgentRunFailureClass,
   ): AgentRunTransition {
     const previous = record.snapshot;
     const event = this.#event(
@@ -528,7 +1054,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       pending_approval: null,
       checkpoint: nextState === "running" ? null : (previous.checkpoint ?? null),
       failure_class:
-        terminalFailureClass(nextState) ?? previous.failure_class ?? null,
+        failureClass ?? terminalFailureClass(nextState) ?? previous.failure_class ?? null,
       evidence: Object.freeze([...previous.evidence, `event://${event.event_id}`]),
       updated_at: event.occurred_at,
     });
@@ -590,6 +1116,9 @@ function validateStart(
   ) {
     return invalidRequest("every Agent, Skill, and Tool reference requires an id and exact semantic version");
   }
+  if (!isExactVersionPin(request.policy_version)) {
+    return invalidRequest("policy_version must be an exact version pin");
+  }
   const { budgets } = request;
   if (
     !positiveInteger(budgets.max_steps) ||
@@ -631,6 +1160,230 @@ function validateTrustedContextBinding(
   return undefined;
 }
 
+function validateExecutionValue(
+  value: AgentRunExecutorValue,
+  start: AgentRunStartRequest,
+): AgentRunFailure | undefined {
+  if (!value.output_validated) {
+    return runtimeFailure(
+      "skill",
+      "invalid_output",
+      "Agent execution output did not pass contract validation.",
+    );
+  }
+  if (value.evidence.length === 0) {
+    return runtimeFailure(
+      "skill",
+      "invalid_output",
+      "Agent execution cannot complete without evidence.",
+    );
+  }
+  const satisfiedEvidence = new Set(value.satisfied_evidence_requirements);
+  if (
+    (start.evidence_requirements ?? []).some(
+      (requirement) => !satisfiedEvidence.has(requirement),
+    )
+  ) {
+    return runtimeFailure(
+      "skill",
+      "invalid_output",
+      "Agent execution did not satisfy every retained evidence requirement.",
+    );
+  }
+  const versions = Object.values(value.resolved_versions);
+  if (
+    versions.length === 0 ||
+    versions.some((version) => !isExactVersionPin(version)) ||
+    value.resolved_versions.agent !== `${start.agent.id}@${start.agent.version}` ||
+    value.resolved_versions.policy !== start.policy_version
+  ) {
+    return runtimeFailure(
+      "orchestration",
+      "incompatible_version",
+      "Agent execution returned unresolved or incompatible versions.",
+    );
+  }
+  const allowedSkills = new Set(
+    (start.allowed_skills ?? []).map((skill) => `${skill.id}@${skill.version}`),
+  );
+  if (value.skill_usage.some((skill) => !allowedSkills.has(skill))) {
+    return runtimeFailure(
+      "policy",
+      "authorization_denied",
+      "Agent execution used a Skill outside retained authority.",
+    );
+  }
+  if (value.skill_usage.some((skill) => !versions.includes(skill))) {
+    return runtimeFailure(
+      "orchestration",
+      "incompatible_version",
+      "Agent execution did not bind every used Skill to resolved versions.",
+    );
+  }
+  const allowedTools = new Set(
+    (start.allowed_tools ?? []).map((tool) => `${tool.id}@${tool.version}`),
+  );
+  if (value.tool_usage.some((tool) => !allowedTools.has(tool))) {
+    return runtimeFailure(
+      "policy",
+      "authorization_denied",
+      "Agent execution used a Tool outside retained authority.",
+    );
+  }
+  if (value.tool_usage.some((tool) => !versions.includes(tool))) {
+    return runtimeFailure(
+      "orchestration",
+      "incompatible_version",
+      "Agent execution did not bind every used Tool to resolved versions.",
+    );
+  }
+  if (value.cleanup_status === "failed" || value.cleanup_status === "incomplete") {
+    return runtimeFailure(
+      "infrastructure",
+      "cleanup_failure",
+      "Agent execution cleanup did not complete safely.",
+    );
+  }
+  const usage = value.usage;
+  if (!validUsage(usage)) {
+    return runtimeFailure(
+      "orchestration",
+      "invalid_output",
+      "Agent execution returned invalid usage accounting.",
+    );
+  }
+  if (
+    usage.steps > start.budgets.max_steps ||
+    usage.duration_seconds > start.budgets.max_duration_seconds ||
+    usage.tool_calls > start.budgets.max_tool_calls ||
+    usage.retries > start.budgets.max_retries ||
+    exceedsOptional(usage.tokens, start.budgets.max_tokens) ||
+    exceedsOptional(usage.cost, start.budgets.max_cost) ||
+    exceedsOptional(usage.tool_cost, start.budgets.max_tool_cost)
+  ) {
+    return runtimeFailure(
+      "orchestration",
+      "budget_exhausted",
+      "Agent execution exceeded a retained runtime budget.",
+    );
+  }
+  return undefined;
+}
+
+function validUsage(usage: AgentRunExecutorValue["usage"]): boolean {
+  return (
+    nonNegativeInteger(usage.steps) &&
+    Number.isFinite(usage.duration_seconds) &&
+    usage.duration_seconds >= 0 &&
+    nonNegativeInteger(usage.tool_calls) &&
+    nonNegativeInteger(usage.retries) &&
+    optionalNonNegativeInteger(usage.tokens) &&
+    optionalNonNegativeFinite(usage.cost) &&
+    optionalNonNegativeFinite(usage.tool_cost)
+  );
+}
+
+function exceedsOptional(
+  actual: number | undefined,
+  maximum: number | undefined,
+): boolean {
+  return maximum !== undefined && (actual === undefined || actual > maximum);
+}
+
+function runtimeFailure(
+  failureClass: AgentRunFailureClass,
+  code: AgentRunFailure["code"],
+  message: string,
+  retryable = false,
+  evidence: readonly string[] = [],
+): AgentRunFailure {
+  return {
+    class: failureClass,
+    code,
+    message,
+    retryable,
+    evidence: [...evidence],
+  };
+}
+
+function terminalStateForFailure(
+  failureValue: AgentRunFailure,
+): "failed" | "cancelled" | "timed_out" | "blocked" {
+  if (failureValue.code === "cancelled") return "cancelled";
+  if (failureValue.code === "timed_out") return "timed_out";
+  if (
+    failureValue.code === "authorization_denied" ||
+    failureValue.class === "policy"
+  ) {
+    return "blocked";
+  }
+  return "failed";
+}
+
+function terminalEventForState(
+  state: "failed" | "cancelled" | "timed_out" | "blocked",
+): AgentRunEvent["type"] {
+  switch (state) {
+    case "failed":
+      return "run_failed";
+    case "cancelled":
+      return "run_cancelled";
+    case "timed_out":
+      return "run_timed_out";
+    case "blocked":
+      return "run_blocked";
+  }
+}
+
+function outcomeForState(
+  state: "failed" | "cancelled" | "timed_out" | "blocked",
+): AgentRunResult["outcome"] {
+  return state;
+}
+
+function usageFromSnapshot(snapshot: AgentRunSnapshot): AgentRunResult["usage"] {
+  const usage = snapshot.consumed_budgets;
+  return {
+    steps: usage.steps,
+    duration_seconds: usage.duration_seconds,
+    tool_calls: usage.tool_calls,
+    retries: usage.retries,
+    ...(usage.tokens === undefined ? {} : { tokens: usage.tokens }),
+    ...(usage.cost === undefined ? {} : { cost: usage.cost }),
+    ...(usage.tool_cost === undefined ? {} : { tool_cost: usage.tool_cost }),
+  };
+}
+
+function retainedResolvedVersions(
+  start: AgentRunStartRequest,
+  observation?: AgentRunExecutorValue,
+): Readonly<Record<string, string>> {
+  const retained: Record<string, string> = {
+    agent: `${start.agent.id}@${start.agent.version}`,
+    policy: start.policy_version,
+  };
+  for (const [key, version] of Object.entries(
+    observation?.resolved_versions ?? {},
+  )) {
+    if (
+      key !== "agent" &&
+      key !== "policy" &&
+      isExactVersionPin(version)
+    ) {
+      retained[key] = version;
+    }
+  }
+  return retained;
+}
+
+function observedVersionEvidence(
+  observation?: AgentRunExecutorValue,
+): string[] {
+  return Object.entries(observation?.resolved_versions ?? {}).map(
+    ([key, version]) => `observed-version:${key}=${version}`,
+  );
+}
+
 function authorizationForStart(
   request: AgentRunStartRequest,
 ): WorkspaceAuthorizationRequest {
@@ -649,8 +1402,45 @@ function authorizationForStart(
       ...(request.allowed_tools ?? []).map(
         (tool) => `tool:${tool.id}@${tool.version}`,
       ),
+      ...inputResourceRefs(request.input),
     ]),
   });
+}
+
+/**
+ * Treat explicitly named input references as authority-bearing resources.
+ * Nested objects are supported so an Agent cannot hide a resource reference
+ * below a wrapper object and bypass the retained authorization decision.
+ */
+function inputResourceRefs(input: JsonObject): string[] {
+  const references: string[] = [];
+
+  function collect(value: unknown, key?: string): void {
+    if (key?.endsWith("_ref") && typeof value === "string" && value.trim()) {
+      references.push(`input:${value}`);
+      return;
+    }
+    if (key?.endsWith("_refs") && Array.isArray(value)) {
+      for (const entry of value) {
+        if (typeof entry === "string" && entry.trim()) {
+          references.push(`input:${entry}`);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) collect(entry);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const [childKey, child] of Object.entries(value)) {
+        collect(child, childKey);
+      }
+    }
+  }
+
+  collect(input);
+  return unique(references);
 }
 
 function authorizationCovers(
@@ -676,6 +1466,15 @@ function positiveInteger(value: number): boolean {
 
 function isSemanticVersion(value: string): boolean {
   return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+function isExactVersionPin(value: string): boolean {
+  return (
+    isSemanticVersion(value) ||
+    /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(
+      value,
+    )
+  );
 }
 
 function nonNegativeInteger(value: number): boolean {
@@ -722,6 +1521,10 @@ function freezeSnapshot(value: AgentRunSnapshot): AgentRunSnapshot {
   });
 }
 
+function freezeRunResult(value: AgentRunResult): AgentRunResult {
+  return immutableCopy(value);
+}
+
 function scopedKey(workspaceId: string, key: string): string {
   return `${workspaceId}\u0000${key}`;
 }
@@ -733,6 +1536,14 @@ function commandScopedKey(
   key: string,
 ): string {
   return `${kind}\u0000${workspaceId}\u0000${runId}\u0000${key}`;
+}
+
+function executionScopedKey(
+  workspaceId: string,
+  runId: string,
+  key: string,
+): string {
+  return `execute\u0000${workspaceId}\u0000${runId}\u0000${key}`;
 }
 
 function stableFingerprint(value: unknown): string {
@@ -748,6 +1559,24 @@ function normalize(value: unknown): unknown {
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, entry]) => [key, normalize(entry)]),
     );
+  }
+  return value;
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function immutableCopy<Value>(value: Value): Value {
+  return deepFreeze(structuredClone(value));
+}
+
+function deepFreeze<Value>(value: Value): Value {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as object)) {
+      deepFreeze(child);
+    }
+    Object.freeze(value);
   }
   return value;
 }

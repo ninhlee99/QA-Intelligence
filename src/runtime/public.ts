@@ -279,6 +279,12 @@ export type AgentRunCancellation = AgentRunAccessRequest & Readonly<{
   idempotency_key: string;
 }>;
 
+/** Schema-versioned command that asks the runtime—not the caller—to execute retained input. */
+export type AgentRunExecution = AgentRunAccessRequest & Readonly<{
+  expected_revision: number;
+  idempotency_key: string;
+}>;
+
 export type AgentRunEventCursor = Readonly<{
   schema_version: "1.0.0";
   after_sequence: number;
@@ -303,10 +309,20 @@ export interface AgentRuntime {
     request: AgentRunStartRequest,
   ): Promise<AgentRuntimeResult<AgentRunReference>>;
 
+  execute(
+    reference: AgentRunReference,
+    execution: AgentRunExecution,
+  ): Promise<AgentRuntimeResult<AgentRunResult>>;
+
   inspect(
     reference: AgentRunReference,
     access: AgentRunAccessRequest,
   ): Promise<AgentRuntimeResult<AgentRunSnapshot>>;
+
+  result(
+    reference: AgentRunReference,
+    access: AgentRunAccessRequest,
+  ): Promise<AgentRuntimeResult<AgentRunResult>>;
 
   approve(
     reference: AgentRunReference,

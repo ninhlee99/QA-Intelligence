@@ -1,5 +1,6 @@
 export * from "./requirement-review/public.js";
 export * from "./runtime/public.js";
+export * from "./runtime/executor.js";
 export * from "./evaluation/adapter.js";
 
 export {
@@ -19,6 +20,13 @@ export type {
   RequirementReviewDevelopmentHarnessInput,
   RequirementReviewDevelopmentHarnessResult,
 } from "./requirement-review/tracer-bullet.js";
+export { RequirementReviewRuntimeExecutor } from "./requirement-review/runtime-executor.js";
+export type {
+  RequirementResolutionRequest,
+  RequirementResolutionResult,
+  RequirementResolver,
+  RequirementReviewRuntimeExecutorDependencies,
+} from "./requirement-review/runtime-executor.js";
 
 export { InMemoryAgentRuntime } from "./runtime/in-memory-agent-runtime.js";
 export {
@@ -54,6 +62,7 @@ export type {
   WorkspaceState,
 } from "./adapters/deterministic/workspace-authorizer.js";
 export { InMemoryKnowledgeSearch } from "./adapters/memory/knowledge-search.js";
+export { InMemoryRequirementResolver } from "./adapters/memory/requirement-resolver.js";
 export type {
   InMemoryKnowledgeRecord,
   InMemoryKnowledgeSearchOptions,

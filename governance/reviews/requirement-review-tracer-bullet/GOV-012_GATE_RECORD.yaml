@@ -33,7 +33,7 @@ gates:
     full_schema_validation: pass
     adapter_conformance: partial_deterministic_development_adapters
     architecture_direction_approval: approved
-    gate_approval: pending_runtime_composition_and_production_adapter_conformance
+    gate_approval: pending_production_adapter_and_shared_conformance
     evidence:
       - SPEC-508
       - SPEC-509
@@ -42,6 +42,7 @@ gates:
       - tests/validate-json-schemas.mjs
       - src/evaluation/adapter.ts
       - tests/evaluation/scripted-evaluation-adapter.test.ts
+      - tests/integration/requirement-review-runtime.test.ts
       - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G4_evaluation_readiness:
     suite_design: complete_for_initial_tracer_cases

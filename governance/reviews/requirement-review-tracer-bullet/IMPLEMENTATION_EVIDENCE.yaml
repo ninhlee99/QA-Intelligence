@@ -18,20 +18,24 @@ implemented_modules:
   contracts:
     - src/requirement-review/public.ts
     - src/runtime/public.ts
+    - src/runtime/executor.ts
   core:
     - src/requirement-review/assess-requirement-quality.ts
     - src/evaluation/evaluation-manager.ts
   adapters:
     - src/adapters/deterministic/workspace-authorizer.ts
     - src/adapters/memory/knowledge-search.ts
+    - src/adapters/memory/requirement-resolver.ts
     - src/adapters/replay/scripted-reasoning-provider.ts
     - src/adapters/replay/scripted-evaluation-adapter.ts
     - src/runtime/in-memory-agent-runtime.ts
+    - src/requirement-review/runtime-executor.ts
   evaluation_adapter_interface:
     - src/evaluation/adapter.ts
   validation:
     - src/schema/schema-validator.ts
     - schemas/agent-run-start.schema.json
+    - schemas/agent-run-execute.schema.json
     - schemas/agent-run-snapshot.schema.json
     - schemas/agent-run-result.schema.json
     - schemas/agent-run-event.schema.json
@@ -39,6 +43,9 @@ implemented_modules:
   development_harness:
     - src/requirement-review/tracer-bullet.ts
     - tests/integration/requirement-review-tracer-bullet.test.ts
+  runtime_composition:
+    - src/requirement-review/runtime-executor.ts
+    - tests/integration/requirement-review-runtime.test.ts
 gate_evidence:
   G1_intent_and_definition:
     outcome: pass
@@ -51,6 +58,7 @@ gate_evidence:
       - fail-closed runtime start authorization
       - fail-closed authorization for every runtime read and control operation
       - exact permission and resource coverage checks on allow decisions
+      - requirement-read authorization before retained Requirement resolution
       - cross-Workspace denial and evidence sanitization
     pending:
       - production OIDC verifier and internal policy adapter
@@ -63,10 +71,17 @@ gate_evidence:
       - reasoning replay binds the full authorized request and enforces Tool and usage limits
       - evaluation rejects incomplete suites, duplicate trials, contradictory outcomes, and unresolved versions
       - versioned runtime envelopes and discriminated, evidence-bearing event payloads
+      - SPEC-508 runtime-owned execute/result path with exact retained Agent, Skill, Tool, and input-resource authority
+      - output, evidence-requirement, version, budget, cleanup, idempotency, terminal-result, and cross-Workspace runtime controls
+      - observed usage retention on budget exhaustion and terminal timeout after deadline expiry
+      - per-run single-writer reservation, cancellation precedence, and late-observation rejection
+      - exact retained policy and used Skill/Tool version binding
+      - full attempt-fact retention for failed validation and schema-valid results for every implemented terminal path
+      - rejected high-consequence approval retains an authoritative blocked result
+      - Requirement Review Skill execution through the runtime while preserving the separate QA verdict
       - SPEC-511 provider-neutral Interface with complete operation surface
       - scripted Evaluation Adapter common-envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability, observation-only result, and fail-closed cleanup tests
     pending:
-      - SPEC-508 runtime execution composition for the Skill
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
       - persistence, provider, Tool, and shared adapter conformance suites
       - timeout, recovery, no-progress, cleanup, and partial-effect execution paths
@@ -101,8 +116,13 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 99
+  tests_passed: 112
   tests_failed: 0
+  schemas_compiled: 26
+  valid_examples_accepted: 22
+  invalid_examples_rejected: 15
+  yaml_files_checked: 36
+  json_files_checked: 75
   full_repository_validation: pass
   dependency_vulnerabilities: 0
 current_increment_review:
@@ -117,3 +137,9 @@ current_increment_review:
     - authorization decision evidence retention
     - strict RFC 3339 UTC deadline and late-result semantics
     - truthful development-only governance claims with production blockers preserved
+    - per-run single-writer reservation and post-execution compare-and-set
+    - cancellation precedence and late-result timeout finalization
+    - full observed-attempt fact retention on terminal failures
+    - exact policy and used Skill/Tool version binding
+    - schema-valid completed, failed, blocked, cancelled, and timed-out results
+    - authoritative blocked result after rejected high-consequence approval

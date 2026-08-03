@@ -24,6 +24,7 @@ artifacts:
   - ../schemas/knowledge-search-input.schema.json
   - ../schemas/knowledge-search-result.schema.json
   - ../schemas/agent-run-start.schema.json
+  - ../schemas/agent-run-execute.schema.json
   - ../schemas/agent-run-snapshot.schema.json
   - ../schemas/agent-run-result.schema.json
   - ../schemas/agent-run-event.schema.json
