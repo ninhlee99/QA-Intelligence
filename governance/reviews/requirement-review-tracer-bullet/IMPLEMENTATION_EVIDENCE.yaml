@@ -23,6 +23,7 @@ implemented_modules:
     - src/requirement-review/assess-requirement-quality.ts
     - src/evaluation/evaluation-manager.ts
     - src/evaluation/evaluation-campaign-runner.ts
+    - src/evaluation/evaluation-campaign-coordinator.ts
   adapters:
     - src/adapters/deterministic/workspace-authorizer.ts
     - src/adapters/memory/knowledge-search.ts
@@ -86,6 +87,9 @@ gate_evidence:
       - pre-side-effect campaign identity, deadline, assertion-matrix, and exact-version validation
       - fail-closed Adapter response-envelope and environment-version verification
       - deterministic assertion Oracle preserves subject failures while provider, evidence, and cleanup failures remain non-subject and cannot recommend release
+      - multi-trial coordinator validates the declared matrix before dispatch and retains results in declaration order
+      - bounded parallel scheduling stops new sequential dispatch after observed cancellation
+      - trial-run identity, Workspace, subject, suite, cleanup, and cross-trial version integrity fail closed before aggregate recommendation
     pending:
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
       - persistence, provider, Tool, and shared adapter conformance suites
@@ -99,6 +103,8 @@ gate_evidence:
       - trusted evidence-verifier boundary prevents caller-fabricated favorable trials
       - the collected-evidence integrity and provenance verification boundary precedes deterministic assertion facts
       - critical negative observations dominate the trial and cleanup failure overrides favorable observations
+      - critical invariants aggregate across every executed trial and cannot be averaged away
+      - cross-trial version divergence or absence produces an indeterminate campaign
     pending:
       - complete evaluation dataset and repeated trials
       - holdout, contamination, robustness, security, recovery, and load campaigns
@@ -123,7 +129,7 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 122
+  tests_passed: 132
   tests_failed: 0
   schemas_compiled: 26
   valid_examples_accepted: 22
@@ -165,4 +171,19 @@ evaluation_campaign_increment_review:
     - provider failure remains infrastructure evidence and still triggers evidence collection and cleanup
     - cleanup failure or residual resources cannot produce a favorable recommendation
     - cleanup failure retains complete operation evidence and cannot erase an independently verified subject failure
-    - implementation remains a development-only single-trial slice; multi-trial lifecycle, Judge, persistence, recovery, and production conformance remain explicit blockers
+    - that increment remained development-only and did not claim multi-trial, Judge, persistence, recovery, or production conformance; the later multi-trial increment is recorded below
+multi_trial_campaign_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - campaign definitions reject duplicate trial and attempt identities before dispatch
+    - concurrency never exceeds the declared bound and completed results retain declaration order
+    - cross-trial dependency versions must be present and identical
+    - a trial runner cannot substitute another campaign, Workspace, subject, suite, case, or trial
+    - a passed trial cannot coexist with incomplete cleanup
+    - any critical failure dominates the aggregate verdict
+    - observed cancellation is terminal and prevents dispatch of new sequential trials
+    - the coordinator stops at awaiting_review and never creates evaluation or release approval
+    - retained campaign persistence, optimistic revision, recovery, Judge orchestration, and production adapter conformance remain explicit blockers
