@@ -48,7 +48,9 @@ families:
     next_gate: implementation_conformance
 acceptance_method: each family received a separate semantic review and approval record; acceptance was applied only after required corrections and dependency validation
 technology_and_slice_decisions:
-  range: ADR-011-015
+  range: ADR-011-016
   status: accepted
-  approval_evidence: ../governance/reviews/requirement-review-tracer-bullet/OWNER_APPROVAL.yaml
+  approval_evidence:
+    - ../governance/reviews/requirement-review-tracer-bullet/OWNER_APPROVAL.yaml
+    - ../governance/reviews/mcp-host-integration/CHANGE_IMPACT.yaml
   next_gate: downstream_selected_slice_specification_review

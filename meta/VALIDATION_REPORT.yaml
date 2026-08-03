@@ -7,7 +7,7 @@ outcome: pass
 checks:
   yaml_parse:
     outcome: pass
-    files_checked: 36
+    files_checked: 37
     failures: 0
   json_parse:
     outcome: pass
@@ -15,7 +15,7 @@ checks:
     failures: 0
   governed_metadata_and_identity:
     outcome: pass
-    artifacts_checked: 93
+    artifacts_checked: 94
     duplicate_ids: 0
     unresolved_references: 0
     dependency_cycles: 0
@@ -28,7 +28,7 @@ checks:
     readiness_mismatches: 0
   repository_graph:
     outcome: pass
-    critical_edges_checked: 37
+    critical_edges_checked: 38
     unresolved_targets: 0
     duplicate_edges: 0
     cycles: 0
@@ -97,5 +97,5 @@ readiness:
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence
 limitations:
   - this validation proves repository consistency and the tested deterministic development surface, not deployed-runtime or production-adapter conformance
-  - production identity, persistence, provider, Tool, sandbox, load, recovery, monitoring, Evaluation Adapter orchestration, and shared production-adapter evidence remain pending
+  - production identity, persistence, provider, Tool, sandbox, load, recovery, monitoring, Evaluation Adapter orchestration, MCP host-package conformance, and shared production-adapter evidence remain pending
 authority: validates and technically approves the deterministic development slice only; it does not enable an Agent or Skill or approve production release

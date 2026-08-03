@@ -5,7 +5,7 @@
 ```text
 Foundation                  accepted
 Governance                  GOV-001–012 accepted
-Architecture Decisions      ADR-001–015 accepted
+Architecture Decisions      ADR-001–016 accepted
 Knowledge Specifications    SPEC-101–107 accepted
 Product Specifications      SPEC-201–213 accepted
 Architecture Specifications SPEC-301–310 accepted
@@ -39,8 +39,9 @@ Implement the vertical slice in this order:
 3. **Completed for the development slice:** implement deep core modules for requirement assessment and evaluation without provider SDK leakage
 4. add PostgreSQL/outbox persistence and OIDC/internal authorization through accepted interfaces
 5. add production provider, Tool, and repository adapters and run the same conformance suites
-6. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development
-7. run regression, canary, monitoring, rollback, and operational validation for G5–G6 before release
+6. add the host-neutral MCP facade and thin Codex, Claude Code, and Cursor packages after the relevant core capability passes development conformance
+7. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development
+8. run regression, canary, monitoring, rollback, and operational validation for G5–G6 before release
 
 Required next actions:
 

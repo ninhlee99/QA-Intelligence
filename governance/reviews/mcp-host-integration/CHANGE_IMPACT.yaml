@@ -1,0 +1,45 @@
+id: IMPACT-MCP-HOST-INTEGRATION-001
+version: 1.0.0
+date: 2026-08-03
+status: approved
+governing_process: GOV-007
+change:
+  title: Adopt host-neutral MCP distribution with thin host packages
+  classification: additive_architecture_and_distribution_decision
+  authority: Repository Owner explicit confirmation to use QA Intelligence through MCP
+preserved_product_intent:
+  comprehensive_QA_QC_and_Senior_Test_Engineer_identity: unchanged
+  agent_skill_tool_plugin_boundaries: strengthened
+  knowledge_and_rule_authority: unchanged
+  workspace_and_least_privilege: unchanged
+decision:
+  core_authority: QA Intelligence Agent Runtime and Evaluation Engine
+  shared_host_interface: Model Context Protocol
+  host_packages: [Codex, Claude Code, Cursor]
+  host_package_role: thin installation, discovery, workflow guidance, and MCP connection only
+  internal_platform_plugin_role: external technology adaptation under ADR-007
+directly_affected:
+  decisions: [ADR-007, ADR-008, ADR-009, ADR-013, ADR-014, ADR-015, ADR-016]
+  specifications: [SPEC-106, SPEC-309, SPEC-310, SPEC-503, SPEC-506, SPEC-508, SPEC-509, SPEC-510, SPEC-511]
+  roadmap: [README.md, ROADMAP.md, meta/SPEC_READINESS.yaml, meta/ADR_INDEX.yaml, meta/REPOSITORY_GRAPH.yaml]
+compatibility:
+  breaking_change: false
+  existing_host_consumers: none
+  existing_runtime_semantics: unchanged
+  migration: none
+security_review:
+  transport_is_not_authority: required
+  remote_authentication_and_encryption: required
+  server_side_workspace_authorization: required
+  host_approval_cannot_weaken_platform_policy: required
+  direct_storage_or_skill_bypass: prohibited
+required_follow_up:
+  - define versioned MCP Tool schemas after each core capability is vertically complete
+  - implement local stdio and remote Streamable HTTP adapters through the same interface
+  - create thin Codex, Claude Code, and Cursor packages
+  - run cross-host semantic, security, isolation, approval, cancellation, and evidence conformance
+release_effect:
+  development: architecture_approved
+  enablement_beyond_development: remains_blocked_by_GOV_012_G1_to_G4
+  production_release: remains_blocked_by_GOV_012_G5_G6_and_operational_evidence
+

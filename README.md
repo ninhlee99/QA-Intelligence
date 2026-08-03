@@ -16,6 +16,8 @@ Read in this order:
 
 Foundation, ADRs, GOV-001 through GOV-012, and all 66 specifications form the accepted documentation and implementation baseline. Family-specific review evidence is retained under `governance/reviews/full-spec-baseline/`.
 
+ADR-016 defines MCP as the host-neutral distribution interface. Codex, Claude Code, and Cursor integrations remain thin Host Integration Packages; the QA Intelligence Core Platform, Agent Runtime, Evaluation Engine, Knowledge Store, and Rule Engine retain authority.
+
 The machine-readable ontology, schemas, rules, indexes, playbooks, examples, and AI engineering instructions are accepted support artifacts and validate automatically. They remain subordinate to their governing specifications and do not grant implementation or release authority by themselves.
 
 The Agent/Skill creation and evaluation baseline is defined by `SPEC-106`, `SPEC-107`, `SPEC-213`, `SPEC-309`, `SPEC-310`, contracts `SPEC-508`–`SPEC-511`, and `governance/AGENT_SKILL_QUALITY_GATES.md`. These artifacts preserve the original product boundary: Agents execute governed QA capabilities; Skills are reusable procedures; Plugins remain technology adapters; accepted knowledge remains in the Knowledge Store.
