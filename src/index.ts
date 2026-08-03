@@ -6,6 +6,7 @@ export * from "./evaluation/campaign-lifecycle.js";
 export * from "./evaluation/evaluation-campaign-runner.js";
 export * from "./evaluation/evaluation-campaign-coordinator.js";
 export * from "./evaluation/evaluation-campaign-repository.js";
+export * from "./evaluation/postgres-evaluation-campaign-record-store.js";
 
 export {
   AssessRequirementQuality,

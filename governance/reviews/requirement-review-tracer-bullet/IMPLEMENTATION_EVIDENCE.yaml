@@ -32,10 +32,14 @@ implemented_modules:
     - src/adapters/replay/scripted-reasoning-provider.ts
     - src/adapters/replay/scripted-evaluation-adapter.ts
     - src/evaluation/evaluation-campaign-repository.ts
+    - src/evaluation/postgres-evaluation-campaign-record-store.ts
     - src/runtime/in-memory-agent-runtime.ts
     - src/requirement-review/runtime-executor.ts
   evaluation_adapter_interface:
     - src/evaluation/adapter.ts
+  persistence_migrations:
+    - migrations/postgresql/0001_evaluation_campaign_store.up.sql
+    - migrations/postgresql/0001_evaluation_campaign_store.down.sql
   validation:
     - src/schema/schema-validator.ts
     - schemas/agent-run-start.schema.json
@@ -95,9 +99,12 @@ gate_evidence:
       - provider-neutral retained campaign repository contract with immutable Workspace-scoped snapshots and attributable events
       - canonical lifecycle and trial transitions use optimistic revisions, idempotent commands, and exact-version readiness checks
       - recovery resumes only retained pending work after all checks pass and blocks active unknown work instead of silently rerunning it
+      - PostgreSQL record-store transaction adapter retains the campaign mutation, domain event, idempotent command result, and SPEC-505 outbox intent atomically
+      - concurrent same-command winners resolve to the retained result while stale revisions and conflicting digests remain distinct
+      - corrupt retained JSONB and outbox transaction failures fail closed without returning authoritative campaign state
     pending:
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
-      - PostgreSQL/outbox durability plus provider, Tool, and shared production-adapter conformance suites
+      - PostgreSQL 18 driver/runtime durability, RLS, concurrent-writer, outbox-claim, worker-loss, backup/restore, and migration conformance plus provider, Tool, and shared production-adapter suites
       - process-restart, timeout, no-progress, cleanup, and partial-effect execution paths beyond the in-memory recovery-decision baseline
   G4_evaluation_readiness:
     outcome: partial
@@ -134,7 +141,7 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 142
+  tests_passed: 152
   tests_failed: 0
   schemas_compiled: 26
   valid_examples_accepted: 22
@@ -211,3 +218,23 @@ retained_campaign_repository_increment_review:
   explicit_non_claims:
     - the in-memory adapter does not provide durable PostgreSQL or transactional-outbox guarantees
     - process crash/restart, multi-process concurrency, OIDC authorization, Judge orchestration, and production adapter conformance remain pending
+postgres_campaign_store_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - the store interface hides SQL tables and transaction ordering from repository callers
+    - one transaction scopes the Workspace before reading or writing campaign state
+    - campaign snapshot, append-only event, command result, and outbox intent succeed or fail together
+    - exact command replay returns the originally retained result without duplicate writes
+    - a concurrent same-command winner is re-read after a lost compare-and-set and cannot become a false stale failure
+    - JSONB identity and lifecycle shape are checked before database state becomes authoritative domain state
+    - governed event kinds, sequential event revisions, trial definitions, and snapshot trial identities are verified while decoding JSONB
+    - outbox integrity metadata is computed from the canonical payload inside the adapter and cannot be supplied by the caller
+    - unknown runtime mutation kinds fail as invalid_request before a database transaction begins
+    - PostgreSQL migration defines composite Workspace keys, forced RLS, optimistic revision fields, append-only event and command keys, and publisher indexes
+    - up/down migration syntax and rollback passed a temporary PostgreSQL 14 smoke-test
+  explicit_non_claims:
+    - the local smoke-test is not PostgreSQL 18 production conformance
+    - no production driver, deployed database, real concurrent connection, RLS-role, outbox publisher, backup/restore, worker-loss, or restart evidence is claimed
