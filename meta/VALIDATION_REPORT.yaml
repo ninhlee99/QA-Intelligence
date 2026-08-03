@@ -2,7 +2,7 @@ generated: true
 generated_at: 2026-08-03
 command: npx --yes -p node@24 -c 'node --version && npm run validate'
 runtime: Node.js 24.18.1
-scope: accepted documentation baseline, machine-readable artifacts, and deterministic Requirement Review Agent/Skill runtime and in-memory multi-trial evaluation-orchestration development slice
+scope: accepted documentation baseline, machine-readable artifacts, and deterministic Requirement Review Agent/Skill runtime, in-memory multi-trial orchestration, and retained campaign repository development slice
 outcome: pass
 checks:
   yaml_parse:
@@ -63,7 +63,7 @@ checks:
     build: pass
   implementation_tests:
     outcome: pass
-    tests_passed: 132
+    tests_passed: 142
     tests_failed: 0
     coverage_scope:
       - requirement assessment ordering and failure attribution
@@ -73,6 +73,7 @@ checks:
       - Evaluation Adapter envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability declaration, observation-only results, and fail-closed cleanup
       - single-trial Evaluation Campaign orchestration, static identity and version validation, Adapter response-envelope integrity, deterministic assertion classification, evidence verification, provider-failure attribution, and cleanup dominance
       - multi-trial campaign matrix validation, bounded parallel scheduling, declared-order retention, cross-trial identity and version integrity, critical-invariant aggregation, cleanup consistency, and cancellation stop semantics
+      - retained campaign repository contract, immutable Workspace-scoped snapshots and events, canonical transitions, exact-version readiness, optimistic revisions, idempotent commands, attributable trial boundaries, and fail-closed recovery decisions
       - Agent Runtime authorization, idempotency, budgets, cancellation, and event replay
       - Agent Runtime execute/result ownership, retained input/Agent/Skill/Tool authority, evidence requirements, immutable terminal results, and cross-Workspace denial
       - Requirement Review Agent/Skill execution through the Agent Runtime while preserving the independent QA verdict
@@ -93,11 +94,11 @@ approval_evidence:
 readiness:
   documentation_and_machine_readable_baseline: accepted
   original_product_vision: comprehensive_QA_QC_and_experienced_Senior_Test_Engineer_identity_preserved
-  initial_tracer_bullet: deterministic_runtime_and_in_memory_multi_trial_evaluation_orchestration_implemented
+  initial_tracer_bullet: deterministic_runtime_multi_trial_orchestration_and_in_memory_retained_campaign_repository_implemented
   implementation_conformance: partial_development_evidence_only
   enablement_beyond_development: blocked_pending_GOV_012_G1_to_G4_evidence
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence
 limitations:
   - this validation proves repository consistency and the tested deterministic development surface, not deployed-runtime or production-adapter conformance
-  - production identity, persistence, provider, Tool, sandbox, load, recovery, monitoring, retained campaign lifecycle and optimistic revision, Judge orchestration, MCP host-package conformance, and shared production-adapter evidence remain pending
+  - production identity, durable PostgreSQL/outbox persistence, provider, Tool, sandbox, load, process-restart recovery, monitoring, Judge orchestration, MCP host-package conformance, and shared production-adapter evidence remain pending
 authority: validates and technically approves the deterministic development slice only; it does not enable an Agent or Skill or approve production release

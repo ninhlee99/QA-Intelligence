@@ -2,8 +2,10 @@ export * from "./requirement-review/public.js";
 export * from "./runtime/public.js";
 export * from "./runtime/executor.js";
 export * from "./evaluation/adapter.js";
+export * from "./evaluation/campaign-lifecycle.js";
 export * from "./evaluation/evaluation-campaign-runner.js";
 export * from "./evaluation/evaluation-campaign-coordinator.js";
+export * from "./evaluation/evaluation-campaign-repository.js";
 
 export {
   AssessRequirementQuality,

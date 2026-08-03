@@ -8,6 +8,7 @@ import {
   type EvaluationInput,
   type EvaluationResult,
 } from "./evaluation-manager.js";
+import type { EvaluationCampaignState } from "./campaign-lifecycle.js";
 
 export type MultiTrialEvaluationCampaignRequest = Omit<
   EvaluationCampaignRequest,
@@ -20,21 +21,6 @@ export type MultiTrialEvaluationCampaignRequest = Omit<
 export interface EvaluationTrialRunner {
   run(input: EvaluationCampaignRequest): Promise<EvaluationCampaignRunResult>;
 }
-
-export type EvaluationCampaignState =
-  | "draft"
-  | "validating"
-  | "ready"
-  | "running"
-  | "analyzing"
-  | "awaiting_review"
-  | "approved"
-  | "conditionally_approved"
-  | "rejected"
-  | "indeterminate"
-  | "blocked"
-  | "cancelled"
-  | "failed";
 
 export type MultiTrialEvaluationCampaignResult = Readonly<{
   evaluation: EvaluationResult;

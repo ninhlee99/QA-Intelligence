@@ -22,6 +22,7 @@ implemented_modules:
   core:
     - src/requirement-review/assess-requirement-quality.ts
     - src/evaluation/evaluation-manager.ts
+    - src/evaluation/campaign-lifecycle.ts
     - src/evaluation/evaluation-campaign-runner.ts
     - src/evaluation/evaluation-campaign-coordinator.ts
   adapters:
@@ -30,6 +31,7 @@ implemented_modules:
     - src/adapters/memory/requirement-resolver.ts
     - src/adapters/replay/scripted-reasoning-provider.ts
     - src/adapters/replay/scripted-evaluation-adapter.ts
+    - src/evaluation/evaluation-campaign-repository.ts
     - src/runtime/in-memory-agent-runtime.ts
     - src/requirement-review/runtime-executor.ts
   evaluation_adapter_interface:
@@ -90,10 +92,13 @@ gate_evidence:
       - multi-trial coordinator validates the declared matrix before dispatch and retains results in declaration order
       - bounded parallel scheduling stops new sequential dispatch after observed cancellation
       - trial-run identity, Workspace, subject, suite, cleanup, and cross-trial version integrity fail closed before aggregate recommendation
+      - provider-neutral retained campaign repository contract with immutable Workspace-scoped snapshots and attributable events
+      - canonical lifecycle and trial transitions use optimistic revisions, idempotent commands, and exact-version readiness checks
+      - recovery resumes only retained pending work after all checks pass and blocks active unknown work instead of silently rerunning it
     pending:
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
-      - persistence, provider, Tool, and shared adapter conformance suites
-      - timeout, recovery, no-progress, cleanup, and partial-effect execution paths
+      - PostgreSQL/outbox durability plus provider, Tool, and shared production-adapter conformance suites
+      - process-restart, timeout, no-progress, cleanup, and partial-effect execution paths beyond the in-memory recovery-decision baseline
   G4_evaluation_readiness:
     outcome: partial
     passed:
@@ -129,7 +134,7 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 132
+  tests_passed: 142
   tests_failed: 0
   schemas_compiled: 26
   valid_examples_accepted: 22
@@ -186,4 +191,23 @@ multi_trial_campaign_increment_review:
     - any critical failure dominates the aggregate verdict
     - observed cancellation is terminal and prevents dispatch of new sequential trials
     - the coordinator stops at awaiting_review and never creates evaluation or release approval
-    - retained campaign persistence, optimistic revision, recovery, Judge orchestration, and production adapter conformance remain explicit blockers
+    - this increment predated retained campaign persistence; the later repository increment is recorded below
+retained_campaign_repository_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - the provider-neutral repository seam is independent of PostgreSQL and the canonical lifecycle is shared without core-to-adapter dependency
+    - campaign records and events are immutable, Workspace-scoped, attributable, and monotonically revised
+    - create, transition, trial-boundary, and recovery commands bind idempotency keys to canonical request input
+    - stale writers cannot change retained campaign or trial state
+    - only canonical campaign and trial transitions are accepted and terminal campaign states cannot reopen
+    - readiness fails while subject, suite, or any governed dependency version is unresolved
+    - state changes require evidence references and exact trial and attempt identities
+    - recovery validates pinned versions, evaluator health, leases, isolation, and cleanup before returning pending work
+    - active trials requiring reconciliation block the campaign and remaining pending trials become not_executed; no automatic rerun is claimed
+    - identical campaign identities remain isolated across Workspaces
+  explicit_non_claims:
+    - the in-memory adapter does not provide durable PostgreSQL or transactional-outbox guarantees
+    - process crash/restart, multi-process concurrency, OIDC authorization, Judge orchestration, and production adapter conformance remain pending
