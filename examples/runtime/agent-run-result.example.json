@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-001",
+  "workspace_id": "workspace-001",
+  "outcome": "completed",
+  "output": {"assessment_ref": "assessment-001"},
+  "failure_class": null,
+  "resolved_versions": {"agent": "requirement-review-agent@1.0.0", "policy": "policy@1.0.0"},
+  "rule_results": ["rule:requirement-quality@1.0.0"],
+  "skill_usage": ["assess-requirement-quality@1.0.0"],
+  "tool_usage": [],
+  "citations": ["REQ-001@1.0.0"],
+  "uncertainty": {"level": "none", "reasons": []},
+  "policy_events": ["authorization:allow"],
+  "usage": {"steps": 1, "duration_seconds": 1, "tool_calls": 0, "retries": 0},
+  "evidence": ["event://event-001"],
+  "cleanup_status": "not_required",
+  "started_at": "2026-08-03T00:00:00.000Z",
+  "completed_at": "2026-08-03T00:00:01.000Z"
+}

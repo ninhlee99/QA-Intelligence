@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "event-001",
+  "run_id": "run-001",
+  "workspace_id": "workspace-001",
+  "sequence": 4,
+  "type": "authorization_granted",
+  "occurred_at": "2026-08-03T00:00:00.000Z",
+  "payload_schema": {"id": "agent-run-event-payload", "version": "1.0.0"},
+  "payload": {
+    "event_type": "authorization_granted",
+    "operation_id": "operation-001",
+    "policy_version": "policy-1.0.0",
+    "decision": "allow",
+    "evidence": ["authorization:allow"]
+  }
+}

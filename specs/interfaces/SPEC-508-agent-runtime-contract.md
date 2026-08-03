@@ -34,15 +34,17 @@ This contract is the test surface for starting, observing, controlling, and comp
 ## 2. Operations
 
 - `start(request) -> run_reference`
-- `inspect(run_reference) -> run_snapshot`
-- `approve(run_reference, approval) -> transition`
-- `resume(run_reference, checkpoint) -> transition`
-- `cancel(run_reference, reason) -> transition`
-- `stream_events(run_reference, cursor) -> events`
+- `inspect(run_reference, access_context) -> run_snapshot`
+- `approve(run_reference, approval_with_context) -> transition`
+- `resume(run_reference, checkpoint_with_context) -> transition`
+- `cancel(run_reference, cancellation_with_context) -> transition`
+- `stream_events(run_reference, cursor, access_context) -> events`
+
+Every read or control operation SHALL carry a trusted immutable Workspace context, explicit actor and policy identity, and an operation identifier. The runtime SHALL bind these claims to the run reference and authorize the operation-specific permission and exact run resource before reading state, returning events, changing lifecycle state, or emitting a new event.
 
 ## 3. Start Request
 
-The request SHALL contain operation and Workspace identity, actor authority, exact Agent version, task purpose and consequence class, inputs by reference, allowed Skill/Tool constraints, policy version, budgets, deadline, evidence requirements, and idempotency key.
+The request SHALL contain operation and Workspace identity, a trusted immutable Workspace context carrying actor authority, exact Agent version, task purpose and consequence class, inputs by reference, allowed Skill/Tool constraints, policy version, budgets, deadline, evidence requirements, and idempotency key. The runtime SHALL bind the request Workspace, actor, and policy to that context and SHALL obtain an authorization decision outside prompts before creating a run or emitting an authorization-granted event.
 
 ## 4. Snapshot and Result
 
@@ -60,4 +62,4 @@ Implementations SHALL pass contract tests for duplicate start, policy denial, ap
 
 ## 7. Compatibility and Operations
 
-Operations and envelopes SHALL be schema-versioned and size-bounded. Additive optional observations may be compatible; changed lifecycle, authority, budget, effect, or verdict semantics require a major version and migration. Streaming or polling are transport choices and SHALL preserve the same canonical state. Metrics and traces expose correlation, resolved versions, lifecycle, budget, approval, failure, and cleanup without exposing secrets or hidden reasoning.
+Operations and envelopes SHALL be schema-versioned and size-bounded. Event payloads SHALL carry an exact payload-schema reference that is consistent with the event type. Additive optional observations may be compatible; changed lifecycle, authority, budget, effect, or verdict semantics require a major version and migration. Streaming or polling are transport choices and SHALL preserve the same canonical state. Metrics and traces expose correlation, resolved versions, lifecycle, budget, approval, failure, and cleanup without exposing secrets or hidden reasoning.

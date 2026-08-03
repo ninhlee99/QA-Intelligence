@@ -4,24 +4,50 @@
   "title": "Requirement Quality Assessment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "requirement_ref", "workspace_id", "outcome", "findings", "questions", "rule_results", "evidence", "uncertainty", "resolved_versions"],
+  "required": ["id", "requirement_ref", "workspace_id", "outcome", "verdict", "findings", "questions", "rule_results", "evidence", "uncertainty", "resolved_versions"],
   "properties": {
     "id": {"type": "string", "minLength": 1},
     "requirement_ref": {"type": "string", "minLength": 1},
     "workspace_id": {"type": "string", "minLength": 1},
-    "outcome": {"enum": ["completed", "indeterminate", "blocked"]},
+    "outcome": {
+      "description": "Runtime completion outcome; this is separate from the requirement quality verdict.",
+      "enum": ["completed", "indeterminate", "blocked"]
+    },
+    "verdict": {
+      "description": "Requirement quality decision defined by SPEC-203.",
+      "enum": ["pass", "pass_with_recommendations", "changes_required", "blocked", "rejected"]
+    },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "category", "severity", "message", "evidence"],
+        "required": ["id", "category", "severity", "message", "evidence", "next_action"],
         "properties": {
-          "id": {"type": "string"},
-          "category": {"enum": ["ambiguity", "testability", "completeness", "consistency", "risk", "missing_acceptance_criterion"]},
+          "id": {"type": "string", "minLength": 1},
+          "category": {
+            "enum": [
+              "atomicity",
+              "clarity",
+              "completeness",
+              "consistency",
+              "correctness_against_authority",
+              "feasibility",
+              "necessity",
+              "testability",
+              "traceability",
+              "applicability",
+              "security_and_privacy",
+              "workspace_safety",
+              "ambiguity",
+              "risk",
+              "missing_acceptance_criterion"
+            ]
+          },
           "severity": {"enum": ["critical", "high", "medium", "low"]},
           "message": {"type": "string", "minLength": 1},
-          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "next_action": {"type": "string", "minLength": 1}
         }
       }
     },
@@ -29,6 +55,24 @@
     "rule_results": {"type": "array", "items": {"type": "string"}},
     "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "uncertainty": {"type": "object", "additionalProperties": false, "required": ["level", "reasons"], "properties": {"level": {"enum": ["none", "low", "medium", "high"]}, "reasons": {"type": "array", "items": {"type": "string"}}}},
-    "resolved_versions": {"type": "object", "minProperties": 1}
+    "resolved_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "skill", "prompt", "rule_set", "knowledge_snapshot", "policy", "input_schema", "output_schema"],
+      "properties": {
+        "agent": {"$ref": "#/$defs/versionReference"},
+        "skill": {"$ref": "#/$defs/versionReference"},
+        "prompt": {"$ref": "#/$defs/versionReference"},
+        "rule_set": {"$ref": "#/$defs/versionReference"},
+        "knowledge_snapshot": {"$ref": "#/$defs/semanticVersion"},
+        "policy": {"$ref": "#/$defs/versionReference"},
+        "input_schema": {"$ref": "#/$defs/versionReference"},
+        "output_schema": {"$ref": "#/$defs/versionReference"}
+      }
+    }
+  },
+  "$defs": {
+    "semanticVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
+    "versionReference": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"}
   }
 }

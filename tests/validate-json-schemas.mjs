@@ -42,6 +42,16 @@ const validPairs = {
     "schemas/knowledge-search-result.schema.json",
   "examples/assessments/requirement-assessment.example.json":
     "schemas/requirement-assessment.schema.json",
+  "examples/runtime/agent-run-start.example.json":
+    "schemas/agent-run-start.schema.json",
+  "examples/runtime/agent-run-snapshot.example.json":
+    "schemas/agent-run-snapshot.schema.json",
+  "examples/runtime/agent-run-result.example.json":
+    "schemas/agent-run-result.schema.json",
+  "examples/runtime/agent-run-event-payload.example.json":
+    "schemas/agent-run-event-payload.schema.json",
+  "examples/runtime/agent-run-event.example.json":
+    "schemas/agent-run-event.schema.json",
 };
 
 const invalidPairs = {
@@ -63,6 +73,16 @@ const invalidPairs = {
     "schemas/knowledge-search-input.schema.json",
   "examples/invalid/knowledge-search-result.invalid.json":
     "schemas/knowledge-search-result.schema.json",
+  "examples/invalid/agent-run-start.invalid.json":
+    "schemas/agent-run-start.schema.json",
+  "examples/invalid/agent-run-snapshot.invalid.json":
+    "schemas/agent-run-snapshot.schema.json",
+  "examples/invalid/agent-run-result.invalid.json":
+    "schemas/agent-run-result.schema.json",
+  "examples/invalid/agent-run-event-payload.invalid.json":
+    "schemas/agent-run-event-payload.schema.json",
+  "examples/invalid/agent-run-event.invalid.json":
+    "schemas/agent-run-event.schema.json",
 };
 
 const schemaDirectory = path.join(root, "schemas");

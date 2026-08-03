@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/agent-run-event-payload.schema.json",
+  "title": "Agent Run Event Payload",
+  "type": "object",
+  "required": ["event_type", "operation_id"],
+  "properties": {
+    "event_type": {"enum": ["run_requested", "run_resolved", "authorization_requested", "authorization_granted", "authorization_denied", "run_ready", "step_proposed", "step_authorized", "step_observed", "step_validated", "approval_requested", "run_suspended", "run_resumed", "run_validating", "run_completed", "run_failed", "run_cancelled", "run_timed_out", "run_blocked", "cleanup_completed", "cleanup_failed"]},
+    "operation_id": {"type": "string", "minLength": 1},
+    "actor_id": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "policy_version": {"type": "string", "minLength": 1},
+    "consequence_class": {"enum": ["advisory", "reversible", "controlled_side_effect", "high_consequence"]},
+    "decision": {"enum": ["allow", "approved", "rejected"]},
+    "reason": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "approval_id": {"type": "string", "minLength": 1},
+    "requested_action": {"type": "string", "minLength": 1},
+    "required_permissions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "checkpoint": {"type": "string", "minLength": 1},
+    "failure_class": {"type": "string", "minLength": 1},
+    "failure_code": {"type": "string", "minLength": 1},
+    "resolved_versions": {"type": "object"},
+    "output_ref": {"type": "string", "minLength": 1},
+    "cleanup_status": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": {"$ref": "#/$defs/jsonValue"},
+  "allOf": [
+    {"if": {"properties": {"event_type": {"const": "run_requested"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"actor_id": {}, "purpose": {}}, "required": ["actor_id", "purpose"]}},
+    {"if": {"properties": {"event_type": {"const": "run_resolved"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"resolved_versions": {}}, "required": ["resolved_versions"]}},
+    {"if": {"properties": {"event_type": {"const": "authorization_requested"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"policy_version": {}, "consequence_class": {}}, "required": ["policy_version", "consequence_class"]}},
+    {"if": {"properties": {"event_type": {"const": "authorization_granted"}}, "required": ["event_type"]}, "then": {"type": "object", "required": ["policy_version", "decision", "evidence"], "properties": {"policy_version": {}, "decision": {"const": "allow"}, "evidence": {}}}},
+    {"if": {"properties": {"event_type": {"const": "authorization_denied"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"reason": {}, "evidence": {}}, "required": ["reason", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "approval_requested"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"approval_id": {}, "requested_action": {}, "consequence_class": {}, "required_permissions": {}, "evidence": {}}, "required": ["approval_id", "requested_action", "consequence_class", "required_permissions", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "step_authorized"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"actor_id": {}, "approval_id": {}, "decision": {}, "reason": {}, "evidence": {}}, "required": ["actor_id", "approval_id", "decision", "reason", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "run_resumed"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"actor_id": {}, "checkpoint": {}, "reason": {}}, "required": ["actor_id", "checkpoint", "reason"]}},
+    {"if": {"properties": {"event_type": {"const": "run_cancelled"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"actor_id": {}, "reason": {}, "evidence": {}}, "required": ["actor_id", "reason", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "run_blocked"}}, "required": ["event_type"]}, "then": {"type": "object", "required": ["actor_id", "approval_id", "decision", "reason", "evidence"], "properties": {"actor_id": {}, "approval_id": {}, "decision": {"const": "rejected"}, "reason": {}, "evidence": {}}}},
+    {"if": {"properties": {"event_type": {"const": "run_failed"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"failure_class": {}, "failure_code": {}, "evidence": {}}, "required": ["failure_class", "failure_code", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "run_timed_out"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"reason": {}, "evidence": {}}, "required": ["reason", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "cleanup_completed"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"cleanup_status": {}, "evidence": {}}, "required": ["cleanup_status", "evidence"]}},
+    {"if": {"properties": {"event_type": {"const": "cleanup_failed"}}, "required": ["event_type"]}, "then": {"type": "object", "properties": {"cleanup_status": {}, "reason": {}, "evidence": {}}, "required": ["cleanup_status", "reason", "evidence"]}}
+  ],
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/jsonValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}}
+      ]
+    }
+  }
+}

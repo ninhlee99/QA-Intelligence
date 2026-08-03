@@ -42,8 +42,8 @@ counts:
   interface_specs: 11
   runtime_specs: 7
 implementation:
-  status: ready_to_start_requirement_review_tracer_bullet
-  reason: the full specification baseline, contracts, schemas, fixtures, adapter plan, and implementation-entry governance are accepted; implementation conformance evidence remains to be produced
+  status: requirement_review_development_slice_in_progress
+  reason: deterministic assessment, authorization, knowledge, reasoning replay, schema validation, evaluation, and in-memory runtime modules now exist; production adapters and complete GOV-012 conformance evidence remain pending
 readiness:
   foundation: accepted
   governance: accepted
@@ -56,5 +56,5 @@ readiness:
   runtime_specs: accepted
   machine_readable_artifacts: accepted
   formal_review: approved
-  implementation_conformance: pending
+  implementation_conformance: partial_development_evidence_only
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence

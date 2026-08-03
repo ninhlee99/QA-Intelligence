@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "operation_id": "operation-001",
+  "workspace_id": "workspace-001",
+  "actor_id": "actor-001",
+  "agent": {"id": "requirement-review-agent", "version": "latest"},
+  "purpose": "Review requirement",
+  "consequence_class": "advisory",
+  "input": {},
+  "policy_version": "policy-1.0.0",
+  "budgets": {"max_steps": 1, "max_duration_seconds": 1, "max_tool_calls": 0, "max_retries": 0},
+  "deadline": "2026-08-03T01:00:00.000Z",
+  "idempotency_key": "invalid-start"
+}

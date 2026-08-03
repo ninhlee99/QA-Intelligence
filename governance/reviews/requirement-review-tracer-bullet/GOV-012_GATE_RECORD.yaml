@@ -1,7 +1,7 @@
 id: GATE-RRA-GOV012-001
 version: 0.1.0
 date: 2026-08-03
-status: open
+status: in_progress
 governing_policy: GOV-012
 subject:
   agent: requirement-review-agent@0.1.0
@@ -10,7 +10,8 @@ gates:
   G1_intent_and_definition:
     design_evidence: complete
     product_intent_approval: approved
-    artifact_acceptance: pending_selected_specification_review
+    artifact_acceptance: accepted
+    gate_outcome: pass
     evidence:
       - examples/agents/requirement-review-agent.example.json
       - examples/skills/assess-requirement-quality.example.json
@@ -18,41 +19,52 @@ gates:
       - SPEC-106
   G2_authority_and_sandbox:
     design_evidence: complete
-    implementation_evidence: pending
+    implementation_evidence: partial
     architecture_direction_approval: approved
-    gate_approval: pending_adapter_conformance
+    gate_approval: pending_production_authority_and_sandbox_conformance
     evidence:
       - ADR-014
       - SPEC-506
       - SPEC-606
       - tests/contracts/requirement-review-adapter-plan.yaml
+      - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G3_contract_and_determinism:
     design_evidence: complete
     full_schema_validation: pass
-    adapter_conformance: pending_accepted_contracts_and_implementation
+    adapter_conformance: partial_deterministic_development_adapters
     architecture_direction_approval: approved
-    gate_approval: pending_contract_acceptance_and_adapter_conformance
+    gate_approval: pending_runtime_composition_and_production_adapter_conformance
     evidence:
       - SPEC-508
       - SPEC-509
       - SPEC-510
       - SPEC-511
       - tests/validate-json-schemas.mjs
+      - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G4_evaluation_readiness:
     suite_design: complete_for_initial_tracer_cases
+    implementation_evidence: partial
     product_direction_approval: approved
-    gate_approval: pending_selected_specification_acceptance
+    gate_approval: pending_complete_dataset_repeated_trials_and_campaign_evidence
     evidence:
       - SPEC-107
       - SPEC-213
       - examples/evaluations/skill-core-suite.example.json
       - examples/evaluations/skill-negative-trigger.example.json
+      - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G5_regression_and_release_recommendation:
-    outcome: not_applicable
-    reason: implementation has not started
-  G6_controlled_release_and_monitoring:
-    outcome: not_applicable
+    outcome: not_started
     reason: no release candidate exists
+  G6_controlled_release_and_monitoring:
+    outcome: not_started
+    reason: no release candidate exists
+resolved_critical_findings:
+  - id: RRA-AUTHORITY-001
+    status: remediated_and_independently_verified
+    scope: authorization for every Agent Runtime read and control operation
+  - id: RRA-EVALUATION-INTEGRITY-001
+    status: remediated_and_independently_verified
+    scope: authoritative suite policy and verified trial/invariant evidence
 blocking_critical_findings: []
-result: product_and_architecture_direction_approved_implementation_gates_pending
+result: development_slice_technically_approved_enablement_and_release_gates_blocked
 authority: gate preparation only; this record cannot approve or release its subject

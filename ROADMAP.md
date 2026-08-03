@@ -20,7 +20,7 @@ Playbooks and AI guidance    accepted baseline
 
 ## Current Phase — Requirement Review Tracer-Bullet Implementation
 
-The documentation baseline has passed ownership, semantic alignment, dependency, traceability, schema, example, lifecycle, and governance review. Implementation may now begin with the selected advisory tracer bullet; source code remains subordinate to accepted contracts.
+The documentation baseline has passed ownership, semantic alignment, dependency, traceability, schema, example, lifecycle, and governance review. The selected advisory tracer bullet is now in development: its deterministic core, test adapters, schema validator, evaluation guardrails, and in-memory runtime contract exist. Source code remains subordinate to accepted contracts.
 
 Specification acceptance is not implementation conformance or release approval. The Agent/Skill must produce and pass GOV-012 gate evidence at the required stage.
 
@@ -28,15 +28,15 @@ Specification acceptance is not implementation conformance or release approval. 
 
 Start with the advisory `Requirement Review Agent` and its `Assess Requirement Quality` Skill because it exercises Discovery, deterministic rules before LLM reasoning, governed knowledge retrieval, evidence, uncertainty, evaluation, and Workspace isolation without production write side effects.
 
-The slice is ready to implement because specifications and contracts are accepted, examples validate, and the deterministic fake/replay adapter plan and fixtures exist. Implement deterministic adapters first, then production adapters through the same contracts. G1–G4 must pass before enablement beyond development.
+The first deterministic development increment is implemented. The direct composition remains a development harness while SPEC-508 runtime execution and the SPEC-511 evaluation adapter are integrated. Production adapters must conform to the same contracts. G1–G4 must pass before enablement beyond development.
 
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
 
-1. create contract and state-machine tests from SPEC-508–511 and SPEC-606–607
-2. implement deterministic fake/replay adapters and make failure, cancellation, budget, and isolation cases pass
-3. implement the deep core modules for requirement assessment, Agent execution, and evaluation without provider SDK leakage
+1. **In progress:** create contract and state-machine tests from SPEC-508–511 and SPEC-606–607
+2. **In progress:** implement deterministic fake/replay adapters and make failure, cancellation, budget, and isolation cases pass
+3. **Completed for the development slice:** implement deep core modules for requirement assessment and evaluation without provider SDK leakage
 4. add PostgreSQL/outbox persistence and OIDC/internal authorization through accepted interfaces
 5. add production provider, Tool, and repository adapters and run the same conformance suites
 6. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development

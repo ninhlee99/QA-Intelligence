@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "operation_id": "operation-001",
+  "workspace_id": "workspace-001",
+  "actor_id": "actor-001",
+  "workspace_context": {
+    "schema_version": "1.0.0",
+    "workspace_id": "workspace-001",
+    "actor_id": "actor-001",
+    "actor_type": "human",
+    "roles": ["agent-operator"],
+    "permissions": ["agent:execute"],
+    "policy_version": "policy-1.0.0",
+    "request_id": "request-001",
+    "correlation_id": "correlation-001",
+    "audience": ["qa-intelligence"],
+    "environment": "test",
+    "issued_at": "2026-08-03T00:00:00.000Z",
+    "expires_at": "2026-08-03T01:00:00.000Z",
+    "issuer": "identity-test",
+    "integrity_proof": "fixture-proof"
+  },
+  "agent": {"id": "requirement-review-agent", "version": "1.0.0"},
+  "purpose": "Review requirement REQ-001",
+  "consequence_class": "advisory",
+  "input": {"requirement_ref": "REQ-001@1.0.0"},
+  "policy_version": "policy-1.0.0",
+  "budgets": {"max_steps": 10, "max_duration_seconds": 60, "max_tool_calls": 0, "max_retries": 0},
+  "deadline": "2026-08-03T01:00:00.000Z",
+  "idempotency_key": "start-001"
+}

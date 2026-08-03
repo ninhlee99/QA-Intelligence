@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/agent-run-event.schema.json",
+  "title": "Agent Run Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "run_id", "workspace_id", "sequence", "type", "occurred_at", "payload_schema", "payload"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "type": {"enum": ["run_requested", "run_resolved", "authorization_requested", "authorization_granted", "authorization_denied", "run_ready", "step_proposed", "step_authorized", "step_observed", "step_validated", "approval_requested", "run_suspended", "run_resumed", "run_validating", "run_completed", "run_failed", "run_cancelled", "run_timed_out", "run_blocked", "cleanup_completed", "cleanup_failed"]},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "payload_schema": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"const": "agent-run-event-payload"}, "version": {"const": "1.0.0"}}},
+    "payload": {"$ref": "https://qa-intelligence.local/schemas/agent-run-event-payload.schema.json"}
+  },
+  "allOf": [{"oneOf": [
+    {"properties": {"type": {"const": "run_requested"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_requested"}}}}},
+    {"properties": {"type": {"const": "run_resolved"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_resolved"}}}}},
+    {"properties": {"type": {"const": "authorization_requested"}, "payload": {"type": "object", "properties": {"event_type": {"const": "authorization_requested"}}}}},
+    {"properties": {"type": {"const": "authorization_granted"}, "payload": {"type": "object", "properties": {"event_type": {"const": "authorization_granted"}}}}},
+    {"properties": {"type": {"const": "authorization_denied"}, "payload": {"type": "object", "properties": {"event_type": {"const": "authorization_denied"}}}}},
+    {"properties": {"type": {"const": "run_ready"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_ready"}}}}},
+    {"properties": {"type": {"const": "step_proposed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "step_proposed"}}}}},
+    {"properties": {"type": {"const": "step_authorized"}, "payload": {"type": "object", "properties": {"event_type": {"const": "step_authorized"}}}}},
+    {"properties": {"type": {"const": "step_observed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "step_observed"}}}}},
+    {"properties": {"type": {"const": "step_validated"}, "payload": {"type": "object", "properties": {"event_type": {"const": "step_validated"}}}}},
+    {"properties": {"type": {"const": "approval_requested"}, "payload": {"type": "object", "properties": {"event_type": {"const": "approval_requested"}}}}},
+    {"properties": {"type": {"const": "run_suspended"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_suspended"}}}}},
+    {"properties": {"type": {"const": "run_resumed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_resumed"}}}}},
+    {"properties": {"type": {"const": "run_validating"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_validating"}}}}},
+    {"properties": {"type": {"const": "run_completed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_completed"}}}}},
+    {"properties": {"type": {"const": "run_failed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_failed"}}}}},
+    {"properties": {"type": {"const": "run_cancelled"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_cancelled"}}}}},
+    {"properties": {"type": {"const": "run_timed_out"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_timed_out"}}}}},
+    {"properties": {"type": {"const": "run_blocked"}, "payload": {"type": "object", "properties": {"event_type": {"const": "run_blocked"}}}}},
+    {"properties": {"type": {"const": "cleanup_completed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "cleanup_completed"}}}}},
+    {"properties": {"type": {"const": "cleanup_failed"}, "payload": {"type": "object", "properties": {"event_type": {"const": "cleanup_failed"}}}}}
+  ]}],
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/jsonValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}}
+      ]
+    }
+  }
+}

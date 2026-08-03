@@ -3,18 +3,29 @@
   "requirement_ref": "REQ-001@1.0.0",
   "workspace_id": "workspace-evaluation-001",
   "outcome": "completed",
+  "verdict": "changes_required",
   "findings": [
     {
       "id": "finding-001",
       "category": "testability",
       "severity": "high",
       "message": "The expected outcome is not observable.",
-      "evidence": ["rule-result:testability-observable-outcome"]
+      "evidence": ["rule-result:testability-observable-outcome"],
+      "next_action": "Define an observable acceptance criterion with a measurable expected state."
     }
   ],
   "questions": ["Which observable state proves the requirement is satisfied?"],
   "rule_results": ["testability-observable-outcome:failed"],
   "evidence": ["REQ-001@1.0.0", "rule-result:testability-observable-outcome"],
   "uncertainty": {"level": "medium", "reasons": ["Business intent cannot be inferred from available evidence"]},
-  "resolved_versions": {"agent": "requirement-review-agent@0.1.0", "skill": "assess-requirement-quality@0.1.0", "policy": "test-policy@0.1.0"}
+  "resolved_versions": {
+    "agent": "requirement-review-agent@0.1.0",
+    "skill": "assess-requirement-quality@0.1.0",
+    "prompt": "requirement-assessment-prompt@0.1.0",
+    "rule_set": "requirement-quality@0.1.0",
+    "knowledge_snapshot": "0.1.0",
+    "policy": "test-policy@0.1.0",
+    "input_schema": "requirement.schema.json@1.0.0",
+    "output_schema": "requirement-assessment.schema.json@1.0.0"
+  }
 }

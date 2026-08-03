@@ -7,5 +7,153 @@
   "permissions": ["requirement:read", "knowledge:read", "assessment:create"],
   "denied_permissions": ["requirement:approve", "knowledge:promote", "workspace:cross_read"],
   "policy_version": "test-policy-0.1.0",
-  "expires_at": "2099-01-01T00:00:00Z"
+  "expires_at": "2099-01-01T00:00:00Z",
+  "conformance_suite_version": "1.0.0",
+  "conformance_cases": [
+    {
+      "case_id": "identity-valid",
+      "version": "1.0.0",
+      "scenario": "valid",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "qa-intelligence-test",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["requirement:read", "knowledge:read", "assessment:create"],
+        "expires_at": "2099-01-01T00:00:00Z",
+        "integrity": "valid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-001",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "allow",
+        "reason": "policy_satisfied",
+        "fail_closed_on_validation_error": true,
+        "effective_workspace_id": "workspace-evaluation-001",
+        "effective_permissions": ["requirement:read", "knowledge:read", "assessment:create"]
+      }
+    },
+    {
+      "case_id": "identity-expired",
+      "version": "1.0.0",
+      "scenario": "expired",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "qa-intelligence-test",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["assessment:create"],
+        "expires_at": "2000-01-01T00:00:00Z",
+        "integrity": "valid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-001",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "deny",
+        "reason": "identity_expired",
+        "fail_closed_on_validation_error": true,
+        "effective_permissions": []
+      }
+    },
+    {
+      "case_id": "identity-wrong-audience",
+      "version": "1.0.0",
+      "scenario": "wrong_audience",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "untrusted-service",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["assessment:create"],
+        "expires_at": "2099-01-01T00:00:00Z",
+        "integrity": "valid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-001",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "deny",
+        "reason": "identity_wrong_audience",
+        "fail_closed_on_validation_error": true,
+        "effective_permissions": []
+      }
+    },
+    {
+      "case_id": "identity-tampered-claims",
+      "version": "1.0.0",
+      "scenario": "tampered_claims",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "qa-intelligence-test",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["assessment:create", "requirement:approve"],
+        "expires_at": "2099-01-01T00:00:00Z",
+        "integrity": "invalid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-001",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "deny",
+        "reason": "identity_integrity_invalid",
+        "fail_closed_on_validation_error": true,
+        "effective_permissions": []
+      }
+    },
+    {
+      "case_id": "identity-missing-permission",
+      "version": "1.0.0",
+      "scenario": "missing_permission",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "qa-intelligence-test",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["requirement:read", "knowledge:read"],
+        "expires_at": "2099-01-01T00:00:00Z",
+        "integrity": "valid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-001",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "deny",
+        "reason": "required_permission_missing",
+        "fail_closed_on_validation_error": true,
+        "effective_permissions": []
+      }
+    },
+    {
+      "case_id": "identity-cross-workspace",
+      "version": "1.0.0",
+      "scenario": "cross_workspace",
+      "claims": {
+        "issuer": "https://identity.test.invalid",
+        "audience": "qa-intelligence-test",
+        "subject": "reviewer-001",
+        "workspace_id": "workspace-evaluation-001",
+        "permissions": ["assessment:create"],
+        "expires_at": "2099-01-01T00:00:00Z",
+        "integrity": "valid-test-signature"
+      },
+      "operation": {
+        "workspace_id": "workspace-evaluation-002",
+        "required_permission": "assessment:create"
+      },
+      "expected": {
+        "decision": "deny",
+        "reason": "workspace_scope_mismatch",
+        "fail_closed_on_validation_error": true,
+        "effective_permissions": []
+      }
+    }
+  ]
 }
