@@ -26,10 +26,17 @@ Workspace owned by a single local parent runtime; PostgreSQL remains an
 optional adapter for the shared/team profile only. A provider-neutral
 `EvaluationCampaignRecordStore` seam, a working `SqliteEvaluationCampaignRecordStore`
 (via Node's `node:sqlite`), and a `PersistedEvaluationCampaignRepository`
-already exist and pass the shared contract suite. The PostgreSQL adapter
-exists as code but is tested only against a fake transaction manager; real
-driver integration and database conformance remain pending, consistent with
-step 5 below.
+already exist and pass the shared contract suite. The PostgreSQL adapter now
+also has a real `pg`-driver `PgTransactionManager` proven against a local
+PostgreSQL 18 server: the shared contract suite, a concurrent-writer race,
+Row-Level Security enforcement under a non-superuser application role, and
+state survival across a fresh transaction manager (restart-equivalent) all
+pass. Production identity (OIDC), a hosted/managed database target, and
+worker-loss conformance remain pending, consistent with step 5 below. A
+parallel `AgentRunRecordStore` seam and `SqliteAgentRunRecordStore` now give
+Agent Run state (not just Evaluation Campaign state) the same durable,
+contract-tested persistence path; `InMemoryAgentRuntime` itself has not yet
+been composed to write through this seam.
 
 ## Spec-Quality Update (2026-08-05)
 
@@ -90,10 +97,10 @@ The first deterministic development increment is implemented. The SPEC-508 devel
 Implement the vertical slice in this order:
 
 1. **In progress:** create contract and state-machine tests from SPEC-508–511 and SPEC-606–607; SPEC-508 execute/result is complete for the in-memory development slice
-2. **In progress:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, and cleanup cases pass, while cancellation, partial-failure, evidence-integrity, replay-divergence, and full isolation campaigns remain
+2. **Completed:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, cleanup, cancellation, replay divergence, and trial isolation cases all pass against `ScriptedEvaluationAdapter`
 3. **Completed for the in-memory multi-trial development slice:** implement deep core modules for requirement assessment, SPEC-511 trial orchestration, bounded campaign scheduling, evidence verification, cleanup, critical aggregation, and independent evaluation verdicts without provider SDK leakage
 4. **Completed for the in-memory retained-state development slice:** define the provider-neutral campaign repository seam, canonical lifecycle, immutable Workspace-scoped snapshots and events, optimistic revisions, idempotent commands, exact-version readiness, trial boundaries, and fail-closed recovery decisions
-5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; add the PostgreSQL 18 driver/runtime integration and OIDC/internal authorization, then prove real restart, concurrent-writer, RLS, outbox-claim, and transaction-boundary behavior
+5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server — OIDC/internal authorization and outbox-claim/publication conformance remain. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires; composing `InMemoryAgentRuntime` to write through it, and an Agent Run PostgreSQL adapter, remain
 6. add production provider, Tool, and repository adapters and run the same conformance suites
 7. add the host-neutral MCP facade and thin Codex, Claude Code, and Cursor packages after the relevant core capability passes development conformance
 8. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development
