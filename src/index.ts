@@ -31,6 +31,10 @@ export type {
   AgentRuntimeToolDefinition,
   AgentRuntimeToolRegistryDependencies,
 } from "./mcp/agent-runtime-tool-registry.js";
+
+export * from "./discovery/public.js";
+export { DiscoverProductContext } from "./discovery/discover-product-context.js";
+export type { IdFactory as DiscoveryIdFactory } from "./discovery/discover-product-context.js";
 export { WorkingMemoryKnowledgeSearch } from "./memory/working-memory.js";
 export { SessionMemory } from "./memory/session-memory.js";
 export type {
