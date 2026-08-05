@@ -35,8 +35,17 @@ pass. Production identity (OIDC), a hosted/managed database target, and
 worker-loss conformance remain pending, consistent with step 5 below. A
 parallel `AgentRunRecordStore` seam and `SqliteAgentRunRecordStore` now give
 Agent Run state (not just Evaluation Campaign state) the same durable,
-contract-tested persistence path; `InMemoryAgentRuntime` itself has not yet
-been composed to write through this seam.
+contract-tested persistence path. `InMemoryAgentRuntime` is now composed
+through this seam via `PersistedAgentRuntime`
+(`src/runtime/persisted-agent-runtime.ts`): a completed-command hook mirrors
+final state into the store without duplicating the state machine, and
+`restore()` proves a run started in one process is inspectable, and can be
+cancelled, from a fresh process backed by the same SQLite file — a real
+restart-survival test, not a mock. Fixing this also surfaced and corrected
+two assumptions in `SqliteAgentRunRecordStore` that had never been exercised
+against a real `InMemoryAgentRuntime`-produced record: a `start` command's
+initial revision is not always `1`, and event count is not always equal to
+revision.
 
 ## Spec-Quality Update (2026-08-05)
 

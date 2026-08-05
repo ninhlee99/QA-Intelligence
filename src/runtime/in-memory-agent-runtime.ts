@@ -39,7 +39,7 @@ export interface IdFactory {
   next(kind: "run" | "event"): string;
 }
 
-type RunRecord = {
+export type RunRecord = {
   snapshot: AgentRunSnapshot;
   events: readonly AgentRunEvent[];
   startRequest: AgentRunStartRequest;
@@ -48,6 +48,37 @@ type RunRecord = {
   result?: AgentRunResult;
   cancellation?: AgentRunTransition;
 };
+
+/**
+ * Identifies which public command produced a completed run record, plus the
+ * exact idempotency/revision context `AgentRunRecordStore.retainMutation`
+ * (SPEC-410 §5) requires. A command may append several intermediate events
+ * internally (e.g. `execute` moves through step_proposed → step_committed),
+ * but this hook fires exactly once per public method call, after that
+ * call's outcome is final — never per intermediate event — because
+ * `retainMutation` is an atomic-per-command seam, not a per-event log.
+ */
+export type CompletedRunCommand = Readonly<{
+  kind: "start" | "execute" | "approve" | "resume" | "cancel";
+  idempotency_key: string;
+  /** The revision the command expected before it ran; null only for `start`, which creates the run. */
+  expected_revision: number | null;
+}>;
+
+/**
+ * Called synchronously once per completed public command — the single choke
+ * point a durable-backed subclass (e.g. a future `PersistedAgentRuntime`
+ * composing an `AgentRunRecordStore`) can observe to mirror final state
+ * without this class's state machine being duplicated. Never called for
+ * reads, and never called for an intermediate step within a command. Errors
+ * thrown by the hook are not caught here — a persistence failure SHALL
+ * surface to the caller rather than be silently swallowed.
+ */
+export type RunPersistedHook = (
+  runId: string,
+  record: Readonly<RunRecord>,
+  command: CompletedRunCommand,
+) => void;
 
 type StoredCommand = Readonly<{
   fingerprint: string;
@@ -82,17 +113,64 @@ export class InMemoryAgentRuntime implements AgentRuntime {
   readonly #commands = new Map<string, StoredCommand>();
   readonly #executions = new Map<string, StoredExecution>();
   readonly #activeExecutions = new Map<string, AbortController>();
+  readonly #onRunPersisted: RunPersistedHook | undefined;
 
   constructor(
     clock: Clock,
     ids: IdFactory,
     authorizer: WorkspaceAuthorizer,
     executor?: AgentRunExecutor,
+    onRunPersisted?: RunPersistedHook,
   ) {
     this.#clock = clock;
     this.#ids = ids;
     this.#authorizer = authorizer;
     this.#executor = executor;
+    this.#onRunPersisted = onRunPersisted;
+  }
+
+  /**
+   * The single write path for `#runs` — every mutation site calls this
+   * instead of `#runs.set` directly. Intermediate steps within a command
+   * (e.g. `execute`'s step_proposed → step_committed) call only this; they
+   * do NOT fire `#onRunPersisted` (see `CompletedRunCommand` docstring).
+   */
+  #persist(runId: string, record: RunRecord): RunRecord {
+    this.#runs.set(runId, record);
+    return record;
+  }
+
+  /**
+   * Loads a run's in-process state from an external source (a durable
+   * record store, SPEC-410 §5) without going through `start` — for a
+   * `PersistedAgentRuntime`-style subclass restoring a run created in a
+   * prior process. Does not fire `#onRunPersisted` (nothing new happened;
+   * this mirrors already-durable state into memory) and does not re-derive
+   * `#starts`/`#commands`/`#executions` idempotency indexes, so a command
+   * replayed against a freshly seeded run re-authorizes and re-validates
+   * exactly as it would for any other in-flight run at that revision.
+   */
+  seed(runId: string, record: RunRecord): void {
+    this.#runs.set(runId, record);
+  }
+
+  /**
+   * Fires `#onRunPersisted` exactly once for a completed public command,
+   * reading whatever the run's final state ended up as (whether the command
+   * succeeded, failed, or left the run unchanged because it was rejected
+   * before any mutation). Does nothing if no hook is configured, or if the
+   * run was never created (a rejected `start` never reaches this point with
+   * a runId the caller could have referenced anyway).
+   */
+  #fireCompletedCommand(reference: AgentRunReference, command: CompletedRunCommand): void {
+    if (!this.#onRunPersisted) return;
+    const record = this.#runs.get(reference.run_id);
+    // Guards against a cross-Workspace reference: `#runs` is keyed only by
+    // run_id, so a denied cross-Workspace command must not leak another
+    // Workspace's record to the hook just because the run_id happened to
+    // resolve to it.
+    if (record === undefined || record.snapshot.workspace_id !== reference.workspace_id) return;
+    this.#onRunPersisted(reference.run_id, record, command);
   }
 
   async start(
@@ -191,7 +269,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       updated_at: events[4].occurred_at,
     });
 
-    this.#runs.set(runId, {
+    this.#persist(runId, {
       snapshot,
       events: Object.freeze([...events]),
       startRequest: immutableCopy(request),
@@ -199,6 +277,11 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       startFingerprint: fingerprint,
     });
     this.#starts.set(startKey, Object.freeze({ fingerprint, runId }));
+    this.#fireCompletedCommand(reference, {
+      kind: "start",
+      idempotency_key: request.idempotency_key,
+      expected_revision: null,
+    });
     return success(reference);
   }
 
@@ -219,6 +302,20 @@ export class InMemoryAgentRuntime implements AgentRuntime {
   }
 
   async execute(
+    reference: AgentRunReference,
+    execution: AgentRunExecution,
+  ): Promise<AgentRuntimeResult<AgentRunResult>> {
+    const beforeRevision = this.#find(reference);
+    const result = await this.#executeCommand(reference, execution);
+    this.#fireCompletedCommand(reference, {
+      kind: "execute",
+      idempotency_key: execution.idempotency_key,
+      expected_revision: beforeRevision.ok ? beforeRevision.value.snapshot.revision : null,
+    });
+    return result;
+  }
+
+  async #executeCommand(
     reference: AgentRunReference,
     execution: AgentRunExecution,
   ): Promise<AgentRuntimeResult<AgentRunResult>> {
@@ -513,7 +610,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     reference: AgentRunReference,
     approval: AgentRunApproval,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
-    return this.#command(
+    const result = await this.#command(
       "approve",
       reference,
       approval,
@@ -524,13 +621,19 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       "approve Agent run",
       "controlled_side_effect",
     );
+    this.#fireCompletedCommand(reference, {
+      kind: "approve",
+      idempotency_key: approval.idempotency_key,
+      expected_revision: approval.expected_revision,
+    });
+    return result;
   }
 
   async resume(
     reference: AgentRunReference,
     checkpoint: AgentRunResume,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
-    return this.#command(
+    const result = await this.#command(
       "resume",
       reference,
       checkpoint,
@@ -541,9 +644,28 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       "resume Agent run",
       "reversible",
     );
+    this.#fireCompletedCommand(reference, {
+      kind: "resume",
+      idempotency_key: checkpoint.idempotency_key,
+      expected_revision: checkpoint.expected_revision,
+    });
+    return result;
   }
 
   async cancel(
+    reference: AgentRunReference,
+    cancellation: AgentRunCancellation,
+  ): Promise<AgentRuntimeResult<AgentRunTransition>> {
+    const result = await this.#cancelCommand(reference, cancellation);
+    this.#fireCompletedCommand(reference, {
+      kind: "cancel",
+      idempotency_key: cancellation.idempotency_key,
+      expected_revision: cancellation.expected_revision,
+    });
+    return result;
+  }
+
+  async #cancelCommand(
     reference: AgentRunReference,
     cancellation: AgentRunCancellation,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
@@ -962,12 +1084,12 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       }),
       events: Object.freeze([...record.events, event]),
     };
-    this.#runs.set(reference.run_id, updated);
+    this.#persist(reference.run_id, updated);
     return updated;
   }
 
   #storeResult(runId: string, record: RunRecord, result: AgentRunResult): void {
-    this.#runs.set(runId, { ...record, result });
+    this.#persist(runId, { ...record, result });
   }
 
   /**
@@ -997,7 +1119,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     );
     const suspended = this.#find(reference);
     if (suspended.ok) {
-      this.#runs.set(reference.run_id, {
+      this.#persist(reference.run_id, {
         ...suspended.value,
         snapshot: freezeSnapshot({ ...suspended.value.snapshot, checkpoint }),
       });
@@ -1024,7 +1146,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         updated_at: this.#clock.now().toISOString(),
       }),
     };
-    this.#runs.set(reference.run_id, updated);
+    this.#persist(reference.run_id, updated);
     return updated;
   }
 
@@ -1131,7 +1253,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       evidence: Object.freeze([...previous.evidence, `event://${event.event_id}`]),
       updated_at: event.occurred_at,
     });
-    this.#runs.set(reference.run_id, {
+    this.#persist(reference.run_id, {
       ...record,
       snapshot,
       events: Object.freeze([...record.events, event]),

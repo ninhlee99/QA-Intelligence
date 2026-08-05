@@ -393,7 +393,14 @@ export class AssessRequirementQuality {
       requirement_ref: `${input.request.requirement.id}@${input.request.requirement.version}`,
       workspace_id: input.request.workspace_id,
       outcome: input.outcome,
-      verdict: input.verdict,
+      // SPEC-203 §7/§9: "A score SHALL NOT override a critical finding" /
+      // "critical failures block acceptance" — enforced explicitly here,
+      // as the single choke point before any verdict leaves this Skill, so
+      // no future branch can accidentally let a critical finding coexist
+      // with a passing verdict.
+      verdict: input.findings.some((finding) => finding.severity === "critical")
+        ? "rejected"
+        : input.verdict,
       findings: [...input.findings],
       questions: [...input.questions],
       rule_results: [...input.ruleResults],

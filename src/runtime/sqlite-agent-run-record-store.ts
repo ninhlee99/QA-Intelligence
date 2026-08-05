@@ -351,15 +351,22 @@ function validateMutation(request: RetainAgentRunMutationRequest): string | unde
   if ((request.expected_revision === null) !== (request.command.kind === "start")) {
     return "Only a start command may omit an expected revision.";
   }
-  const expectedNextRevision = request.expected_revision === null
-    ? 1
-    : request.expected_revision + 1;
-  if (
-    !Number.isInteger(expectedNextRevision) ||
-    snapshot.revision !== expectedNextRevision ||
-    event.sequence !== request.record.events.length
-  ) {
-    return "The retained record must contain exactly the next Agent Run revision and event sequence.";
+  if (event.sequence !== request.record.events.length) {
+    return "The retained record must contain exactly the next Agent Run event sequence.";
+  }
+  if (request.expected_revision === null) {
+    // A `start` command's initial revision is whatever the Agent Runtime
+    // assigned while resolving/authorizing the run before it became
+    // observable (e.g. InMemoryAgentRuntime reaches revision 3 after 5
+    // internal events) — this store SHALL NOT assume revision 1, only that
+    // it is a positive integer with no prior mutation on record.
+    if (!Number.isInteger(snapshot.revision) || snapshot.revision < 1) {
+      return "A start command's initial revision must be a positive integer.";
+    }
+    return undefined;
+  }
+  if (snapshot.revision !== request.expected_revision + 1) {
+    return "The retained record must advance the Agent Run revision by exactly one.";
   }
   return undefined;
 }
@@ -404,11 +411,14 @@ function decodeRecord(
   ) {
     return undefined;
   }
+  // Revision (an Agent Runtime transition counter) and event count are
+  // independent: InMemoryAgentRuntime's `start` alone reaches revision 3
+  // after 5 internal events, so this store SHALL NOT assume they're equal —
+  // only that events are contiguously sequenced from 1.
   if (
     !value.events.every(
       (event, index) => isAgentRunEvent(event) && event.sequence === index + 1,
-    ) ||
-    value.events.length !== snapshot.revision
+    )
   ) {
     return undefined;
   }

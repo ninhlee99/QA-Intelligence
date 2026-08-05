@@ -541,3 +541,88 @@ test("retains authorization, governed knowledge, rule and provider evidence", as
     assert.ok(result.value.evidence.includes("REQ-1@1.0.0"));
   }
 });
+
+test("a critical finding always rejects, even when the rule outcome itself reports satisfied (SPEC-203 §7/§9)", async () => {
+  const rules = new RuleStub({
+    ok: true,
+    value: {
+      outcome: "satisfied",
+      rule_set: { id: "requirement-quality", version: "1.0.0" },
+      rule_versions: [{ id: "requirement-cross-workspace-safety", version: "1.0.0" }],
+      matched_conditions: ["requirement references another Workspace's data"],
+      relevant_facts: ["REQ-1@1.0.0#scope"],
+      outputs: {
+        findings: [
+          {
+            category: "workspace_safety",
+            severity: "critical",
+            message: "The requirement references data outside its own Workspace.",
+            evidence: ["REQ-1@1.0.0#scope"],
+            next_action: "Remove the cross-Workspace reference before this requirement can be accepted.",
+          },
+        ],
+      },
+      conflicts: [],
+      missing_facts: [],
+      explanation_trace: ["deterministic Workspace-safety rule matched"],
+      policy_version: "policy-3",
+      duration_ms: 0,
+    },
+  });
+  const { reviewer } = createReviewer(authorized(), rules);
+
+  const result = await reviewer.review(reviewRequest());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.verdict, "rejected");
+    assert.equal(
+      result.value.findings.some((finding) => finding.severity === "critical"),
+      true,
+    );
+  }
+});
+
+test("a critical finding rejects even alongside other lower-severity findings, not just when it stands alone", async () => {
+  const rules = new RuleStub({
+    ok: true,
+    value: {
+      outcome: "not_satisfied",
+      rule_set: { id: "requirement-quality", version: "1.0.0" },
+      rule_versions: [{ id: "requirement-has-acceptance-criteria", version: "1.0.0" }],
+      matched_conditions: ["acceptance_criteria is empty", "requirement references another Workspace's data"],
+      relevant_facts: ["REQ-1@1.0.0#acceptance_criteria"],
+      outputs: {
+        findings: [
+          {
+            category: "missing_acceptance_criterion",
+            severity: "high",
+            message: "The requirement has no observable acceptance criterion.",
+            evidence: ["REQ-1@1.0.0#acceptance_criteria"],
+            next_action: "Define an observable and verifiable acceptance criterion.",
+          },
+          {
+            category: "workspace_safety",
+            severity: "critical",
+            message: "The requirement references data outside its own Workspace.",
+            evidence: ["REQ-1@1.0.0#scope"],
+            next_action: "Remove the cross-Workspace reference before this requirement can be accepted.",
+          },
+        ],
+      },
+      conflicts: [],
+      missing_facts: [],
+      explanation_trace: ["deterministic rules failed"],
+      policy_version: "policy-3",
+      duration_ms: 0,
+    },
+  });
+  const { reviewer } = createReviewer(authorized(), rules);
+
+  const result = await reviewer.review(reviewRequest());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.verdict, "rejected");
+  }
+});
