@@ -1,0 +1,17 @@
+{
+  "name": "qa-intelligence",
+  "version": "0.1.0-dev",
+  "description": "QA Intelligence: governed requirement review via the QA Intelligence Agent Runtime (development slice — see hosts/README.md). This package carries no business logic; it only connects Claude Code to the QA Intelligence MCP server (ADR-016).",
+  "author": {
+    "name": "QA Intelligence"
+  },
+  "mcpServers": {
+    "qa-intelligence": {
+      "command": "node",
+      "args": ["../../../dist/src/mcp/dev-entrypoint.js"],
+      "env": {
+        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-code-dev"
+      }
+    }
+  }
+}

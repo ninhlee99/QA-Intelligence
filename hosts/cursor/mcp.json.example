@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "qa-intelligence": {
+      "command": "node",
+      "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
+      "env": {
+        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev"
+      }
+    }
+  }
+}

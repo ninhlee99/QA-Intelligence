@@ -1,0 +1,16 @@
+{
+  "name": "qa-intelligence",
+  "version": "0.1.0-dev",
+  "description": "QA Intelligence: governed requirement review via the QA Intelligence Agent Runtime (development slice — see hosts/README.md). This package carries no business logic; it only connects Codex to the QA Intelligence MCP server (ADR-016).",
+  "mcp": {
+    "servers": {
+      "qa-intelligence": {
+        "command": "node",
+        "args": ["../../../dist/src/mcp/dev-entrypoint.js"],
+        "env": {
+          "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-codex-dev"
+        }
+      }
+    }
+  }
+}
