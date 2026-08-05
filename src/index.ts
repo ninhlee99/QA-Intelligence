@@ -15,6 +15,7 @@ export type { PgTransactionManagerDependencies } from "./evaluation/pg-transacti
 export * from "./runtime/agent-run-record-store.js";
 export { SqliteAgentRunRecordStore } from "./runtime/sqlite-agent-run-record-store.js";
 export type { SqliteAgentRunRecordStoreDependencies } from "./runtime/sqlite-agent-run-record-store.js";
+export { defaultAgentRunBudgets, resolveAgentRunBudgets } from "./runtime/default-budgets.js";
 export { WorkingMemoryKnowledgeSearch } from "./memory/working-memory.js";
 export { SessionMemory } from "./memory/session-memory.js";
 export type {

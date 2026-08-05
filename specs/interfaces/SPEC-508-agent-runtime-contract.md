@@ -61,11 +61,12 @@ apply the following default ceilings keyed by the request's consequence class
 (SPEC-106, SPEC-308) unless an explicit suite-level or request-level policy
 overrides them within governed bounds:
 
-| Consequence class          | Max `Plan→Act→Observe→Validate` iterations | Token budget (reasoning input+output) | Tool-call budget | Wall-clock deadline |
+| Consequence class (SPEC-106) | Max `Plan→Act→Observe→Validate` iterations | Token budget (reasoning input+output) | Tool-call budget | Wall-clock deadline |
 |-----------------------------|:---:|:---:|:---:|:---:|
-| Low (reversible, read-only) | 8   | 40,000  | 10 | 2 minutes  |
-| Medium (reversible, side-effecting) | 20  | 150,000 | 40 | 10 minutes |
-| High (irreversible or approval-gated) | 40  | 400,000 | 100 | 30 minutes |
+| `advisory` | 8   | 40,000  | 10 | 2 minutes  |
+| `reversible` | 20  | 150,000 | 40 | 10 minutes |
+| `controlled_side_effect` | 20  | 150,000 | 40 | 10 minutes |
+| `high_consequence` | 40  | 400,000 | 100 | 30 minutes |
 
 A request MAY declare a stricter (lower) budget than its class default. A
 request MAY exceed a class default only through an explicit, evidenced
