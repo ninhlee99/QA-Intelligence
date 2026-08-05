@@ -80,6 +80,29 @@ product capabilities (see Implementation Sequence, step 6 and beyond) so
 that speed, cost, and memory are not retrofitted after twelve more
 capabilities have already been built without them.
 
+## Memory Component (SPEC-108)
+
+`WorkingMemoryKnowledgeSearch` (§4.1 run-scoped cache, AP-064 reuse) and
+`SessionMemory` (§7 save-decision policy and risk-tiered fast path, §8
+Workspace isolation, §9 fail-safe reads) are implemented as a shared module
+in `src/memory/`, not per-capability. Two remaining Definition-of-Done items
+are now implemented: `evaluateFailureAvoidanceCandidate()`
+(`src/memory/failure-avoidance.ts`) applies §7.3 — a one-off, project-scoped,
+low-consequence causal mistake from a defect, incorrect verdict, blocked or
+failed execution, or a human-corrected decision is retained as an avoidance
+fact through the same §7.2 tiering; a recurring or generalizable mistake is
+declined and left to SPEC-105 §9a's governed Learning Engine workflow rather
+than retained here. `reportMemoryObservability()`
+(`src/memory/observability.ts`) satisfies §11 by aggregating Working
+Memory's cache/reuse hit rate with Session Memory's lifetime promotion,
+expiry, async-rejection, and decline-by-reason counters into one report per
+Workspace. Corpus-scale ranking (§6) remains unimplemented — there is no
+Workspace yet with an accepted Knowledge Store large enough to require
+bounded ranking — and Session Memory remains an in-process store rather than
+a durable, contract-tested seam like the Evaluation Campaign and Agent Run
+record-stores; no Skill yet calls the failure-avoidance path from a real
+run.
+
 ## Current Phase — Requirement Review Tracer-Bullet Implementation
 
 The documentation baseline has passed ownership, semantic alignment, dependency, traceability, schema, example, lifecycle, and governance review. The selected advisory tracer bullet is now in development: its deterministic core, test adapters, schema validator, evaluation guardrails, in-memory runtime contract, and runtime-owned Requirement Review execution path exist. Source code remains subordinate to accepted contracts.
