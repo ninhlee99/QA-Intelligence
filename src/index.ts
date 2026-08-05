@@ -10,6 +10,19 @@ export * from "./evaluation/evaluation-campaign-record-store.js";
 export * from "./evaluation/postgres-evaluation-campaign-record-store.js";
 export * from "./evaluation/sqlite-evaluation-campaign-record-store.js";
 export * from "./evaluation/persisted-evaluation-campaign-repository.js";
+export { PgTransactionManager } from "./evaluation/pg-transaction-manager.js";
+export type { PgTransactionManagerDependencies } from "./evaluation/pg-transaction-manager.js";
+export * from "./runtime/agent-run-record-store.js";
+export { SqliteAgentRunRecordStore } from "./runtime/sqlite-agent-run-record-store.js";
+export type { SqliteAgentRunRecordStoreDependencies } from "./runtime/sqlite-agent-run-record-store.js";
+export { WorkingMemoryKnowledgeSearch } from "./memory/working-memory.js";
+export { SessionMemory } from "./memory/session-memory.js";
+export type {
+  ApplicabilityScope,
+  SessionMemoryCandidate,
+  SessionMemoryDecision,
+  SessionMemoryEntry,
+} from "./memory/session-memory.js";
 
 export {
   AssessRequirementQuality,
