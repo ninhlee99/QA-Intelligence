@@ -357,6 +357,39 @@ def main() -> int:
         if not validate_subset(instance, schema, schema):
             failures.append(f"negative schema example unexpectedly passed: {example_name}")
 
+    # GOV-012 §Minimum Definition of Ready to Implement / PB-011 / PB-012:
+    # an executable Agent or Skill package may only live under agents/ or
+    # skills/ once at least one GOV-012 gate record exists for it. This does
+    # not evaluate whether the gates pass, or match a specific package to a
+    # specific record — that judgment stays in governance/reviews/ — it only
+    # blocks a promoted package from existing with zero linked gate evidence
+    # anywhere in the repository.
+    gate_records = sorted((ROOT / "governance" / "reviews").rglob("GOV-012_GATE_RECORD.yaml"))
+    gate_subject_stems: set[str] = set()
+    for gate_path in gate_records:
+        gate_data = yaml.safe_load(gate_path.read_text(encoding="utf-8")) or {}
+        if gate_data.get("status") not in {"in_progress", "approved", "pass"}:
+            failures.append(f"gate record {gate_path.relative_to(ROOT)}: missing or unrecognized status")
+        subject = gate_data.get("subject")
+        if not isinstance(subject, dict):
+            failures.append(f"gate record {gate_path.relative_to(ROOT)}: missing subject")
+            continue
+        for value in subject.values():
+            if isinstance(value, str):
+                # "requirement-review-agent@0.1.0" -> "requirement-review-agent"
+                gate_subject_stems.add(value.split("@", 1)[0])
+
+    for promotion_root in ("agents", "skills"):
+        for path in sorted((ROOT / promotion_root).glob("*")):
+            if not path.is_file() or path.name == "README.md":
+                continue
+            stem = path.stem
+            if stem not in gate_subject_stems:
+                failures.append(
+                    f"promotion {path.relative_to(ROOT)}: no GOV-012_GATE_RECORD.yaml subject matches "
+                    f"'{stem}' (known gate subjects: {sorted(gate_subject_stems) or 'none'})"
+                )
+
     report = {
         "outcome": "pass" if not failures else "fail",
         "yaml_files": yaml_count,
