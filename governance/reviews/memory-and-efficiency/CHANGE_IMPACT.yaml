@@ -1,0 +1,54 @@
+id: IMPACT-MEMORY-AND-EFFICIENCY-001
+version: 1.0.0
+date: 2026-08-05
+status: accepted
+authority: Repository Owner explicit request to improve spec speed, cost efficiency, test rigor, and agent memory without narrowing the comprehensive test-agent vision
+change:
+  title: Add Memory component, Proportional Rigor, and Context/Cost Efficiency principles
+  supersedes: []
+  preserves:
+    - comprehensive QA/QC and experienced Senior Test Engineer product identity
+    - Rules Before Prompts precedence (ADR-002)
+    - Knowledge Before Memory (AP-003) — memory remains non-authoritative
+    - full evidence and governance weight for medium/high-consequence operations
+    - Controlled Learning human-approval gate for high-consequence knowledge (ADR-010)
+    - Workspace isolation in all new memory tiers
+  corrects:
+    - foundation layer had no performance/cost goal to counterbalance evidence/audit defaults
+    - token/time/cost budgets were named but never given defaults or a table
+    - Memory was a named Scope item in SPEC-001 with zero owning specification
+    - every operation paid full pipeline stages/evidence regardless of consequence
+    - AI-testing coverage dimensions were independently enumerated in SPEC-206/107/213 with drift risk
+    - flaky test-execution semantics had no canonical owner across SPEC-209/210/107
+affected_artifacts:
+  decisions: [ADR-018]
+  specifications:
+    new: [SPEC-108]
+    amended: [SPEC-001, SPEC-103, SPEC-107, SPEC-206, SPEC-209, SPEC-210, SPEC-213, SPEC-309, SPEC-501, SPEC-508]
+  governance:
+    amended: [ARCHITECTURE_PRINCIPLES.md]
+    new_principles: [AP-063, AP-064]
+  implementation:
+    - none yet; this change is specification-only per GOV-012 sequencing
+risk_tiers:
+  fast_path_scope:
+    applies_to: low-consequence, reversible, read-only operations only
+    does_not_apply_to: medium/high-consequence or irreversible operations, which retain full SPEC-309/SPEC-308/SPEC-508 pipeline unchanged
+  memory_promotion_scope:
+    applies_to: low-consequence observations (e.g. UI selectors, transient config) eligible for audited async-review auto-promotion into working memory tier
+    does_not_apply_to: business rules, policy, anything affecting test verdicts — unchanged synchronous Knowledge Candidate lifecycle (SPEC-102, SPEC-105, AP-008)
+risks_and_controls:
+  - risk: fast path is misused to skip evidence on a high-consequence step inside an otherwise low-risk Skill
+    control: proportional rigor is scoped per-operation by the existing consequence classification (SPEC-106/SPEC-308), not per-Skill; every step still records a stable step ID and outcome
+  - risk: working-memory tier becomes a backdoor for unreviewed knowledge to influence verdicts
+    control: SPEC-108 SHALL restrict auto-promotion to low-consequence classification only, with mandatory audit log and async review; verdict-affecting knowledge is explicitly excluded and must be a governed Knowledge Object
+  - risk: context/cache reuse (AP-064) serves stale durable-reference data
+    control: reuse is gated on the underlying durable references being unchanged; any change invalidates reuse and forces re-resolution, consistent with AP-060's existing cache-staleness review question
+  - risk: new SPEC-108 duplicates or conflicts with SPEC-103 Knowledge Store responsibilities
+    control: SPEC-108 explicitly scoped as the retrieval/session layer in front of Knowledge Store, not a replacement; AP-003 unchanged
+  - risk: consolidating AI-testing coverage and flaky-outcome ownership into SPEC-213/SPEC-210 loses context readers relied on in SPEC-206/107/209
+    control: referencing specs keep a summary line and an explicit cross-reference, not a bare pointer
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: blocked_pending_GOV_012_evidence

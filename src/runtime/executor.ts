@@ -14,6 +14,8 @@ export type AgentRunExecutorInput = Readonly<{
   reference: AgentRunReference;
   start_request: AgentRunStartRequest;
   execution: AgentRunExecution;
+  /** Aborted when the runtime cancels the run; the executor SHALL request bounded provider/Tool cancellation on abort. */
+  signal: AbortSignal;
 }>;
 
 /**
@@ -34,6 +36,8 @@ export type AgentRunExecutorValue = Readonly<{
   usage: AgentRunResultUsage;
   evidence: readonly string[];
   cleanup_status: CleanupStatus;
+  /** SPEC-606 §6 required evidence: Knowledge Candidates proposed during the run, not yet promoted. */
+  knowledge_candidates: readonly string[];
 }>;
 
 export type AgentRunExecutorResult = StableResult<

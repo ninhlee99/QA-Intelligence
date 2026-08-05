@@ -14,6 +14,7 @@ related_adrs:
   - ADR-001
   - ADR-004
   - ADR-008
+  - ADR-017
 last_updated: 2026-08-03
 approved_by:
   - Repository Owner through explicit instruction
@@ -77,6 +78,15 @@ Contract tests SHALL cover exact-version retrieval, compatibility, extension val
 
 ## 9. Implementation Baseline and Operability
 
-The canonical ontology serialization is the versioned YAML structure under `ontology/`, indexed by `meta/ONTOLOGY_INDEX.yaml`; it defines semantics, not persistence layout. PostgreSQL from ADR-012 MAY materialize releases and lookup indexes, but repository callers depend only on SPEC-501. Releases are distributed by exact version and integrity digest; caches are invalidated by version, never by silent mutation. Metrics SHALL expose version resolution, cache freshness, validation failures, incompatible extensions, integrity failures, and Workspace denial. Alternative persistence or distribution requires contract conformance and migration evidence, not a change to ontology meaning.
+The canonical ontology serialization is the versioned YAML structure under
+`ontology/`, indexed by `meta/ONTOLOGY_INDEX.yaml`; it defines semantics, not
+persistence layout. SQLite or optional PostgreSQL adapters from ADR-017 MAY
+materialize releases and lookup indexes, but repository callers depend only on
+SPEC-501. Releases are distributed by exact version and integrity digest;
+caches are invalidated by version, never by silent mutation. Metrics SHALL
+expose version resolution, cache freshness, validation failures, incompatible
+extensions, integrity failures, and Workspace denial. Alternative persistence
+or distribution requires contract conformance and migration evidence, not a
+change to ontology meaning.
 
 No unresolved implementation decision blocks this accepted component contract.

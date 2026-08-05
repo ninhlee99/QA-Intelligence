@@ -5,8 +5,8 @@
 ```text
 Foundation                  accepted
 Governance                  GOV-001–012 accepted
-Architecture Decisions      ADR-001–016 accepted
-Knowledge Specifications    SPEC-101–107 accepted
+Architecture Decisions      ADR-001–018 accepted
+Knowledge Specifications    SPEC-101–108 accepted
 Product Specifications      SPEC-201–213 accepted
 Architecture Specifications SPEC-301–310 accepted
 Interface Specifications    SPEC-501–511 accepted
@@ -18,6 +18,61 @@ Rules and reference          accepted baseline
 Playbooks and AI guidance    accepted baseline
 ```
 
+## Persistence Architecture Note
+
+Persistence is local-first per ADR-017 (2026-08-03), superseding ADR-012's
+PostgreSQL-only assumption. The default profile is one SQLite database per
+Workspace owned by a single local parent runtime; PostgreSQL remains an
+optional adapter for the shared/team profile only. A provider-neutral
+`EvaluationCampaignRecordStore` seam, a working `SqliteEvaluationCampaignRecordStore`
+(via Node's `node:sqlite`), and a `PersistedEvaluationCampaignRepository`
+already exist and pass the shared contract suite. The PostgreSQL adapter
+exists as code but is tested only against a fake transaction manager; real
+driver integration and database conformance remain pending, consistent with
+step 5 below.
+
+## Spec-Quality Update (2026-08-05)
+
+A critical review of the accepted spec baseline (governance/reviews/memory-and-efficiency/CHANGE_IMPACT.yaml)
+found the corpus consistently optimized for auditability without a
+counterbalancing requirement for speed, cost, or memory. ADR-018 records the
+correction:
+
+- **SPEC-108 (Memory Model)**, new: Memory is now a first-class,
+  specified component — a bounded, non-authoritative retrieval and
+  working/session-memory layer in front of the Knowledge Store. It requires
+  the Agent to actively decide what is worth retaining (not retain
+  everything by default), separates project-scoped from cross-project/global
+  applicability, and gives recurring mistakes a bounded path to become
+  avoidance facts without bypassing governed learning for anything that
+  could affect a verdict, rule, or policy.
+- **AP-063 (Proportional Rigor)** and **AP-064 (Context and Cost
+  Efficiency)**, new architecture principles: low-consequence, reversible
+  operations may use a reduced-stage fast path; context and retrieval reuse
+  within a run is now required, not merely permitted; SPEC-508 carries a
+  concrete default token/time/Tool-call budget table keyed by consequence
+  class instead of unquantified budget vocabulary.
+- **SSOT corrections**: SPEC-107 §5 is now the single canonical owner of
+  AI/Agent adversarial-testing coverage dimensions (SPEC-206 §9 and
+  SPEC-213 §3.1 reference it); SPEC-210 §4 is now the single canonical owner
+  of the execution-outcome vocabulary, including a new first-class `flaky`
+  outcome distinct from `indeterminate` and `infrastructure_error`
+  (SPEC-209 §7 references it).
+- **SPEC-105 (Learning Engine)** gained an explicit mistake/failure-
+  recurrence-prevention section (§9a) distinguishing a one-off mistake
+  (handled by SPEC-108's bounded avoidance-fact path) from a recurring
+  pattern (which still requires the full governed candidate lifecycle).
+
+This is a specification-only change. It does not alter ADR-015's
+tracer-bullet exclusions or ADR-017's persistence decision, and it does not
+weaken evidence or governance for medium/high-consequence operations.
+Implementation of the Memory component and the fast path is not required
+before GOV-012 evidence for the current Requirement Review tracer-bullet
+scope, but SHOULD be adopted before the platform expands to the remaining
+product capabilities (see Implementation Sequence, step 6 and beyond) so
+that speed, cost, and memory are not retrofitted after twelve more
+capabilities have already been built without them.
+
 ## Current Phase — Requirement Review Tracer-Bullet Implementation
 
 The documentation baseline has passed ownership, semantic alignment, dependency, traceability, schema, example, lifecycle, and governance review. The selected advisory tracer bullet is now in development: its deterministic core, test adapters, schema validator, evaluation guardrails, in-memory runtime contract, and runtime-owned Requirement Review execution path exist. Source code remains subordinate to accepted contracts.
@@ -28,7 +83,7 @@ Specification acceptance is not implementation conformance or release approval. 
 
 Start with the advisory `Requirement Review Agent` and its `Assess Requirement Quality` Skill because it exercises Discovery, deterministic rules before LLM reasoning, governed knowledge retrieval, evidence, uncertainty, evaluation, and Workspace isolation without production write side effects.
 
-The first deterministic development increment is implemented. The SPEC-508 development runtime now executes retained input through the Requirement Review Agent/Skill, validates output, evidence requirements, exact versions, Skill/Tool authority, budgets, and cleanup, and retains the immutable terminal result. The SPEC-511 provider-neutral Interface and scripted deterministic/replay Adapter enforce common envelopes, operation-and-resource-scoped Workspace authorization, canonical request digests, idempotency, strict UTC deadlines, late-result retention, capability declaration, observation-only execution results, and fail-closed cleanup. The Evaluation Campaign Runner orchestrates one isolated deterministic trial, while the Evaluation Campaign Coordinator validates and schedules a multi-trial matrix with bounded parallelism, stable declared ordering, exact cross-trial versions, critical-invariant dominance, cancellation stop, cleanup consistency, and one independent Evaluation Manager analysis. A provider-neutral retained campaign repository contract and in-memory conformance baseline now retain immutable Workspace-scoped snapshots and attributable events, enforce canonical lifecycle transitions with optimistic revisions and idempotent commands, pin versions before readiness, and fail closed during recovery when active effects cannot be reconciled. The ADR-012 PostgreSQL record-store tracer bullet now defines an atomic campaign/event/command/outbox transaction adapter plus up/down migrations with forced Workspace RLS; deterministic transaction tests cover idempotent replay, optimistic update, concurrent-command reconciliation, corrupt JSONB, and outbox rollback. PostgreSQL 18 driver integration, real database concurrency/RLS/worker-loss/restart conformance, Judge orchestration, production identity, and production adapters remain pending. G1–G4 must pass before enablement beyond development.
+The first deterministic development increment is implemented. The SPEC-508 development runtime now executes retained input through the Requirement Review Agent/Skill, validates output, evidence requirements, exact versions, Skill/Tool authority, budgets, and cleanup, and retains the immutable terminal result. The SPEC-511 provider-neutral Interface and scripted deterministic/replay Adapter enforce common envelopes, operation-and-resource-scoped Workspace authorization, canonical request digests, idempotency, strict UTC deadlines, late-result retention, capability declaration, observation-only execution results, and fail-closed cleanup. The Evaluation Campaign Runner orchestrates one isolated deterministic trial, while the Evaluation Campaign Coordinator validates and schedules a multi-trial matrix with bounded parallelism, stable declared ordering, exact cross-trial versions, critical-invariant dominance, cancellation stop, cleanup consistency, and one independent Evaluation Manager analysis. A provider-neutral retained campaign repository contract and in-memory conformance baseline now retain immutable Workspace-scoped snapshots and attributable events, enforce canonical lifecycle transitions with optimistic revisions and idempotent commands, pin versions before readiness, and fail closed during recovery when active effects cannot be reconciled. Per ADR-017 (superseding ADR-012 as the default persistence decision), a `SqliteEvaluationCampaignRecordStore` now provides a working, tested, local-first per-Workspace SQLite adapter behind the same `EvaluationCampaignRecordStore` seam, and a `PostgresEvaluationCampaignRecordStore` remains available as the optional shared/team-profile adapter — both define an atomic campaign/event/command/outbox transaction model plus up/down migrations with forced Workspace RLS for the PostgreSQL path; deterministic transaction tests cover idempotent replay, optimistic update, concurrent-command reconciliation, corrupt JSONB, and outbox rollback for both adapters against the shared contract suite. PostgreSQL 18 real-driver integration and real database concurrency/RLS/worker-loss/restart conformance (the PostgreSQL adapter is currently proven only against a fake transaction manager), Judge orchestration, production identity, and production adapters remain pending. G1–G4 must pass before enablement beyond development.
 
 ## Implementation Sequence
 

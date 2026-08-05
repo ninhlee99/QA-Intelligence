@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["event_type", "operation_id"],
   "properties": {
-    "event_type": {"enum": ["run_requested", "run_resolved", "authorization_requested", "authorization_granted", "authorization_denied", "run_ready", "step_proposed", "step_authorized", "step_observed", "step_validated", "approval_requested", "run_suspended", "run_resumed", "run_validating", "run_completed", "run_failed", "run_cancelled", "run_timed_out", "run_blocked", "cleanup_completed", "cleanup_failed"]},
+    "event_type": {"enum": ["run_requested", "run_resolved", "authorization_requested", "authorization_granted", "authorization_denied", "run_ready", "step_proposed", "step_authorized", "step_observed", "step_validated", "step_committed", "approval_requested", "run_suspended", "run_resumed", "run_validating", "run_completed", "run_failed", "run_cancelled", "run_timed_out", "run_blocked", "cleanup_completed", "cleanup_failed"]},
     "operation_id": {"type": "string", "minLength": 1},
     "actor_id": {"type": "string", "minLength": 1},
     "purpose": {"type": "string", "minLength": 1},

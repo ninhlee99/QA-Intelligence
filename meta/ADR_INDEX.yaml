@@ -1,5 +1,5 @@
 generated: true
-generated_at: 2026-08-03
+generated_at: 2026-08-05
 source_root: ../adr
 artifacts:
   - { id: ADR-001, status: accepted, path: ../adr/ADR-001-knowledge-store.md }
@@ -13,8 +13,10 @@ artifacts:
   - { id: ADR-009, status: accepted, path: ../adr/ADR-009-execution-engine-abstraction.md }
   - { id: ADR-010, status: accepted, path: ../adr/ADR-010-controlled-learning.md }
   - { id: ADR-011, status: accepted, path: ../adr/ADR-011-typescript-node-runtime.md }
-  - { id: ADR-012, status: accepted, path: ../adr/ADR-012-postgresql-persistence-and-outbox.md }
+  - { id: ADR-012, status: superseded, path: ../adr/ADR-012-postgresql-persistence-and-outbox.md }
   - { id: ADR-013, status: accepted, path: ../adr/ADR-013-modular-monolith-deployment.md }
   - { id: ADR-014, status: accepted, path: ../adr/ADR-014-oidc-identity-and-internal-authorization.md }
   - { id: ADR-015, status: accepted, path: ../adr/ADR-015-requirement-review-tracer-bullet.md }
   - { id: ADR-016, status: accepted, path: ../adr/ADR-016-host-neutral-mcp-integration.md }
+  - { id: ADR-017, status: accepted, path: ../adr/ADR-017-local-first-sqlite-and-optional-postgresql.md }
+  - { id: ADR-018, status: accepted, path: ../adr/ADR-018-memory-proportional-rigor-and-cost-efficiency.md }

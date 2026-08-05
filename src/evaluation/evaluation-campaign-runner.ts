@@ -11,6 +11,7 @@ import {
   type EvaluationAdapterRequest,
   type EvaluationAdapterResult,
   type EvaluationTrialIdentity,
+  type EvaluateRubricValue,
   type ExecuteTrialValue,
   type PrepareEnvironmentPayload,
 } from "./adapter.js";
@@ -35,6 +36,21 @@ const REQUIRED_OPERATIONS = Object.freeze([
 export type EvaluationAssertion = Readonly<{
   id: string;
   critical: boolean;
+  /**
+   * SPEC-107 §4 Oracle Hierarchy: "deterministic" resolves from executeTrial
+   * observations alone. "rubric" is used only where a deterministic oracle is
+   * insufficient and requires a calibrated Judge with objective anchors; the
+   * Runner never escalates a deterministic assertion to the Judge tier on
+   * its own.
+   */
+  oracle: "deterministic" | "rubric";
+}>;
+
+export type EvaluationRubricPlan = Readonly<{
+  rubric_ref: string;
+  calibration_ref: string;
+  independence_policy_ref: string;
+  candidate_output_ref: string;
 }>;
 
 export type EvaluationTrialPlan = Readonly<{
@@ -47,6 +63,8 @@ export type EvaluationTrialPlan = Readonly<{
   evidence_manifest_ref: string;
   cleanup: Omit<CleanupPayload, "environment_lease">;
   assertions: readonly EvaluationAssertion[];
+  /** Required only when at least one assertion declares oracle: "rubric". */
+  rubric?: EvaluationRubricPlan;
 }>;
 
 export type EvaluationCampaignRequest = Readonly<{
@@ -202,12 +220,50 @@ export class EvaluationCampaignRunner {
       );
     }
 
+    const needsRubric = execution.ok && input.trial.assertions.some(
+      (assertion) => assertion.oracle === "rubric",
+    );
+    let rubric: EvaluationAdapterResult<"evaluateRubric"> | undefined;
+    if (needsRubric && execution.ok) {
+      const rubricPlan = input.trial.rubric;
+      if (rubricPlan === undefined) {
+        return this.#cleanupAndFinish(
+          input,
+          operations,
+          prepared.value.environment_lease,
+          invalidAnalysis(input, operationEvidence(operations, "missing-rubric-plan")),
+          prepared.value.resolved_versions,
+          prepared.value.isolation_evidence,
+        );
+      }
+      const rubricRequest = operationRequest(input, "evaluateRubric", {
+        rubric_ref: rubricPlan.rubric_ref,
+        eligible_evidence_refs: execution.value.raw_evidence_refs,
+        calibration_ref: rubricPlan.calibration_ref,
+        independence_policy_ref: rubricPlan.independence_policy_ref,
+        candidate_output_ref: rubricPlan.candidate_output_ref,
+      });
+      rubric = immutableCopy(await this.#adapter.evaluateRubric(rubricRequest));
+      operations.push(rubric);
+      if (!sameOperationEnvelope(rubricRequest, rubric)) {
+        return this.#cleanupAndFinish(
+          input,
+          operations,
+          prepared.value.environment_lease,
+          invalidAnalysis(input, operationEvidence(operations, "rubric-envelope-mismatch")),
+          prepared.value.resolved_versions,
+          prepared.value.isolation_evidence,
+        );
+      }
+    }
+
     const evidenceRequest = operationRequest(input, "collectEvidence", {
       required_manifest_ref: input.trial.evidence_manifest_ref,
       eligible_operation_ids: [
         descriptor.operationId,
         prepared.operationId,
         execution.operationId,
+        ...(rubric === undefined ? [] : [rubric.operationId]),
       ],
     });
     const collection = immutableCopy(await this.#adapter.collectEvidence(evidenceRequest));
@@ -226,6 +282,8 @@ export class EvaluationCampaignRunner {
     let analysis: TrialAnalysis;
     if (!execution.ok) {
       analysis = failureAnalysis(input, execution);
+    } else if (rubric !== undefined && !rubric.ok) {
+      analysis = failureAnalysis(input, rubric, operationEvidence(operations));
     } else if (!collection.ok) {
       analysis = failureAnalysis(input, collection);
     } else if (
@@ -241,7 +299,13 @@ export class EvaluationCampaignRunner {
         operationEvidence(operations, "evidence-integrity-failure"),
       );
     } else {
-      analysis = analyzeAssertions(input, execution.value, collection.value, operations);
+      analysis = analyzeAssertions(
+        input,
+        execution.value,
+        collection.value,
+        operations,
+        rubric?.ok === true ? rubric.value : undefined,
+      );
     }
 
     return this.#cleanupAndFinish(
@@ -399,6 +463,19 @@ function validateCampaignConfiguration(input: EvaluationCampaignRequest): string
   ) {
     return "invalid-assertion-matrix";
   }
+  const needsRubric = input.trial.assertions.some((assertion) => assertion.oracle === "rubric");
+  if (needsRubric) {
+    const rubric = input.trial.rubric;
+    if (
+      rubric === undefined ||
+      rubric.rubric_ref.trim().length === 0 ||
+      rubric.calibration_ref.trim().length === 0 ||
+      rubric.independence_policy_ref.trim().length === 0 ||
+      rubric.candidate_output_ref.trim().length === 0
+    ) {
+      return "missing-rubric-plan";
+    }
+  }
   return undefined;
 }
 
@@ -476,33 +553,54 @@ function analyzeAssertions(
   execution: ExecuteTrialValue,
   collection: CollectEvidenceValue,
   operations: readonly AnyEvaluationAdapterResult[],
+  rubric: EvaluateRubricValue | undefined,
 ): TrialAnalysis {
   const expected = input.trial.assertions;
   const expectedIds = new Set(expected.map((assertion) => assertion.id));
+  const deterministicExpected = expected.filter((assertion) => assertion.oracle === "deterministic");
+  const rubricExpected = expected.filter((assertion) => assertion.oracle === "rubric");
+
   const observations = execution.observations.map(assertionObservation);
+  const rubricObservations = (rubric?.criterion_observations ?? []).map(assertionObservation);
+  const allObservations = [...observations, ...rubricObservations];
   const observedIds = new Set(
-    observations.flatMap((observation) => observation === undefined ? [] : [observation.id]),
+    allObservations.flatMap((observation) => observation === undefined ? [] : [observation.id]),
   );
+
   const invalid =
     expected.length === 0 ||
     expectedIds.size !== expected.length ||
+    (rubricExpected.length > 0 && rubric === undefined) ||
     observations.some((observation) => observation === undefined) ||
-    observedIds.size !== observations.length ||
+    (rubricExpected.length > 0 && rubricObservations.some((observation) => observation === undefined)) ||
+    observedIds.size !== allObservations.length ||
     observedIds.size !== expectedIds.size ||
     [...expectedIds].some((id) => !observedIds.has(id)) ||
+    deterministicExpected.some((assertion) =>
+      !observations.some((observation) => observation?.id === assertion.id),
+    ) ||
+    rubricExpected.some((assertion) =>
+      !rubricObservations.some((observation) => observation?.id === assertion.id),
+    ) ||
     observations.some(
       (observation) =>
         observation !== undefined &&
         !execution.raw_evidence_refs.includes(observation.evidence_ref),
+    ) ||
+    rubricObservations.some(
+      (observation) =>
+        observation !== undefined &&
+        !rubric!.anchored_evidence.includes(observation.evidence_ref),
     );
   const evidence = unique([
     ...operationEvidence(operations),
     ...execution.raw_evidence_refs,
+    ...(rubric?.anchored_evidence ?? []),
     collection.manifest_ref,
   ]);
   if (invalid) return invalidAnalysis(input, evidence);
 
-  const normalized = observations.filter(
+  const normalized = allObservations.filter(
     (observation): observation is AssertionObservation => observation !== undefined,
   );
   const observationById = new Map(normalized.map((observation) => [observation.id, observation]));
@@ -611,12 +709,18 @@ function classifyFailure(failure: EvaluationAdapterFailure): Readonly<{
   if (failure.code === "workspace_denied" || failure.code === "policy_denied") {
     return { outcome: "blocked", failureClass: "policy_denial" };
   }
+  // SPEC-107 §7: "Infrastructure errors and evaluator failures are not
+  // subject failures." A Judge/rubric operation failure is the evaluator
+  // failing to render a verdict, not evidence that the test itself is
+  // invalid, so it is classified separately from invalid_test.
+  if (failure.code === "rubric_invalid") {
+    return { outcome: "indeterminate", failureClass: "evaluator" };
+  }
   if (
     failure.code === "invalid_request" ||
     failure.code === "unsupported_version" ||
     failure.code === "unsupported_capability" ||
     failure.code === "idempotency_conflict" ||
-    failure.code === "rubric_invalid" ||
     failure.code === "evidence_incomplete" ||
     failure.code === "evidence_integrity_failure"
   ) {

@@ -1,6 +1,6 @@
 generated: false
-version: 1.0.0
-last_updated: 2026-08-03
+version: 1.1.0
+last_updated: 2026-08-05
 purpose: prevent draft completeness from being confused with accepted authority
 baseline_status: accepted
 baseline_approval: ../governance/reviews/full-spec-baseline/BASELINE_OWNER_APPROVAL.yaml
@@ -17,10 +17,13 @@ acceptance_requirements:
   - GOV-009 gate evidence is retained
 families:
   knowledge:
-    range: SPEC-101-107
+    range: SPEC-101-108
     status: accepted
-    approval_evidence: ../governance/reviews/full-spec-baseline/KNOWLEDGE_REVIEW.yaml
+    approval_evidence:
+      - ../governance/reviews/full-spec-baseline/KNOWLEDGE_REVIEW.yaml
+      - ../governance/reviews/memory-and-efficiency/CHANGE_IMPACT.yaml
     next_gate: implementation_conformance
+    notes: SPEC-108 (Memory Model) added 2026-08-05 per ADR-018; SPEC-101-107 approval unchanged
   product:
     range: SPEC-201-213
     status: accepted
@@ -48,9 +51,11 @@ families:
     next_gate: implementation_conformance
 acceptance_method: each family received a separate semantic review and approval record; acceptance was applied only after required corrections and dependency validation
 technology_and_slice_decisions:
-  range: ADR-011-016
+  range: ADR-011-018
   status: accepted
   approval_evidence:
     - ../governance/reviews/requirement-review-tracer-bullet/OWNER_APPROVAL.yaml
     - ../governance/reviews/mcp-host-integration/CHANGE_IMPACT.yaml
+    - ../governance/reviews/local-first-persistence/CHANGE_IMPACT.yaml
+    - ../governance/reviews/memory-and-efficiency/CHANGE_IMPACT.yaml
   next_gate: downstream_selected_slice_specification_review

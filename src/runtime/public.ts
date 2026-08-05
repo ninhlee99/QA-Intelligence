@@ -186,6 +186,8 @@ export type AgentRunResultUsage = Readonly<{
   tokens?: number;
   cost?: number;
   tool_cost?: number;
+  repeated_action_fingerprints?: number;
+  no_progress_iterations?: number;
 }>;
 
 /** Mirrors schemas/agent-run-result.schema.json and SPEC-508. */
@@ -206,6 +208,8 @@ export type AgentRunResult = Readonly<{
   usage: AgentRunResultUsage;
   evidence: readonly string[];
   cleanup_status: CleanupStatus;
+  /** SPEC-606 §6 required evidence: Knowledge Candidates proposed during the run, not yet promoted. */
+  knowledge_candidates: readonly string[];
   started_at: string;
   completed_at: string;
 }>;
@@ -221,6 +225,7 @@ export type AgentRunEventType =
   | "step_authorized"
   | "step_observed"
   | "step_validated"
+  | "step_committed"
   | "approval_requested"
   | "run_suspended"
   | "run_resumed"

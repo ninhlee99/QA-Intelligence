@@ -2,7 +2,7 @@
 id: ADR-016
 title: Host-Neutral MCP Integration and Thin Host Packages
 status: accepted
-version: 1.0.0
+version: 1.1.0
 date: 2026-08-03
 decision_owners:
   - Architecture
@@ -26,6 +26,7 @@ related_adrs:
   - ADR-013
   - ADR-014
   - ADR-015
+  - ADR-017
 supersedes: []
 superseded_by: null
 approved_by:
@@ -60,7 +61,8 @@ Codex, Claude Code, Cursor, CI, and other hosts SHALL receive thin **Host Integr
 
 The initial MCP implementation SHALL support:
 
-- local `stdio` transport for individual and repository-scoped development
+- local `stdio` transport for a single-host profile and a local socket bridge
+  when multiple hosts share one active parent runtime
 - remote Streamable HTTP transport for shared and enterprise deployment
 - OAuth or an integrity-equivalent approved identity mechanism for remote use
 - schema-versioned Tools that map to accepted QA Intelligence interfaces
@@ -72,6 +74,8 @@ The initial MCP implementation SHALL support:
 - **Platform Plugin**: an ADR-007 adapter used by QA Intelligence to reach Playwright, GitHub, Jira, model providers, storage, or another external technology.
 - **Host Integration Package**: an installable Codex, Claude Code, Cursor, or similar bundle that connects a host to QA Intelligence.
 - **MCP Interface**: the transport-facing capability interface presented to hosts; it is not an alternate Agent Runtime or policy engine.
+- **Local Parent Runtime**: the OS-user-owned process that holds Workspace
+  lifecycle authority, owns SQLite access, and coordinates child workers.
 
 Host Integration Packages MAY be called plugins by their host product. Repository architecture and code SHALL still use the qualified terms above when ownership could be ambiguous.
 
@@ -103,6 +107,8 @@ Host-specific instructions SHALL remain minimal. A change in host packaging SHAL
 
 - The MCP process is an untrusted transport adapter relative to domain authority.
 - Local `stdio` inherits the host sandbox but still requires QA Intelligence authorization.
+- A host bridge SHALL NOT open Workspace persistence or dispatch child workers
+  independently of the active local parent runtime.
 - Remote transport requires authenticated, encrypted connections and server-side Workspace authorization.
 - Host approval settings cannot weaken platform approval requirements.
 - Tool discovery SHALL reveal no inaccessible Workspace, secret, or protected artifact.
@@ -120,7 +126,7 @@ Host-specific instructions SHALL remain minimal. A change in host packaging SHAL
 
 One MCP Interface can serve every supported host, while thin packages preserve native installation and invocation experience. The additional transport and packaging layers require conformance, authentication, compatibility, and host-installation tests.
 
-Development MAY add an in-process or `stdio` MCP adapter after the relevant core capability is vertically complete. Production MCP enablement remains blocked until the underlying Agent/Skill passes GOV-012 G1–G4 and the transport passes security, isolation, approval, cancellation, evidence, and operational conformance. Public or controlled release remains subject to G5–G6.
+Development MAY add an in-process or `stdio` MCP adapter after the relevant core capability is vertically complete. The default local profile follows ADR-017 and stores state on the user's machine; remote MCP and PostgreSQL are opt-in shared-profile concerns. Production MCP enablement remains blocked until the underlying Agent/Skill passes GOV-012 G1–G4 and the transport passes security, isolation, approval, cancellation, evidence, and operational conformance. Public or controlled release remains subject to G5–G6.
 
 ## 9. Validation
 
@@ -130,4 +136,3 @@ Development MAY add an in-process or `stdio` MCP adapter after the relevant core
 - MCP schema/version incompatibility fails before execution
 - local and remote authentication paths do not widen authority
 - disabling or revoking a host package or MCP connection prevents new operations without rewriting historical evidence
-

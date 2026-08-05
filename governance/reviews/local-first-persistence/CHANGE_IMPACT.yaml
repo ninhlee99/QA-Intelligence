@@ -1,0 +1,48 @@
+id: IMPACT-LOCAL-FIRST-PERSISTENCE-001
+version: 1.0.0
+date: 2026-08-03
+status: accepted
+authority: Repository Owner explicit confirmation that process management and default persistence belong on the user's machine
+change:
+  title: Adopt local-first SQLite runtime with optional PostgreSQL collaboration
+  supersedes: ADR-012 as the default persistence decision
+  preserves:
+    - comprehensive QA/QC and experienced Senior Test Engineer product identity
+    - one parent Agent controlling bounded sub-agents and test workers
+    - provider-neutral repository and runtime interfaces
+    - durable lifecycle, idempotency, evidence, recovery, and Workspace isolation
+  corrects:
+    - centralized PostgreSQL was treated as mandatory before local MCP process ownership was confirmed
+deployment_profiles:
+  local_personal:
+    default: true
+    persistence: one SQLite database per Workspace
+    process_owner: one OS-user-owned local parent runtime
+    host_access: local MCP stdio or local socket bridge
+  shared_team:
+    default: false
+    persistence: optional PostgreSQL adapter
+    process_owner: authenticated server control and worker roles
+    host_access: remote MCP with server-side authorization
+affected_artifacts:
+  decisions: [ADR-012, ADR-013, ADR-016, ADR-017]
+  specifications: [SPEC-309, SPEC-401, SPEC-408, SPEC-501, SPEC-601, SPEC-606, SPEC-607]
+  implementation:
+    - provider-neutral campaign record-store seam
+    - SQLite local adapter and migration
+    - PostgreSQL adapter retained as optional shared-profile implementation
+risks_and_controls:
+  - risk: multiple local hosts start competing parent runtimes
+    control: exclusive Workspace owner lease and one local daemon/socket target
+  - risk: SQLite single-writer contention
+    control: parent-owned writes, WAL, busy timeout, short transactions, optimistic revisions
+  - risk: local device loss or corruption
+    control: explicit backup, integrity check, recovery evidence, and user-visible health
+  - risk: sensitive local evidence exposure
+    control: per-user permissions, data minimization, approved disk encryption, retention policy
+  - risk: divergence between SQLite and PostgreSQL
+    control: shared repository conformance suite plus adapter-specific tests
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: blocked_pending_GOV_012_evidence

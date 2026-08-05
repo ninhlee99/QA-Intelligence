@@ -1,12 +1,13 @@
 ---
 id: SPEC-508
 title: Agent Runtime Contract
-version: 1.1.0
+version: 1.2.0
 status: accepted
 owner:
   - Architecture
   - Runtime Platform
 depends_on:
+  - SPEC-108
   - SPEC-309
   - SPEC-505
   - SPEC-506
@@ -18,7 +19,8 @@ related_adrs:
   - ADR-011
   - ADR-014
   - ADR-015
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -51,11 +53,35 @@ Every read or control operation SHALL carry a trusted immutable Workspace contex
 
 The request SHALL contain operation and Workspace identity, a trusted immutable Workspace context carrying actor authority, exact Agent version, task purpose and consequence class, inputs by reference, allowed Skill/Tool constraints, an exact policy version pin, budgets, deadline, evidence requirements, and idempotency key. The runtime SHALL bind the request Workspace, actor, and policy to that context and SHALL obtain an authorization decision outside prompts before creating a run or emitting an authorization-granted event.
 
+### 3.1 Default Budgets by Consequence Class
+
+Per AP-064 (Context and Cost Efficiency, ADR-018), budgets SHALL have concrete
+default values, not exist only as unquantified vocabulary. The runtime SHALL
+apply the following default ceilings keyed by the request's consequence class
+(SPEC-106, SPEC-308) unless an explicit suite-level or request-level policy
+overrides them within governed bounds:
+
+| Consequence class          | Max `Plan→Act→Observe→Validate` iterations | Token budget (reasoning input+output) | Tool-call budget | Wall-clock deadline |
+|-----------------------------|:---:|:---:|:---:|:---:|
+| Low (reversible, read-only) | 8   | 40,000  | 10 | 2 minutes  |
+| Medium (reversible, side-effecting) | 20  | 150,000 | 40 | 10 minutes |
+| High (irreversible or approval-gated) | 40  | 400,000 | 100 | 30 minutes |
+
+A request MAY declare a stricter (lower) budget than its class default. A
+request MAY exceed a class default only through an explicit, evidenced
+override recorded at authorization time; the override itself SHALL be
+retained as part of the run's evidence. These defaults bound cost; they do
+not replace the evidence and completion-gate requirements of §4, which still
+apply in full to medium- and high-consequence runs and in reduced form to
+low-consequence runs under AP-063 (Proportional Rigor).
+
 ## 4. Snapshot and Result
 
 Snapshots SHALL expose lifecycle state, current externally explainable objective, consumed budgets, pending approval, checkpoint, failure class, and evidence references. Final results SHALL include validated output, outcome, exact resolved versions, rule decisions, Skill and Tool usage, citations, uncertainty, policy events, usage, timings, and cleanup status.
 
 Every terminal state SHALL retain a final result. A successful `execute` SHALL pass through `running` and `validating`; `completed` is impossible unless output validation, every retained evidence requirement, exact version retention, Skill/Tool allowlists, budget accounting, and cleanup outcome pass. Runtime completion means the governed execution completed; it SHALL NOT convert an advisory domain verdict such as `changes_required` or `indeterminate` into a runtime failure.
+
+Per AP-063 (Proportional Rigor, ADR-018), a low-consequence run's `validating` phase MAY check a reduced evidence set (output validation, Skill/Tool allowlists, and cleanup outcome, but not full version-retention re-verification) while still producing a retained final result. Medium- and high-consequence runs SHALL always check the full set listed above.
 
 Hidden chain-of-thought is excluded. Auditable decisions, observations, citations, and validation outcomes are required.
 
@@ -69,4 +95,4 @@ Implementations SHALL pass contract tests for duplicate start, duplicate execute
 
 ## 7. Compatibility and Operations
 
-Operations and envelopes SHALL be schema-versioned and size-bounded. Event payloads SHALL carry an exact payload-schema reference that is consistent with the event type. Version 1.1.0 adds `execute` and `result` without changing existing version 1.0.0 envelope or lifecycle meanings; there are no production consumers or in-flight runs requiring migration. Additive optional observations may be compatible; changed lifecycle, authority, budget, effect, or verdict semantics require a major version and migration. Streaming or polling are transport choices and SHALL preserve the same canonical state. Metrics and traces expose correlation, resolved versions, lifecycle, budget, approval, failure, and cleanup without exposing secrets or hidden reasoning.
+Operations and envelopes SHALL be schema-versioned and size-bounded. Event payloads SHALL carry an exact payload-schema reference that is consistent with the event type. Version 1.1.0 adds `execute` and `result` without changing existing version 1.0.0 envelope or lifecycle meanings; there are no production consumers or in-flight runs requiring migration. Version 1.2.0 adds the default budget table (§3.1) and the proportional-rigor reduced evidence set (§4) as additive clarifications of existing budget and evidence vocabulary; it does not change any envelope shape and requires no migration. Additive optional observations may be compatible; changed lifecycle, authority, budget, effect, or verdict semantics require a major version and migration. Streaming or polling are transport choices and SHALL preserve the same canonical state. Metrics and traces expose correlation, resolved versions, lifecycle, budget, approval, failure, and cleanup without exposing secrets or hidden reasoning.

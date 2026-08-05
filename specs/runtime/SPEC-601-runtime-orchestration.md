@@ -15,7 +15,7 @@ related_adrs:
   - ADR-007
   - ADR-008
   - ADR-009
-  - ADR-012
+  - ADR-017
   - ADR-013
 last_updated: 2026-08-03
 approved_by:
@@ -70,6 +70,11 @@ External side effects SHALL use transactional outbox, durable intent, or equival
 ## 6. Isolation
 
 Workspace context SHALL propagate through queues, timers, workers, plugins, callbacks, events, telemetry, and evidence.
+
+The default local profile binds each Workspace to one user-owned SQLite file
+and one active parent runtime owner. Multiple host bridges converge on that
+owner; child workers have no direct database authority. The shared profile may
+use PostgreSQL and distributed workers only through the same runtime contracts.
 
 ## 7. Overload
 

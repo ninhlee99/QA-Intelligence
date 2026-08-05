@@ -1,7 +1,7 @@
 ---
 id: SPEC-107
 title: Agent and Skill Evaluation Model
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Quality Engineering
@@ -18,7 +18,8 @@ related_adrs:
   - ADR-005
   - ADR-008
   - ADR-010
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -61,6 +62,10 @@ An LLM Judge SHALL NOT be the sole authority for critical safety, security, dest
 
 ## 5. Coverage
 
+This section is the single source of truth for AI/Agent testing coverage
+dimensions. Downstream product specifications (including SPEC-206 §9 and
+SPEC-213 §3) reference this list rather than independently enumerating it.
+
 Suites SHALL cover applicable dimensions:
 
 - task success and output correctness
@@ -71,7 +76,14 @@ Suites SHALL cover applicable dimensions:
 - efficiency, latency, step count, tokens or cost, and termination
 - robustness, consistency across trials, recovery, cancellation, and escalation
 - prompt injection, exfiltration, privilege escalation, tool misuse, denial-of-wallet, infinite loops, and cross-Workspace access
+- sensitive-data handling and unsupported-claim detection
+- representative and adverse evaluation sets, and provider drift or fallback behavior
 - conflict resolution, missing information, ambiguous inputs, boundary values, and provider failure
+
+This list carries the same depth and priority as Workspace-isolation
+coverage required elsewhere in the corpus; adversarial-AI-input testing
+SHALL NOT be treated as a lighter-weight or optional dimension relative to
+isolation testing.
 
 ## 6. Dataset Governance
 

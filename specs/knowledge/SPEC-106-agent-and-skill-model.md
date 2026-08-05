@@ -1,7 +1,7 @@
 ---
 id: SPEC-106
 title: Agent and Skill Knowledge Model
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Knowledge Governance
@@ -21,7 +21,8 @@ related_adrs:
   - ADR-007
   - ADR-008
   - ADR-010
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -93,7 +94,7 @@ Dynamic Skill discovery MAY suggest candidates, but only registered, enabled, co
 
 Agent working context is ephemeral runtime state. It SHALL be purpose-limited, minimally necessary, Workspace-scoped, provenance-bearing, and deleted according to retention policy.
 
-Conversation history, scratchpads, model state, and run summaries SHALL NOT become authoritative knowledge. Reusable observations enter the governed Knowledge Candidate lifecycle defined by SPEC-102 and SPEC-105.
+Conversation history, scratchpads, model state, and run summaries SHALL NOT become authoritative knowledge. Reusable observations enter the governed Knowledge Candidate lifecycle defined by SPEC-102 and SPEC-105, or, for low-consequence observations only, the bounded fast path defined by SPEC-108 (Memory Model). SPEC-108 is the canonical owner of the retrieval-layer and working/session-memory architecture referenced by this section.
 
 ## 7. Lifecycle and Compatibility
 

@@ -1,7 +1,7 @@
 ---
 id: SPEC-103
 title: Knowledge Store
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Knowledge Governance
@@ -18,7 +18,8 @@ related_adrs:
   - ADR-005
   - ADR-008
   - ADR-010
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -146,6 +147,8 @@ Ranking MAY consider:
 - review status
 
 Ranking SHALL NOT change stored authority or hide a stronger contradictory source without explanation.
+
+SPEC-108 (Memory Model) owns the bounded, corpus-scale candidate-set selection and reuse-within-a-run strategy built on top of this ranking. The Knowledge Store SHALL NOT itself bound or cache result sets across calls; that is Memory's responsibility.
 
 ## 10. Workspace Isolation
 

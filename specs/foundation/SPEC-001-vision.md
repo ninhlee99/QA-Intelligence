@@ -3,7 +3,7 @@ id: SPEC-001
 
 title: QA Intelligence Vision
 
-version: 1.1.0
+version: 1.2.0
 
 status: accepted
 
@@ -17,9 +17,10 @@ reviewed_by:
   - Repository Owner
   - Codex Technical and Governance Review
 
-related_adrs: []
+related_adrs:
+  - ADR-018
 
-last_updated: 2026-08-03
+last_updated: 2026-08-05
 ---
 
 # Purpose
@@ -274,6 +275,19 @@ The system never learns from unverified assumptions.
 
 ---
 
+## Principle 7
+
+Rigor proportional to consequence.
+
+Evidence, explainability, and process weight are mandatory, but SHALL scale
+with the consequence of the operation, not apply uniformly regardless of
+risk. The system SHALL minimize token, time, and Tool-call cost within that
+proportional bound. A fast, cheap, low-consequence operation is as much a
+correctness requirement as a slow, thorough, high-consequence one — see
+ADR-018.
+
+---
+
 # Scope
 
 The project includes:
@@ -290,7 +304,7 @@ The project includes:
 - Automation
 - Reporting
 - Knowledge Store
-- Memory
+- Memory (SPEC-108)
 - Rule Engine
 - Learning Engine
 

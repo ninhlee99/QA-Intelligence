@@ -17,7 +17,7 @@ related_adrs:
   - ADR-008
   - ADR-010
   - ADR-011
-  - ADR-012
+  - ADR-017
   - ADR-013
   - ADR-014
   - ADR-015
@@ -57,6 +57,10 @@ Runtime enforces maximum steps, wall time, model usage/cost, Tool calls/cost, re
 ## 5. Recovery
 
 Recovery reconstructs context from durable references, validates all pinned versions and policy, and resumes only after verifying outstanding side effects. Changes that invalidate authority or compatibility block resume and require a new run.
+
+Local recovery is performed by the next parent runtime holding the exclusive
+Workspace owner lease. An orphaned child process, host bridge, or model session
+cannot claim ownership or resume work independently.
 
 ## 6. Required Evidence
 

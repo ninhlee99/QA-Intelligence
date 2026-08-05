@@ -1,11 +1,12 @@
 ---
 id: SPEC-206
 title: Test Strategy
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Quality Engineering
 depends_on:
+  - SPEC-107
   - SPEC-202
   - SPEC-204
   - SPEC-205
@@ -15,7 +16,8 @@ related_adrs:
   - ADR-002
   - ADR-008
   - ADR-009
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -90,7 +92,7 @@ The strategy SHALL combine the validation modes appropriate to the risk: human r
 
 ## 9. AI Systems
 
-AI validation SHALL include representative and adverse evaluation sets, unsupported claims, prompt injection, tool misuse, sensitive-data handling, drift, fallback, cost, and latency.
+AI validation SHALL apply the AI/Agent adversarial and coverage dimensions defined by SPEC-107 §5, the single source of truth for that list (task correctness, grounding, Tool-use safety, prompt injection, exfiltration, sensitive-data handling, drift, fallback, cost, and latency, among others). This section SHALL NOT independently enumerate that list.
 
 ## 10. Entry and Exit
 

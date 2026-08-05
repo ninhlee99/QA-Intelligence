@@ -158,6 +158,9 @@ export class RequirementReviewRuntimeExecutor implements AgentRunExecutor {
         },
         evidence,
         cleanup_status: "not_required",
+        // ADR-015: this Skill is advisory and read-only; it never proposes
+        // Knowledge Candidates for promotion.
+        knowledge_candidates: [],
       },
     };
   }

@@ -1,5 +1,5 @@
 generated: true
-generated_at: 2026-08-03
+generated_at: 2026-08-05
 source_roots:
   - ../specs
 artifacts:
@@ -19,6 +19,7 @@ artifacts:
     - { id: SPEC-105, status: accepted, path: ../specs/knowledge/SPEC-105-learning-engine.md }
     - { id: SPEC-106, status: accepted, path: ../specs/knowledge/SPEC-106-agent-and-skill-model.md }
     - { id: SPEC-107, status: accepted, path: ../specs/knowledge/SPEC-107-evaluation-model.md }
+    - { id: SPEC-108, status: accepted, path: ../specs/knowledge/SPEC-108-memory-model.md }
   product:
     - { id: SPEC-201, status: accepted, path: ../specs/product/SPEC-201-discovery.md }
     - { id: SPEC-202, status: accepted, path: ../specs/product/SPEC-202-requirement-intelligence.md }

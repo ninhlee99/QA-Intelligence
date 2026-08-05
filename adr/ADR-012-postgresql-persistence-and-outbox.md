@@ -1,7 +1,7 @@
 ---
 id: ADR-012
 title: PostgreSQL Persistence and Transactional Outbox Baseline
-status: accepted
+status: superseded
 version: 1.0.0
 date: 2026-08-03
 decision_owners:
@@ -24,7 +24,7 @@ related_adrs:
   - ADR-010
   - ADR-011
 supersedes: []
-superseded_by: null
+superseded_by: ADR-017
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -32,6 +32,10 @@ approval_evidence: governance/reviews/requirement-review-tracer-bullet/OWNER_APP
 ---
 
 # ADR-012: PostgreSQL Persistence and Transactional Outbox Baseline
+
+> Superseded by ADR-017. This decision remains the baseline only for the
+> optional shared/team server profile; it is no longer the default local
+> runtime persistence decision.
 
 ## 1. Context
 

@@ -86,9 +86,29 @@ function request(): EvaluationCampaignRequest {
         cleanup_policy_ref: "cleanup-policy@1.0.0",
       },
       assertions: [
-        { id: "contract-valid", critical: true },
-        { id: "no-provider", critical: true },
+        { id: "contract-valid", critical: true, oracle: "deterministic" },
+        { id: "no-provider", critical: true, oracle: "deterministic" },
       ],
+    },
+  };
+}
+
+function rubricRequest(): EvaluationCampaignRequest {
+  const base = request();
+  return {
+    ...base,
+    trial: {
+      ...base.trial,
+      assertions: [
+        ...base.trial.assertions,
+        { id: "requirement-clarity", critical: true, oracle: "rubric" },
+      ],
+      rubric: {
+        rubric_ref: "rubric://requirement-clarity@1.0.0",
+        calibration_ref: "calibration://requirement-clarity@1.0.0",
+        independence_policy_ref: "independence-policy://requirement-clarity@1.0.0",
+        candidate_output_ref: "assessment://assessment-001",
+      },
     },
   };
 }
@@ -132,6 +152,8 @@ type AdapterBehavior = Readonly<{
   cleanup_residual?: boolean;
   descriptor_workspace_id?: string;
   environment_versions?: Readonly<Record<string, string>>;
+  rubric_observations?: readonly JsonObject[];
+  rubric_failure?: EvaluationAdapterFailure;
 }>;
 
 function adapterFailure(
@@ -257,8 +279,32 @@ function happyAdapter(
           : [],
       });
     },
-    async evaluateRubric() {
-      throw new Error("rubric is not part of this deterministic campaign");
+    async evaluateRubric(operation) {
+      calls.push(operation.operation);
+      if (behavior.rubric_failure !== undefined) {
+        return failed(operation, behavior.rubric_failure);
+      }
+      const criterionObservations = behavior.rubric_observations ?? [
+        {
+          assertion_id: "requirement-clarity",
+          observed: true,
+          evidence_ref: "evidence://trial-001/requirement-clarity",
+        },
+      ];
+      return success(operation, {
+        criterion_observations: criterionObservations,
+        provider_native_scores: {},
+        normalized_scores: {},
+        score_scales: {},
+        anchored_evidence: criterionObservations.flatMap((observation) => {
+          const evidenceRef = observation["evidence_ref"];
+          return typeof evidenceRef === "string" ? [evidenceRef] : [];
+        }),
+        uncertainty: {},
+        calibration_version: "requirement-clarity-rubric@1.0.0",
+        conflicts: [],
+        evaluator_warnings: [],
+      });
     },
     async replay() {
       throw new Error("replay is not part of this deterministic campaign");
@@ -310,6 +356,128 @@ test("orchestrates one isolated trial and leaves the verdict to Evaluation Manag
     false,
   );
   assert.equal(result.evaluation.resolved_versions.environment, "local-evaluation@1.0.0");
+});
+
+test("dispatches the Judge tier only for rubric assertions and folds its verdict in", async () => {
+  const calls: EvaluationAdapterOperation[] = [];
+  const manager = new EvaluationManager(
+    { now: () => new Date(NOW) },
+    new StaticEvaluationSuitePolicyRegistry([
+      {
+        suite: { id: "requirement-quality-core", version: "0.1.0" },
+        required_case_ids: ["positive-rule-only"],
+        critical_invariant_ids: ["contract-valid", "no-provider", "requirement-clarity"],
+        minimum_trials_per_case: 1,
+      },
+    ]),
+    { verify: () => true },
+  );
+  const runner = new EvaluationCampaignRunner({
+    adapter: happyAdapter(calls),
+    manager,
+    evidence_verifier: { verify: () => true },
+  });
+
+  const result = await runner.run(rubricRequest());
+
+  assert.deepEqual(calls, [
+    "descriptor",
+    "prepareEnvironment",
+    "executeTrial",
+    "evaluateRubric",
+    "collectEvidence",
+    "cleanup",
+  ]);
+  assert.equal(result.evaluation.verdict, "passed");
+  assert.deepEqual(result.evaluation.critical_invariants, [
+    { id: "contract-valid", passed: true },
+    { id: "no-provider", passed: true },
+    { id: "requirement-clarity", passed: true },
+  ]);
+  assert.equal(
+    result.operations.some((operation) => operation.operation === "evaluateRubric"),
+    true,
+  );
+});
+
+test("a deterministic-only campaign never dispatches the Judge tier", async () => {
+  const calls: EvaluationAdapterOperation[] = [];
+  const runner = campaignRunner(happyAdapter(calls));
+
+  await runner.run(request());
+
+  assert.equal(calls.includes("evaluateRubric"), false);
+});
+
+test("a negative rubric criterion rejects release as a subject failure", async () => {
+  const calls: EvaluationAdapterOperation[] = [];
+  const manager = new EvaluationManager(
+    { now: () => new Date(NOW) },
+    new StaticEvaluationSuitePolicyRegistry([
+      {
+        suite: { id: "requirement-quality-core", version: "0.1.0" },
+        required_case_ids: ["positive-rule-only"],
+        critical_invariant_ids: ["contract-valid", "no-provider", "requirement-clarity"],
+        minimum_trials_per_case: 1,
+      },
+    ]),
+    { verify: () => true },
+  );
+  const runner = new EvaluationCampaignRunner({
+    adapter: happyAdapter(calls, {
+      rubric_observations: [
+        {
+          assertion_id: "requirement-clarity",
+          observed: false,
+          evidence_ref: "evidence://trial-001/requirement-clarity",
+        },
+      ],
+    }),
+    manager,
+    evidence_verifier: { verify: () => true },
+  });
+
+  const result = await runner.run(rubricRequest());
+
+  assert.equal(result.evaluation.verdict, "failed");
+  assert.equal(result.evaluation.trial_results[0]?.failure_class, "subject");
+  assert.deepEqual(result.evaluation.critical_invariants, [
+    { id: "contract-valid", passed: true },
+    { id: "no-provider", passed: true },
+    { id: "requirement-clarity", passed: false },
+  ]);
+});
+
+test("a Judge failure is an evaluator failure, never a subject failure", async () => {
+  const calls: EvaluationAdapterOperation[] = [];
+  const runner = campaignRunner(
+    happyAdapter(calls, {
+      rubric_failure: adapterFailure("rubric_invalid", "adapter"),
+    }),
+  );
+
+  const result = await runner.run(rubricRequest());
+
+  assert.equal(result.evaluation.verdict, "indeterminate");
+  assert.equal(result.evaluation.trial_results[0]?.failure_class, "evaluator");
+  assert.ok(result.evaluation.evidence.includes("evidence://diagnostic/rubric_invalid"));
+  assert.equal(result.cleanup_completed, true);
+});
+
+test("a rubric assertion without a retained rubric plan is invalid, not silently skipped", async () => {
+  const calls: EvaluationAdapterOperation[] = [];
+  const runner = campaignRunner(happyAdapter(calls));
+  const invalid = rubricRequest();
+  const { rubric: _rubric, ...trialWithoutRubric } = invalid.trial;
+
+  const result = await runner.run({
+    ...invalid,
+    trial: trialWithoutRubric,
+  });
+
+  assert.equal(result.evaluation.verdict, "indeterminate");
+  assert.equal(result.evaluation.trial_results[0]?.failure_class, "invalid_test");
+  assert.ok(result.evaluation.evidence.includes("evaluation:missing-rubric-plan"));
 });
 
 test("a critical negative observation rejects release as a subject failure", async () => {

@@ -81,6 +81,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
   readonly #starts = new Map<string, Readonly<{ fingerprint: string; runId: string }>>();
   readonly #commands = new Map<string, StoredCommand>();
   readonly #executions = new Map<string, StoredExecution>();
+  readonly #activeExecutions = new Map<string, AbortController>();
 
   constructor(
     clock: Clock,
@@ -303,15 +304,18 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     const running = this.#find(reference);
     if (!running.ok) return running;
 
+    const abortController = new AbortController();
+    this.#activeExecutions.set(reference.run_id, abortController);
     let observed: AgentRunExecutorResult;
     try {
-      observed = await this.#executor.execute(
-        immutableCopy({
+      observed = await this.#executor.execute({
+        ...immutableCopy({
           reference,
           start_request: running.value.startRequest,
           execution,
         }),
-      );
+        signal: abortController.signal,
+      });
     } catch {
       observed = {
         ok: false,
@@ -322,6 +326,8 @@ export class InMemoryAgentRuntime implements AgentRuntime {
           true,
         ),
       };
+    } finally {
+      this.#activeExecutions.delete(reference.run_id);
     }
 
     const reservedRevision = running.value.snapshot.revision;
@@ -376,6 +382,17 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     }
 
     if (!observed.ok) {
+      // SPEC-606 §3: an unknown effect status suspends the run rather than
+      // failing it — the outcome is unproven, not disproven, so a later
+      // resume can reconcile it once the effect status becomes known.
+      if (observed.failure.code === "unknown_effect") {
+        return this.#suspendForUnknownEffect(
+          reference,
+          active.value,
+          execution,
+          observed.failure,
+        );
+      }
       return this.#finalizeExecutionFailure(
         reference,
         active.value,
@@ -420,6 +437,14 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       output_validated: true,
       evidence: [...observed.value.evidence],
     });
+    // SPEC-606 §3: a side-effecting step is committed only once its effect
+    // status is known. Reaching this point means the executor did not
+    // report unknown_effect, so the step's effect status is known.
+    current = this.#appendEvent(reference, current, "step_committed", {
+      operation_id: execution.operation_id,
+      step: 1,
+      evidence: [...observed.value.evidence],
+    });
     if (observed.value.cleanup_status === "completed") {
       current = this.#appendEvent(reference, current, "cleanup_completed", {
         operation_id: execution.operation_id,
@@ -450,6 +475,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       usage: observed.value.usage,
       evidence: unique([...observed.value.evidence, ...completed.value.snapshot.evidence]),
       cleanup_status: observed.value.cleanup_status,
+      knowledge_candidates: observed.value.knowledge_candidates,
       started_at: completed.value.startedAt,
       completed_at: completed.value.snapshot.updated_at,
     });
@@ -558,6 +584,10 @@ export class InMemoryAgentRuntime implements AgentRuntime {
       return failure(invalidTransition(found.value.snapshot.state, "cancel"));
     }
 
+    const inFlightExecution = found.value.snapshot.state === "running";
+    const activeController = this.#activeExecutions.get(reference.run_id);
+    activeController?.abort();
+
     const transition = this.#transition(
       reference,
       found.value,
@@ -597,7 +627,10 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         ...cancellation.evidence,
         ...terminal.value.snapshot.evidence,
       ]),
-      cleanup_status: "not_required",
+      knowledge_candidates: [],
+      // SPEC-606 §7d: cancellation during an in-flight step has an unreconciled
+      // side effect until the executor's own cleanup observation is retained.
+      cleanup_status: inFlightExecution ? "incomplete" : "not_required",
       started_at: terminal.value.startedAt,
       completed_at: terminal.value.snapshot.updated_at,
     });
@@ -818,6 +851,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
           ...terminal.value.snapshot.evidence,
         ]),
         cleanup_status: "not_required",
+        knowledge_candidates: [],
         started_at: terminal.value.startedAt,
         completed_at: terminal.value.snapshot.updated_at,
       });
@@ -936,6 +970,44 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     this.#runs.set(runId, { ...record, result });
   }
 
+  /**
+   * SPEC-606 §2/§3: an unknown effect status suspends the run instead of
+   * failing it. The run is non-terminal; `resume()` reconciles the
+   * checkpoint once the effect status is known.
+   */
+  #suspendForUnknownEffect(
+    reference: AgentRunReference,
+    record: RunRecord,
+    execution: AgentRunExecution,
+    failureValue: AgentRunFailure,
+  ): AgentRuntimeResult<AgentRunResult> {
+    const checkpoint = `checkpoint:${reference.run_id}:unknown-effect:${execution.idempotency_key}`;
+    this.#transition(
+      reference,
+      record,
+      "suspended",
+      "run_suspended",
+      {
+        operation_id: execution.operation_id,
+        failure_class: failureValue.class,
+        failure_code: failureValue.code,
+        evidence: [...failureValue.evidence],
+      },
+      failureValue.class,
+    );
+    const suspended = this.#find(reference);
+    if (suspended.ok) {
+      this.#runs.set(reference.run_id, {
+        ...suspended.value,
+        snapshot: freezeSnapshot({ ...suspended.value.snapshot, checkpoint }),
+      });
+    }
+    return failure({
+      ...failureValue,
+      evidence: [...failureValue.evidence, `checkpoint:${checkpoint}`],
+    });
+  }
+
   #applyUsage(
     reference: AgentRunReference,
     record: RunRecord,
@@ -1015,6 +1087,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         ...terminal.value.snapshot.evidence,
       ]),
       cleanup_status: observation?.cleanup_status ?? "not_required",
+      knowledge_candidates: observation?.knowledge_candidates ?? [],
       started_at: terminal.value.startedAt,
       completed_at: terminal.value.snapshot.updated_at,
     });
@@ -1259,12 +1332,25 @@ function validateExecutionValue(
     usage.retries > start.budgets.max_retries ||
     exceedsOptional(usage.tokens, start.budgets.max_tokens) ||
     exceedsOptional(usage.cost, start.budgets.max_cost) ||
-    exceedsOptional(usage.tool_cost, start.budgets.max_tool_cost)
+    exceedsOptional(usage.tool_cost, start.budgets.max_tool_cost) ||
+    exceedsOptional(
+      usage.repeated_action_fingerprints,
+      start.budgets.max_repeated_action_fingerprints,
+    )
   ) {
     return runtimeFailure(
       "orchestration",
       "budget_exhausted",
       "Agent execution exceeded a retained runtime budget.",
+    );
+  }
+  if (
+    exceedsOptional(usage.no_progress_iterations, start.budgets.max_no_progress_iterations)
+  ) {
+    return runtimeFailure(
+      "orchestration",
+      "no_progress",
+      "Agent execution made no verifiable progress within the retained bound.",
     );
   }
   return undefined;
@@ -1279,7 +1365,9 @@ function validUsage(usage: AgentRunExecutorValue["usage"]): boolean {
     nonNegativeInteger(usage.retries) &&
     optionalNonNegativeInteger(usage.tokens) &&
     optionalNonNegativeFinite(usage.cost) &&
-    optionalNonNegativeFinite(usage.tool_cost)
+    optionalNonNegativeFinite(usage.tool_cost) &&
+    optionalNonNegativeInteger(usage.repeated_action_fingerprints) &&
+    optionalNonNegativeInteger(usage.no_progress_iterations)
   );
 }
 

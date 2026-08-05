@@ -159,6 +159,7 @@ class ExecutorStub implements AgentRunExecutor {
 
 class DeferredExecutor implements AgentRunExecutor {
   readonly started: Promise<void>;
+  abortSignal: AbortSignal | undefined;
   #signalStarted!: () => void;
   #complete!: (result: AgentRunExecutorResult) => void;
   readonly #completion: Promise<AgentRunExecutorResult>;
@@ -172,7 +173,8 @@ class DeferredExecutor implements AgentRunExecutor {
     });
   }
 
-  execute(): Promise<AgentRunExecutorResult> {
+  execute(input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    this.abortSignal = input.signal;
     this.#signalStarted();
     return this.#completion;
   }
@@ -211,6 +213,7 @@ function successfulExecution(): AgentRunExecutorResult {
       },
       evidence: ["evidence://assessment-001"],
       cleanup_status: "not_required",
+      knowledge_candidates: [],
     },
   };
 }
@@ -1259,6 +1262,196 @@ test("event paging is bounded, ordered, resumable, and reports cursor gaps", asy
   }, accessRequest());
   assert.equal(unbounded.ok, false);
   if (!unbounded.ok) assert.equal(unbounded.failure.code, "invalid_request");
+});
+
+test("cancel requests bounded provider cancellation and records incomplete cleanup mid-execution", async () => {
+  const executor = new DeferredExecutor();
+  const agentRuntime = runtime(new AuthorizerStub(), executor);
+  const started = await agentRuntime.start(
+    startRequest({
+      allowed_skills: [
+        { id: "assess-requirement-quality", version: "1.0.0" },
+      ],
+    }),
+  );
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+  const executing = agentRuntime.execute(started.value, {
+    ...accessRequest({ operation_id: "execute-before-cancel" }),
+    expected_revision: 3,
+    idempotency_key: "execute-before-cancel",
+  });
+  await executor.started;
+  assert.equal(executor.abortSignal?.aborted, false);
+
+  const cancelled = await agentRuntime.cancel(started.value, {
+    ...accessRequest({ operation_id: "cancel-during-execute" }),
+    expected_revision: 4,
+    reason: "Operator cancellation requests bounded provider cancellation.",
+    evidence: ["evidence://cancel-during-execute"],
+    idempotency_key: "cancel-during-execute",
+  });
+  assert.equal(cancelled.ok, true);
+  assert.equal(executor.abortSignal?.aborted, true);
+
+  executor.complete(successfulExecution());
+  await executing;
+  const result = await agentRuntime.result(started.value, accessRequest());
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.cleanup_status, "incomplete");
+});
+
+test("an unknown effect suspends the run instead of failing it, and resume reconciles it", async () => {
+  const executor: AgentRunExecutor = {
+    execute(): Promise<AgentRunExecutorResult> {
+      return Promise.resolve({
+        ok: false,
+        failure: {
+          class: "tool",
+          code: "unknown_effect",
+          message: "Tool call outcome could not be observed before the connection dropped.",
+          retryable: true,
+          evidence: ["evidence://unknown-effect"],
+        },
+      });
+    },
+  };
+  const agentRuntime = runtime(new AuthorizerStub(), executor);
+  const started = await agentRuntime.start(
+    startRequest({
+      allowed_skills: [
+        { id: "assess-requirement-quality", version: "1.0.0" },
+      ],
+    }),
+  );
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+
+  const executed = await agentRuntime.execute(started.value, {
+    ...accessRequest({ operation_id: "execute-unknown-effect" }),
+    expected_revision: 3,
+    idempotency_key: "execute-unknown-effect",
+  });
+  assert.equal(executed.ok, false);
+  if (!executed.ok) assert.equal(executed.failure.code, "unknown_effect");
+
+  const suspended = await agentRuntime.inspect(started.value, accessRequest());
+  assert.equal(suspended.ok, true);
+  if (!suspended.ok) return;
+  assert.equal(suspended.value.state, "suspended");
+  assert.ok(suspended.value.checkpoint !== null);
+
+  const resumed = await agentRuntime.resume(started.value, {
+    ...accessRequest({ operation_id: "resume-unknown-effect" }),
+    expected_revision: suspended.value.revision,
+    checkpoint: suspended.value.checkpoint as string,
+    reason: "Effect status confirmed out of band.",
+    idempotency_key: "resume-unknown-effect",
+  });
+  assert.equal(resumed.ok, true, JSON.stringify(resumed));
+  if (resumed.ok) assert.equal(resumed.value.state, "running");
+});
+
+test("a committed step is recorded once the executor's effect status is known", async () => {
+  const executor = new ExecutorStub(successfulExecution());
+  const agentRuntime = runtime(new AuthorizerStub(), executor);
+  const started = await agentRuntime.start(
+    startRequest({
+      allowed_skills: [
+        { id: "assess-requirement-quality", version: "1.0.0" },
+      ],
+    }),
+  );
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+
+  await agentRuntime.execute(started.value, {
+    ...accessRequest({ operation_id: "execute-commit" }),
+    expected_revision: 3,
+    idempotency_key: "execute-commit",
+  });
+
+  const events = await agentRuntime.streamEvents(started.value, {
+    schema_version: "1.0.0",
+    after_sequence: 0,
+    limit: 100,
+  }, accessRequest());
+  assert.equal(events.ok, true);
+  if (!events.ok) return;
+  assert.ok(events.value.events.some((event) => event.type === "step_committed"));
+});
+
+test("repeated-action-fingerprint and no-progress budgets are enforced", async () => {
+  const base = successfulExecution();
+  assert.ok(base.ok);
+
+  const fingerprintExceeded = await (async () => {
+    const agentRuntime = runtime(
+      new AuthorizerStub(),
+      new ExecutorStub({
+        ok: true,
+        value: { ...base.value, usage: { ...base.value.usage, repeated_action_fingerprints: 5 } },
+      }),
+    );
+    const started = await agentRuntime.start(
+      startRequest({
+        operation_id: "start-fingerprint",
+        idempotency_key: "start-fingerprint",
+        allowed_skills: [{ id: "assess-requirement-quality", version: "1.0.0" }],
+        budgets: {
+          max_steps: 10,
+          max_duration_seconds: 60,
+          max_tool_calls: 5,
+          max_retries: 1,
+          max_repeated_action_fingerprints: 3,
+        },
+      }),
+    );
+    assert.ok(started.ok);
+    if (!started.ok) return undefined;
+    return agentRuntime.execute(started.value, {
+      ...accessRequest({ operation_id: "execute-fingerprint" }),
+      expected_revision: 3,
+      idempotency_key: "execute-fingerprint",
+    });
+  })();
+  assert.ok(fingerprintExceeded?.ok);
+  assert.equal(fingerprintExceeded.value.outcome, "failed");
+  assert.equal(fingerprintExceeded.value.failure_class, "orchestration");
+
+  const noProgressExceeded = await (async () => {
+    const agentRuntime = runtime(
+      new AuthorizerStub(),
+      new ExecutorStub({
+        ok: true,
+        value: { ...base.value, usage: { ...base.value.usage, no_progress_iterations: 5 } },
+      }),
+    );
+    const started = await agentRuntime.start(
+      startRequest({
+        operation_id: "start-no-progress",
+        idempotency_key: "start-no-progress",
+        allowed_skills: [{ id: "assess-requirement-quality", version: "1.0.0" }],
+        budgets: {
+          max_steps: 10,
+          max_duration_seconds: 60,
+          max_tool_calls: 5,
+          max_retries: 1,
+          max_no_progress_iterations: 3,
+        },
+      }),
+    );
+    assert.ok(started.ok);
+    if (!started.ok) return undefined;
+    return agentRuntime.execute(started.value, {
+      ...accessRequest({ operation_id: "execute-no-progress" }),
+      expected_revision: 3,
+      idempotency_key: "execute-no-progress",
+    });
+  })();
+  assert.ok(noProgressExceeded?.ok);
+  assert.equal(noProgressExceeded.value.outcome, "failed");
+  assert.equal(noProgressExceeded.value.failure_class, "orchestration");
 });
 
 test("read boundaries reject unsupported reference and cursor schema versions", async () => {

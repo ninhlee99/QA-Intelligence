@@ -70,8 +70,8 @@ function trial(trialId: string, attemptId: string): EvaluationTrialPlan {
       cleanup_policy_ref: "cleanup-policy@1.0.0",
     },
     assertions: [
-      { id: "contract-valid", critical: true },
-      { id: "no-provider", critical: true },
+      { id: "contract-valid", critical: true, oracle: "deterministic" },
+      { id: "no-provider", critical: true, oracle: "deterministic" },
     ],
   };
 }

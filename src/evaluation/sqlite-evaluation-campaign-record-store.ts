@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import type {
   EvaluationCampaignEvent,
@@ -15,37 +18,108 @@ import type {
   RetainEvaluationCampaignMutationRequest,
 } from "./evaluation-campaign-record-store.js";
 
-export type PostgresQuery = Readonly<{
-  name: string;
-  text: string;
-  values: readonly unknown[];
+export type SqliteEvaluationCampaignRecordStoreDependencies = Readonly<{
+  database_path: string;
+  workspace_id: string;
 }>;
 
-export type PostgresQueryResult<Row> = Readonly<{
-  row_count: number;
-  rows: readonly Row[];
-}>;
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS qa_evaluation_campaigns (
+    workspace_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    record TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, campaign_id)
+  );
 
-export interface PostgresTransaction {
-  query<Row>(query: PostgresQuery): Promise<PostgresQueryResult<Row>>;
-}
+  CREATE TABLE IF NOT EXISTS qa_evaluation_campaign_events (
+    workspace_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, campaign_id, sequence),
+    FOREIGN KEY (workspace_id, campaign_id)
+      REFERENCES qa_evaluation_campaigns (workspace_id, campaign_id)
+  );
 
-export interface PostgresTransactionManager {
-  transaction<Value>(
-    operation: (transaction: PostgresTransaction) => Promise<Value>,
-  ): Promise<Value>;
-}
+  CREATE UNIQUE INDEX IF NOT EXISTS qa_evaluation_campaign_events_revision
+    ON qa_evaluation_campaign_events (workspace_id, campaign_id, revision);
 
-export type PostgresEvaluationCampaignRecordStoreDependencies = Readonly<{
-  database: PostgresTransactionManager;
-}>;
+  CREATE TABLE IF NOT EXISTS qa_evaluation_campaign_commands (
+    workspace_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    command_kind TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    result TEXT NOT NULL,
+    retained_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, campaign_id, command_kind, idempotency_key),
+    FOREIGN KEY (workspace_id, campaign_id)
+      REFERENCES qa_evaluation_campaigns (workspace_id, campaign_id)
+  );
 
-/** PostgreSQL transaction adapter for retained campaign state and outbox intent. */
-export class PostgresEvaluationCampaignRecordStore implements EvaluationCampaignRecordStore {
-  readonly #database: PostgresTransactionManager;
+  CREATE TABLE IF NOT EXISTS qa_platform_outbox (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    producer_id TEXT NOT NULL,
+    producer_version TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    causation_id TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    aggregate_sequence INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    integrity_algorithm TEXT NOT NULL,
+    integrity_digest TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    available_at TEXT NOT NULL,
+    lease_token TEXT,
+    lease_expires_at TEXT,
+    published_at TEXT,
+    last_error TEXT
+  );
 
-  constructor(dependencies: PostgresEvaluationCampaignRecordStoreDependencies) {
-    this.#database = dependencies.database;
+  CREATE INDEX IF NOT EXISTS qa_platform_outbox_publishable
+    ON qa_platform_outbox (available_at, event_id)
+    WHERE published_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS qa_platform_outbox_aggregate_order
+    ON qa_platform_outbox (workspace_id, aggregate_id, aggregate_sequence);
+`;
+
+/**
+ * Local-first SQLite adapter (ADR-017): one database file per Workspace,
+ * owned exclusively by the parent runtime process on the user's machine.
+ */
+export class SqliteEvaluationCampaignRecordStore implements EvaluationCampaignRecordStore {
+  readonly #database: DatabaseSync;
+  readonly #workspaceId: string;
+
+  constructor(dependencies: SqliteEvaluationCampaignRecordStoreDependencies) {
+    if (dependencies.workspace_id.trim().length === 0) {
+      throw new Error("A Workspace identity is required to open a local campaign store.");
+    }
+    mkdirSync(dirname(dependencies.database_path), { recursive: true });
+    this.#workspaceId = dependencies.workspace_id;
+    this.#database = new DatabaseSync(dependencies.database_path);
+    this.#database.exec("PRAGMA journal_mode = WAL");
+    this.#database.exec("PRAGMA foreign_keys = ON");
+    this.#database.exec("PRAGMA busy_timeout = 5000");
+    this.#database.exec(SCHEMA);
+  }
+
+  close(): void {
+    this.#database.close();
   }
 
   async retainMutation(
@@ -55,44 +129,43 @@ export class PostgresEvaluationCampaignRecordStore implements EvaluationCampaign
     const invalid = validateMutation(retained);
     if (invalid !== undefined) return failed("invalid_request", invalid);
     const { snapshot } = retained.record;
+    if (snapshot.workspace_id !== this.#workspaceId) {
+      return failed(
+        "workspace_denied",
+        "The campaign record does not belong to this local Workspace database.",
+      );
+    }
     const event = retained.record.events.at(-1) as EvaluationCampaignEvent;
 
     try {
-      return await this.#database.transaction(async (transaction) => {
-        await setWorkspaceScope(transaction, snapshot.workspace_id);
-        const retainedCommand = await loadCommand(transaction, retained);
-        const prior = retainedCommand.rows[0];
+      return this.#transaction(() => {
+        const prior = this.#loadCommand(retained);
         if (prior !== undefined) {
           if (prior.request_digest !== retained.command.request_digest) {
             return failed(
-                "idempotency_conflict",
-                "The command idempotency key is bound to different input.",
+              "idempotency_conflict",
+              "The command idempotency key is bound to different input.",
             );
           }
-          const priorRecord = decodeRecord(prior.result, snapshot);
+          const priorRecord = decodeRecord(JSON.parse(prior.result), snapshot);
           return priorRecord === undefined
             ? failed("persistence_corrupt", "The retained command result is invalid.")
             : succeeded(priorRecord);
         }
 
-        const mutation = retained.expected_revision === null
-          ? await insertCampaign(transaction, retained.record)
-          : await updateCampaign(
-              transaction,
-              retained.record,
-              retained.expected_revision,
-            );
-        if (mutation.row_count !== 1) {
-          const concurrentCommand = await loadCommand(transaction, retained);
-          const winner = concurrentCommand.rows[0];
+        const mutated = retained.expected_revision === null
+          ? this.#insertCampaign(retained.record)
+          : this.#updateCampaign(retained.record, retained.expected_revision);
+        if (!mutated) {
+          const winner = this.#loadCommand(retained);
           if (winner !== undefined) {
             if (winner.request_digest !== retained.command.request_digest) {
               return failed(
-                  "idempotency_conflict",
-                  "The command idempotency key is bound to different input.",
+                "idempotency_conflict",
+                "The command idempotency key is bound to different input.",
               );
             }
-            const winnerRecord = decodeRecord(winner.result, snapshot);
+            const winnerRecord = decodeRecord(JSON.parse(winner.result), snapshot);
             return winnerRecord === undefined
               ? failed("persistence_corrupt", "The retained command result is invalid.")
               : succeeded(winnerRecord);
@@ -103,87 +176,78 @@ export class PostgresEvaluationCampaignRecordStore implements EvaluationCampaign
           );
         }
 
-        await requireInserted(
-          transaction.query({
-            name: "campaign_event_append",
-            text: `
-              INSERT INTO qa_evaluation_campaign_events
-                (workspace_id, campaign_id, sequence, revision, event, occurred_at)
-              VALUES ($1, $2, $3, $4, $5::jsonb, $6::timestamptz)
-              ON CONFLICT DO NOTHING
-              RETURNING sequence
-            `,
-            values: [
-              snapshot.workspace_id,
-              snapshot.campaign_id,
-              event.sequence,
-              event.revision,
-              JSON.stringify(event),
-              event.occurred_at,
-            ],
-          }),
+        this.#requireChanged(
+          () =>
+            this.#database
+              .prepare(
+                `INSERT OR IGNORE INTO qa_evaluation_campaign_events
+                   (workspace_id, campaign_id, sequence, revision, event, occurred_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                snapshot.workspace_id,
+                snapshot.campaign_id,
+                event.sequence,
+                event.revision,
+                JSON.stringify(event),
+                event.occurred_at,
+              ),
           "campaign event",
         );
-        await requireInserted(
-          transaction.query({
-            name: "campaign_command_retain",
-            text: `
-              INSERT INTO qa_evaluation_campaign_commands
-                (workspace_id, campaign_id, command_kind, idempotency_key,
-                 request_digest, result, retained_at)
-              VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::timestamptz)
-              ON CONFLICT DO NOTHING
-              RETURNING idempotency_key
-            `,
-            values: [
-              snapshot.workspace_id,
-              snapshot.campaign_id,
-              retained.command.kind,
-              retained.command.idempotency_key,
-              retained.command.request_digest,
-              JSON.stringify(retained.record),
-              event.occurred_at,
-            ],
-          }),
+        this.#requireChanged(
+          () =>
+            this.#database
+              .prepare(
+                `INSERT OR IGNORE INTO qa_evaluation_campaign_commands
+                   (workspace_id, campaign_id, command_kind, idempotency_key,
+                    request_digest, result, retained_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                snapshot.workspace_id,
+                snapshot.campaign_id,
+                retained.command.kind,
+                retained.command.idempotency_key,
+                retained.command.request_digest,
+                JSON.stringify(retained.record),
+                event.occurred_at,
+              ),
           "campaign command",
         );
         const outboxPayload = stableStringify({ event, snapshot });
-        const outboxDigest = `sha256:${createHash("sha256")
-          .update(outboxPayload)
-          .digest("hex")}`;
-        await requireInserted(
-          transaction.query({
-            name: "campaign_outbox_append",
-            text: `
-              INSERT INTO qa_platform_outbox
-                (event_id, event_type, schema_version, occurred_at, recorded_at,
-                 producer_id, producer_version, workspace_id, actor_id,
-                 correlation_id, causation_id, aggregate_id, aggregate_sequence,
-                 payload, classification, integrity_algorithm, integrity_digest)
-              VALUES ($1, $2, $3, $4::timestamptz, transaction_timestamp(),
-                      $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)
-              ON CONFLICT DO NOTHING
-              RETURNING event_id
-            `,
-            values: [
-              retained.outbox.event_id,
-              retained.outbox.event_type,
-              retained.outbox.schema_version,
-              event.occurred_at,
-              retained.outbox.producer_id,
-              retained.outbox.producer_version,
-              snapshot.workspace_id,
-              event.actor_id,
-              retained.outbox.correlation_id,
-              retained.outbox.causation_id,
-              snapshot.campaign_id,
-              event.sequence,
-              outboxPayload,
-              retained.outbox.classification,
-              "sha256",
-              outboxDigest,
-            ],
-          }),
+        const outboxDigest = `sha256:${createHash("sha256").update(outboxPayload).digest("hex")}`;
+        this.#requireChanged(
+          () =>
+            this.#database
+              .prepare(
+                `INSERT OR IGNORE INTO qa_platform_outbox
+                   (event_id, event_type, schema_version, occurred_at, recorded_at,
+                    producer_id, producer_version, workspace_id, actor_id,
+                    correlation_id, causation_id, aggregate_id, aggregate_sequence,
+                    payload, classification, integrity_algorithm, integrity_digest,
+                    available_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                retained.outbox.event_id,
+                retained.outbox.event_type,
+                retained.outbox.schema_version,
+                event.occurred_at,
+                new Date().toISOString(),
+                retained.outbox.producer_id,
+                retained.outbox.producer_version,
+                snapshot.workspace_id,
+                event.actor_id,
+                retained.outbox.correlation_id,
+                retained.outbox.causation_id,
+                snapshot.campaign_id,
+                event.sequence,
+                outboxPayload,
+                retained.outbox.classification,
+                "sha256",
+                outboxDigest,
+                event.occurred_at,
+              ),
           "outbox intent",
         );
         return succeeded(retained.record);
@@ -202,27 +266,28 @@ export class PostgresEvaluationCampaignRecordStore implements EvaluationCampaign
     if (reference.workspace_id.trim().length === 0 || reference.campaign_id.trim().length === 0) {
       return failed("invalid_request", "Workspace and campaign identity are required.");
     }
+    if (reference.workspace_id !== this.#workspaceId) {
+      return failed(
+        "workspace_denied",
+        "The requested Workspace does not match this local database file.",
+      );
+    }
     try {
-      return await this.#database.transaction(async (transaction) => {
-        await setWorkspaceScope(transaction, reference.workspace_id);
-        const loaded = await transaction.query<RecordRow>({
-          name: "campaign_load",
-          text: `
-            SELECT record
-              FROM qa_evaluation_campaigns
-             WHERE workspace_id = $1 AND campaign_id = $2
-          `,
-          values: [reference.workspace_id, reference.campaign_id],
-        });
-        const row = loaded.rows[0];
-        if (row === undefined) {
-          return failed("not_found", "The campaign record was not found.");
-        }
-        const record = decodeRecord(row.record, reference);
-        return record === undefined
-          ? failed("persistence_corrupt", "The retained campaign record is invalid.")
-          : succeeded(record);
-      });
+      const row = this.#database
+        .prepare(
+          `SELECT record FROM qa_evaluation_campaigns
+            WHERE workspace_id = ? AND campaign_id = ?`,
+        )
+        .get(reference.workspace_id, reference.campaign_id) as
+        | { record: string }
+        | undefined;
+      if (row === undefined) {
+        return failed("not_found", "The campaign record was not found.");
+      }
+      const record = decodeRecord(JSON.parse(row.record), reference);
+      return record === undefined
+        ? failed("persistence_corrupt", "The retained campaign record is invalid.")
+        : succeeded(record);
     } catch {
       return failed(
         "persistence_unavailable",
@@ -234,135 +299,111 @@ export class PostgresEvaluationCampaignRecordStore implements EvaluationCampaign
   async peekCommand(
     request: PeekEvaluationCampaignCommandRequest,
   ): Promise<EvaluationCampaignCommandPeek | undefined> {
+    if (request.workspace_id !== this.#workspaceId) return undefined;
+    const row = this.#loadCommandByKey(
+      request.workspace_id,
+      request.campaign_id,
+      request.kind,
+      request.idempotency_key,
+    );
+    if (row === undefined) return undefined;
+    const record = decodeRecord(JSON.parse(row.result), {
+      workspace_id: request.workspace_id,
+      campaign_id: request.campaign_id,
+    });
+    return record === undefined
+      ? undefined
+      : { request_digest: row.request_digest, record };
+  }
+
+  #transaction(
+    operation: () => EvaluationCampaignRecordStoreResult,
+  ): EvaluationCampaignRecordStoreResult {
+    this.#database.exec("BEGIN IMMEDIATE");
     try {
-      return await this.#database.transaction(async (transaction) => {
-        await setWorkspaceScope(transaction, request.workspace_id);
-        const loaded = await transaction.query<CommandRow>({
-          name: "campaign_command_load",
-          text: `
-            SELECT request_digest, result
-              FROM qa_evaluation_campaign_commands
-             WHERE workspace_id = $1
-               AND campaign_id = $2
-               AND command_kind = $3
-               AND idempotency_key = $4
-          `,
-          values: [request.workspace_id, request.campaign_id, request.kind, request.idempotency_key],
-        });
-        const row = loaded.rows[0];
-        if (row === undefined) return undefined;
-        const record = decodeRecord(row.result, {
-          workspace_id: request.workspace_id,
-          campaign_id: request.campaign_id,
-        });
-        return record === undefined
-          ? undefined
-          : { request_digest: row.request_digest, record };
-      });
-    } catch {
-      return undefined;
+      const result = operation();
+      this.#database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
     }
   }
-}
 
-type CommandRow = Readonly<{ request_digest: string; result: unknown }>;
-type RecordRow = Readonly<{ record: unknown }>;
-
-function loadCommand(
-  transaction: PostgresTransaction,
-  request: RetainEvaluationCampaignMutationRequest,
-): Promise<PostgresQueryResult<CommandRow>> {
-  const { snapshot } = request.record;
-  return transaction.query({
-    name: "campaign_command_load",
-    text: `
-      SELECT request_digest, result
-        FROM qa_evaluation_campaign_commands
-       WHERE workspace_id = $1
-         AND campaign_id = $2
-         AND command_kind = $3
-         AND idempotency_key = $4
-    `,
-    values: [
+  #loadCommand(
+    request: RetainEvaluationCampaignMutationRequest,
+  ): { request_digest: string; result: string } | undefined {
+    const { snapshot } = request.record;
+    return this.#loadCommandByKey(
       snapshot.workspace_id,
       snapshot.campaign_id,
       request.command.kind,
       request.command.idempotency_key,
-    ],
-  });
-}
+    );
+  }
 
-async function setWorkspaceScope(
-  transaction: PostgresTransaction,
-  workspaceId: string,
-): Promise<void> {
-  await transaction.query({
-    name: "workspace_scope_set",
-    text: "SELECT set_config('qa.workspace_id', $1, true)",
-    values: [workspaceId],
-  });
-}
+  #loadCommandByKey(
+    workspaceId: string,
+    campaignId: string,
+    kind: EvaluationCampaignMutationKind,
+    idempotencyKey: string,
+  ): { request_digest: string; result: string } | undefined {
+    return this.#database
+      .prepare(
+        `SELECT request_digest, result FROM qa_evaluation_campaign_commands
+          WHERE workspace_id = ? AND campaign_id = ?
+            AND command_kind = ? AND idempotency_key = ?`,
+      )
+      .get(workspaceId, campaignId, kind, idempotencyKey) as
+      | { request_digest: string; result: string }
+      | undefined;
+  }
 
-function insertCampaign(
-  transaction: PostgresTransaction,
-  record: EvaluationCampaignRecord,
-): Promise<PostgresQueryResult<RecordRow>> {
-  const { snapshot } = record;
-  return transaction.query({
-    name: "campaign_create",
-    text: `
-      INSERT INTO qa_evaluation_campaigns
-        (workspace_id, campaign_id, revision, state, record, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6::timestamptz, $7::timestamptz)
-      ON CONFLICT DO NOTHING
-      RETURNING record
-    `,
-    values: [
-      snapshot.workspace_id,
-      snapshot.campaign_id,
-      snapshot.revision,
-      snapshot.state,
-      JSON.stringify(record),
-      snapshot.created_at,
-      snapshot.updated_at,
-    ],
-  });
-}
+  #insertCampaign(record: EvaluationCampaignRecord): boolean {
+    const { snapshot } = record;
+    const result = this.#database
+      .prepare(
+        `INSERT OR IGNORE INTO qa_evaluation_campaigns
+           (workspace_id, campaign_id, revision, state, record, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        snapshot.workspace_id,
+        snapshot.campaign_id,
+        snapshot.revision,
+        snapshot.state,
+        JSON.stringify(record),
+        snapshot.created_at,
+        snapshot.updated_at,
+      );
+    return result.changes === 1;
+  }
 
-function updateCampaign(
-  transaction: PostgresTransaction,
-  record: EvaluationCampaignRecord,
-  expectedRevision: number,
-): Promise<PostgresQueryResult<RecordRow>> {
-  const { snapshot } = record;
-  return transaction.query({
-    name: "campaign_update",
-    text: `
-      UPDATE qa_evaluation_campaigns
-         SET revision = $3, state = $4, record = $5::jsonb,
-             updated_at = $6::timestamptz
-       WHERE workspace_id = $1 AND campaign_id = $2 AND revision = $7
-      RETURNING record
-    `,
-    values: [
-      snapshot.workspace_id,
-      snapshot.campaign_id,
-      snapshot.revision,
-      snapshot.state,
-      JSON.stringify(record),
-      snapshot.updated_at,
-      expectedRevision,
-    ],
-  });
-}
+  #updateCampaign(record: EvaluationCampaignRecord, expectedRevision: number): boolean {
+    const { snapshot } = record;
+    const result = this.#database
+      .prepare(
+        `UPDATE qa_evaluation_campaigns
+            SET revision = ?, state = ?, record = ?, updated_at = ?
+          WHERE workspace_id = ? AND campaign_id = ? AND revision = ?`,
+      )
+      .run(
+        snapshot.revision,
+        snapshot.state,
+        JSON.stringify(record),
+        snapshot.updated_at,
+        snapshot.workspace_id,
+        snapshot.campaign_id,
+        expectedRevision,
+      );
+    return result.changes === 1;
+  }
 
-async function requireInserted(
-  insertion: Promise<PostgresQueryResult<unknown>>,
-  artifact: string,
-): Promise<void> {
-  const result = await insertion;
-  if (result.row_count !== 1) {
-    throw new Error(`Failed to retain ${artifact}.`);
+  #requireChanged(mutation: () => { changes: number | bigint }, artifact: string): void {
+    const result = mutation();
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Failed to retain ${artifact}.`);
+    }
   }
 }
 

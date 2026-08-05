@@ -12,8 +12,10 @@ import {
   type PostgresQueryResult,
   type PostgresTransaction,
   type PostgresTransactionManager,
-  type RetainEvaluationCampaignMutationRequest,
 } from "../../src/evaluation/postgres-evaluation-campaign-record-store.js";
+import type {
+  RetainEvaluationCampaignMutationRequest,
+} from "../../src/evaluation/evaluation-campaign-record-store.js";
 
 const NOW = "2026-08-03T16:00:00.000Z";
 

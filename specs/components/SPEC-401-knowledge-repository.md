@@ -15,6 +15,7 @@ depends_on:
 related_adrs:
   - ADR-001
   - ADR-008
+  - ADR-017
 last_updated: 2026-08-03
 approved_by:
   - Repository Owner through explicit instruction
@@ -73,7 +74,15 @@ Contract tests SHALL cover concurrency, history, isolation, idempotency, recover
 
 ## 8. Persistence and Operability
 
-The component SHALL implement SPEC-501 behind a transaction boundary and use ADR-012 persistence without exposing database schemas to callers. Writes use optimistic concurrency and transactional event handoff; retry cannot duplicate revisions or lifecycle effects. Metrics SHALL expose command/query latency, conflict, integrity failure, projection lag, recovery, and isolation denial. Backup, restore, retention, migration, and index rebuild SHALL preserve stable IDs, versions, provenance, and Workspace scope.
+The component SHALL implement SPEC-501 behind a transaction boundary and use
+ADR-017 persistence without exposing database schemas or paths to callers. The
+default local adapter uses one SQLite database per Workspace; PostgreSQL is an
+optional shared-profile adapter. Writes use optimistic concurrency and
+transactional event handoff; retry cannot duplicate revisions or lifecycle
+effects. Metrics SHALL expose command/query latency, conflict, integrity
+failure, projection lag, recovery, lock contention, and isolation denial.
+Backup, restore, retention, migration, and index rebuild SHALL preserve stable
+IDs, versions, provenance, and Workspace scope.
 
 ## 9. Definition of Done
 

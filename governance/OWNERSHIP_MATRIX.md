@@ -750,6 +750,7 @@ Individual responsibilities include:
 | SPEC-103 Knowledge Store | Knowledge Governance |
 | SPEC-104 Rule Engine | Rule Governance |
 | SPEC-105 Learning Engine | Knowledge Governance and AI Governance |
+| SPEC-108 Memory Model | Knowledge Governance, AI Governance, and Runtime Platform |
 
 Architecture approval SHALL be required where a Knowledge specification changes platform boundaries or dependency direction.
 

@@ -1,7 +1,7 @@
 ---
 id: GOV-011
 title: Architecture Decision Graph
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Architecture
@@ -24,11 +24,13 @@ related_adrs:
   - ADR-009
   - ADR-010
   - ADR-011
-  - ADR-012
+  - ADR-017
   - ADR-013
   - ADR-014
   - ADR-015
-last_updated: 2026-08-03
+  - ADR-016
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -80,10 +82,13 @@ Implementation and Evidence
 | ADR-009 Execution Engine Abstraction | SPEC-210, SPEC-404, SPEC-504, SPEC-601–605 |
 | ADR-010 Controlled Learning | SPEC-105, SPEC-211, SPEC-308, SPEC-605 |
 | ADR-011 TypeScript and Node Runtime | SPEC-309, SPEC-310, SPEC-410, SPEC-411 |
-| ADR-012 PostgreSQL and Outbox | SPEC-103, SPEC-601, SPEC-606, SPEC-607 |
+| ADR-012 PostgreSQL and Outbox | Superseded by ADR-017; optional shared-profile history |
 | ADR-013 Modular Monolith Deployment | SPEC-601, SPEC-603, SPEC-605 |
 | ADR-014 OIDC and Internal Authorization | SPEC-306, SPEC-506, SPEC-606 |
 | ADR-015 Requirement Review Tracer Bullet | SPEC-203, SPEC-213, SPEC-309, SPEC-310 |
+| ADR-016 Host-Neutral MCP Integration | SPEC-508, SPEC-509, SPEC-510, SPEC-511 |
+| ADR-017 Local-First SQLite and Optional PostgreSQL | SPEC-103, SPEC-309, SPEC-501, SPEC-601, SPEC-606, SPEC-607 |
+| ADR-018 Memory, Proportional Rigor, and Cost/Latency Efficiency | SPEC-108, SPEC-001, SPEC-107, SPEC-206, SPEC-209, SPEC-210, SPEC-213, SPEC-309, SPEC-501, SPEC-508 |
 
 ## 3.1 Agent and Skill Realization
 
@@ -91,17 +96,19 @@ Implementation and Evidence
 SPEC-004 AI Governance
         ↓
 SPEC-106 Agent and Skill Model ──→ SPEC-107 Evaluation Model
+        ↓            ↓                     ↓
+        ↓      SPEC-108 Memory      SPEC-213 Quality Assessment
+        ↓            ↓                     ↓
+SPEC-309 Agent Runtime ←──         SPEC-310 Evaluation Engine
         ↓                                  ↓
-SPEC-309 Agent Runtime             SPEC-213 Quality Assessment
+SPEC-508/509/510 Contracts         SPEC-511 Evaluation Contract
         ↓                                  ↓
-SPEC-508/509/510 Contracts         SPEC-310 Evaluation Engine
+SPEC-410 Agent Runner              SPEC-411 Evaluation Manager
         ↓                                  ↓
-SPEC-410 Agent Runner              SPEC-511 Evaluation Contract
-        ↓                                  ↓
-SPEC-606 Agent Lifecycle           SPEC-411 Evaluation Manager
-                                           ↓
-                                  SPEC-607 Campaign Lifecycle
+SPEC-606 Agent Lifecycle           SPEC-607 Campaign Lifecycle
 ```
+
+SPEC-108 (Memory) extends SPEC-103's Knowledge Store ranking (not shown above; see §4 Contract Ownership) and is consumed by SPEC-309/SPEC-508 for context reuse. It does not introduce a second knowledge store or bypass SPEC-105's governed learning path.
 
 These artifacts realize existing decisions. They do not introduce an independent generic Agent product, a second knowledge store, or a direct-learning path.
 
@@ -119,6 +126,7 @@ Normative contracts SHALL be owned once:
 - platform events: SPEC-505
 - runtime execution transitions: SPEC-602
 - Agent and Skill semantics: SPEC-106
+- Memory and retrieval-layer semantics: SPEC-108
 - evaluation semantics: SPEC-107
 - Agent runtime protocol: SPEC-508
 - Skill invocation protocol: SPEC-509
