@@ -1,7 +1,7 @@
 generated: true
 generated_at: 2026-08-03
 status: accepted
-governing_specs: [SPEC-101, SPEC-102, SPEC-104, SPEC-106, SPEC-107, SPEC-202, SPEC-207, SPEC-210, SPEC-213, SPEC-310, SPEC-508, SPEC-511, SPEC-606]
+governing_specs: [SPEC-101, SPEC-102, SPEC-104, SPEC-106, SPEC-107, SPEC-202, SPEC-205, SPEC-207, SPEC-210, SPEC-213, SPEC-310, SPEC-508, SPEC-511, SPEC-606]
 artifacts:
   - ../schemas/knowledge-object.schema.json
   - ../schemas/knowledge-candidate.schema.json
@@ -21,6 +21,8 @@ artifacts:
   - ../schemas/evaluation-case.schema.json
   - ../schemas/evaluation-result.schema.json
   - ../schemas/requirement-assessment.schema.json
+  - ../schemas/risk.schema.json
+  - ../schemas/risk-assessment.schema.json
   - ../schemas/knowledge-search-input.schema.json
   - ../schemas/knowledge-search-result.schema.json
   - ../schemas/agent-run-start.schema.json
