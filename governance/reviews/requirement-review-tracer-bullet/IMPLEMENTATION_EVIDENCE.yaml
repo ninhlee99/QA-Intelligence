@@ -1,6 +1,6 @@
 id: EVIDENCE-RRA-IMPLEMENTATION-001
-version: 0.1.0
-date: 2026-08-03
+version: 0.2.0
+date: 2026-08-05
 status: development_slice_pass
 scope: deterministic Requirement Review Agent and Assess Requirement Quality Skill development slice
 preserved_product_intent:
@@ -32,9 +32,18 @@ implemented_modules:
     - src/adapters/replay/scripted-reasoning-provider.ts
     - src/adapters/replay/scripted-evaluation-adapter.ts
     - src/evaluation/evaluation-campaign-repository.ts
+    - src/evaluation/evaluation-campaign-record-store.ts
     - src/evaluation/postgres-evaluation-campaign-record-store.ts
+    - src/evaluation/sqlite-evaluation-campaign-record-store.ts
+    - src/evaluation/pg-transaction-manager.ts
+    - src/evaluation/persisted-evaluation-campaign-repository.ts
+    - src/runtime/agent-run-record-store.ts
+    - src/runtime/sqlite-agent-run-record-store.ts
     - src/runtime/in-memory-agent-runtime.ts
     - src/requirement-review/runtime-executor.ts
+  memory:
+    - src/memory/working-memory.ts
+    - src/memory/session-memory.ts
   evaluation_adapter_interface:
     - src/evaluation/adapter.ts
   persistence_migrations:
@@ -102,9 +111,14 @@ gate_evidence:
       - PostgreSQL record-store transaction adapter retains the campaign mutation, domain event, idempotent command result, and SPEC-505 outbox intent atomically
       - concurrent same-command winners resolve to the retained result while stale revisions and conflicting digests remain distinct
       - corrupt retained JSONB and outbox transaction failures fail closed without returning authoritative campaign state
+      - a real pg-driver PgTransactionManager proves the same shared record-store contract suite, a concurrent-writer race producing exactly one winner and one stale_revision loser, Row-Level Security denying an unscoped query under a non-superuser application role, and state surviving a fresh transaction manager (restart-equivalent) against a live local PostgreSQL 18 server
+      - SPEC-511 Evaluation Adapter conformance now covers cancellation (stable non-retryable failure), replay divergence (achieved_fidelity and divergences reported explicitly, never silently matching), replay_unavailable, and trial isolation (one trial cannot observe or receive another trial's scripted case) against ScriptedEvaluationAdapter
+      - a parallel AgentRunRecordStore seam and SqliteAgentRunRecordStore give Agent Run state (SPEC-410 §5) the same contract-tested optimistic-revision, idempotent-replay, and Workspace-denial guarantees the Evaluation Campaign record-store already had
+      - AP-064 context/cost-efficiency reuse is implemented (WorkingMemoryKnowledgeSearch) and proven against the real AssessRequirementQuality module: two reviews of the same requirement in one run query the Knowledge Store once, and a changed durable reference forces re-resolution
     pending:
       - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
-      - PostgreSQL 18 driver/runtime durability, RLS, concurrent-writer, outbox-claim, worker-loss, backup/restore, and migration conformance plus provider, Tool, and shared production-adapter suites
+      - PostgreSQL outbox-claim, worker-loss, backup/restore, and production-migration conformance; OIDC/internal authorization for the database connection itself
+      - InMemoryAgentRuntime is not yet composed to write through AgentRunRecordStore — the seam and SQLite adapter exist and pass contract tests, but the runtime still holds authoritative state only in process memory
       - process-restart, timeout, no-progress, cleanup, and partial-effect execution paths beyond the in-memory recovery-decision baseline
   G4_evaluation_readiness:
     outcome: partial
@@ -141,12 +155,14 @@ independent_review:
     dependency_vulnerabilities: 0
 authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
 current_increment_validation:
-  tests_passed: 152
+  tests_passed: 219
   tests_failed: 0
+  tests_skipped: 1
+  tests_skipped_reason: real-PostgreSQL contract tests skip without QA_INTELLIGENCE_TEST_POSTGRES_URL so `npm test` stays database-free by default
   schemas_compiled: 26
   valid_examples_accepted: 22
   invalid_examples_rejected: 15
-  yaml_files_checked: 37
+  yaml_files_checked: 39
   json_files_checked: 75
   full_repository_validation: pass
   dependency_vulnerabilities: 0
@@ -238,3 +254,22 @@ postgres_campaign_store_increment_review:
   explicit_non_claims:
     - the local smoke-test is not PostgreSQL 18 production conformance
     - no production driver, deployed database, real concurrent connection, RLS-role, outbox publisher, backup/restore, worker-loss, or restart evidence is claimed
+real_postgresql_driver_and_memory_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - a real pg-driver PgTransactionManager (not a fake) passes the full shared record-store contract suite against a live local PostgreSQL 18 server
+    - a concurrent-writer race on the same campaign revision produces exactly one succeeded mutation and one stale_revision failure, never a silent overwrite
+    - Row-Level Security denies an unscoped query when the connecting role is not a superuser; PostgreSQL superusers bypass RLS even under FORCE ROW LEVEL SECURITY, so this test specifically exercises a non-superuser application role to have any evidentiary value
+    - retained state is readable through a newly constructed PgTransactionManager with no shared in-process state, standing in for a parent-runtime restart
+    - a new AgentRunRecordStore seam and SqliteAgentRunRecordStore pass the same optimistic-revision, idempotent-replay, not_found, and cross-Workspace-denial contract suite already proven for the Evaluation Campaign record-store
+    - SPEC-511 conformance now includes cancellation, replay (success, divergence, and replay_unavailable), and trial isolation cases against ScriptedEvaluationAdapter, closing gaps the ROADMAP previously listed as outstanding
+    - WorkingMemoryKnowledgeSearch (SPEC-108 §4.1, AP-064) reuses a Knowledge Store result within a run when durable references are unchanged, and re-resolves when any of them change; proven both in isolation and against the real AssessRequirementQuality module
+    - SessionMemory (SPEC-108 §7) declines retention by default and only promotes low-consequence, project-scoped, provenance-bearing, reuse-likely candidates through the fast path; medium/high-consequence and cross-project candidates are explicitly declined rather than silently retained
+  explicit_non_claims:
+    - InMemoryAgentRuntime does not yet write through AgentRunRecordStore; the seam exists and is contract-tested but is not composed into the runtime's authoritative write path
+    - no Postgres adapter exists yet for Agent Run state (SQLite only, consistent with ADR-017's local-first default)
+    - Session Memory's fast-path promotion has no consumer wired into the Requirement Review Skill yet (no real failure-avoidance candidate is generated by assess-requirement-quality.ts); the component is implemented and tested in isolation and via the Working Memory integration test, not yet exercised end-to-end for a save-decision candidate
+    - production OIDC verifier, SPEC-511 production Evaluation Adapter, and PostgreSQL outbox-claim/worker-loss/backup conformance remain unimplemented, as recorded above

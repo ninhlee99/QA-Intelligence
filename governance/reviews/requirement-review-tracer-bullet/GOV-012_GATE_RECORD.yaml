@@ -1,6 +1,6 @@
 id: GATE-RRA-GOV012-001
-version: 0.1.0
-date: 2026-08-03
+version: 0.2.0
+date: 2026-08-05
 status: in_progress
 governing_policy: GOV-012
 subject:
@@ -17,6 +17,8 @@ gates:
       - examples/skills/assess-requirement-quality.example.json
       - ADR-015
       - SPEC-106
+      - SPEC-108
+      - ADR-018
   G2_authority_and_sandbox:
     design_evidence: complete
     implementation_evidence: partial
@@ -31,17 +33,22 @@ gates:
   G3_contract_and_determinism:
     design_evidence: complete
     full_schema_validation: pass
-    adapter_conformance: partial_deterministic_development_adapters
+    adapter_conformance: deterministic_development_adapters_complete_production_pending
     architecture_direction_approval: approved
-    gate_approval: pending_production_adapter_and_shared_conformance
+    gate_approval: pending_production_adapter_and_OIDC_authorization
     evidence:
       - SPEC-508
       - SPEC-509
       - SPEC-510
       - SPEC-511
+      - SPEC-108
+      - ADR-018
       - tests/validate-json-schemas.mjs
       - src/evaluation/adapter.ts
       - tests/evaluation/scripted-evaluation-adapter.test.ts
+      - tests/evaluation/pg-transaction-manager.real.test.ts
+      - tests/runtime/agent-run-record-store-contract.ts
+      - tests/memory/working-memory-requirement-review.integration.test.ts
       - tests/integration/requirement-review-runtime.test.ts
       - governance/reviews/requirement-review-tracer-bullet/IMPLEMENTATION_EVIDENCE.yaml
   G4_evaluation_readiness:
