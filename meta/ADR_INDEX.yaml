@@ -20,3 +20,4 @@ artifacts:
   - { id: ADR-016, status: accepted, path: ../adr/ADR-016-host-neutral-mcp-integration.md }
   - { id: ADR-017, status: accepted, path: ../adr/ADR-017-local-first-sqlite-and-optional-postgresql.md }
   - { id: ADR-018, status: accepted, path: ../adr/ADR-018-memory-proportional-rigor-and-cost-efficiency.md }
+  - { id: ADR-019, status: accepted, path: ../adr/ADR-019-minimal-self-implemented-mcp-transport.md }

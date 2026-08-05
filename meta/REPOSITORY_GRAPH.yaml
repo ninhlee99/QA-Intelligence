@@ -34,6 +34,7 @@ critical_edges:
   - { from: ADR-015, relationship: realized_by, to: SPEC-213 }
   - { from: ADR-016, relationship: exposed_through, to: SPEC-508 }
   - { from: ADR-018, relationship: realized_by, to: SPEC-108 }
+  - { from: ADR-019, relationship: exposed_through, to: SPEC-508 }
   - { from: SPEC-103, relationship: extended_by, to: SPEC-108 }
   - { from: SPEC-108, relationship: consumed_by, to: SPEC-309 }
   - { from: SPEC-108, relationship: consumed_by, to: SPEC-508 }
