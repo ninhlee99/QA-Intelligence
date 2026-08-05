@@ -9,6 +9,7 @@ import {
   type EvaluationAdapterOperation,
   type EvaluateRubricRequest,
   type ExecuteTrialRequest,
+  type ReplayRequest,
 } from "../../src/evaluation/adapter.js";
 import { ScriptedEvaluationAdapter } from "../../src/adapters/replay/scripted-evaluation-adapter.js";
 import type {
@@ -205,6 +206,34 @@ function evaluateRubricRequest(): EvaluateRubricRequest {
       calibration_ref: "calibration://judge@1.0.0",
       independence_policy_ref: "judge-independence@1.0.0",
       candidate_output_ref: "assessment://assessment-001",
+    },
+  });
+}
+
+function replayRequest(): ReplayRequest {
+  return sealRequest({
+    operation: "replay",
+    operationId: "replay-001",
+    trial: {
+      campaign_id: "campaign-001",
+      case_id: "case-001",
+      trial_id: "trial-001",
+      attempt_id: "attempt-001",
+    },
+    workspace: context(),
+    idempotency: {
+      key: "replay-key-001",
+      scope: "workspace-evaluation-001:campaign-001",
+      request_digest: "",
+    },
+    deadline: { at: "2026-08-03T12:05:00.000Z", time_standard: "UTC" },
+    version: { contract: "1.0.0", operation_schema: "1.0.0" },
+    payload: {
+      source_operation_ids: ["execute-trial-001"],
+      evidence_refs: ["evidence://trial-001/output"],
+      exact_input_refs: ["requirement://REQ-001@1.0.0"],
+      allowed_substitutions: [],
+      requested_fidelity: "exact",
     },
   });
 }
@@ -693,4 +722,219 @@ test("rejects a timezone-less deadline instead of interpreting host local time",
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_request");
   assert.equal(authorizationCalls.length, 0);
+});
+
+test("a cancelled operation retains a stable cancelled failure, not a retried attempt", async () => {
+  const request = executeTrialRequest();
+  const authorizationCalls: WorkspaceAuthorizationRequest[] = [];
+  const adapter = new ScriptedEvaluationAdapter({
+    clock: { now: () => new Date(NOW) },
+    authorizer: allowingAuthorizer(authorizationCalls),
+    provider: { id: "scripted-evaluation", version: "1.0.0" },
+    cases: [
+      {
+        match: request,
+        outcome: {
+          failure: {
+            code: "cancelled",
+            retryable: false,
+            responsible_domain: "caller",
+            message: "The evaluation trial was cancelled before completion.",
+            details: {},
+            diagnostic_evidence_refs: ["evidence://trial-001/cancellation"],
+            provider_details: {},
+          },
+          evidence: ["evidence://trial-001/cancellation"],
+        },
+      },
+    ],
+  });
+
+  const result = await adapter.executeTrial(request);
+  const duplicate = await adapter.executeTrial(request);
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok);
+  assert.equal(result.failure.code, "cancelled");
+  assert.equal(result.failure.retryable, false);
+  assert.equal(result.evidence.includes("evidence://trial-001/cancellation"), true);
+  assert.strictEqual(duplicate, result);
+  assert.equal(authorizationCalls.length, 2);
+});
+
+test("replay never overwrites the original trial and reports achieved fidelity", async () => {
+  const request = replayRequest();
+  const authorizationCalls: WorkspaceAuthorizationRequest[] = [];
+  const adapter = new ScriptedEvaluationAdapter({
+    clock: { now: () => new Date(NOW) },
+    authorizer: allowingAuthorizer(authorizationCalls),
+    provider: { id: "scripted-evaluation", version: "1.0.0" },
+    cases: [
+      {
+        match: request,
+        outcome: {
+          value: {
+            observations: [
+              {
+                assertion_id: "assessment-schema",
+                observed: true,
+                evidence_ref: "evidence://trial-001/replay/assessment-schema",
+              },
+            ],
+            resolved_versions: { "requirement-review": "1.0.0" },
+            substitutions: [],
+            divergences: [],
+            evidence: ["evidence://trial-001/replay/assessment-schema"],
+            achieved_fidelity: "exact",
+          },
+          evidence: ["evidence://trial-001/replay/assessment-schema"],
+        },
+      },
+    ],
+  });
+
+  const result = await adapter.replay(request);
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.ok(result.ok);
+  assert.equal(result.value.achieved_fidelity, "exact");
+  assert.deepEqual(result.value.divergences, []);
+  assert.equal(result.operationId, "replay-001");
+  assert.notEqual(result.operationId, "execute-trial-001");
+  assert.deepEqual(authorizationCalls[0]?.required_permissions, ["evaluation:replay"]);
+  assert.equal(authorizationCalls[0]?.consequence_class, "controlled_side_effect");
+});
+
+test("a replay result explicitly reports divergence instead of a silent match", async () => {
+  const request = replayRequest();
+  const adapter = new ScriptedEvaluationAdapter({
+    clock: { now: () => new Date(NOW) },
+    authorizer: allowingAuthorizer([]),
+    provider: { id: "scripted-evaluation", version: "1.0.0" },
+    cases: [
+      {
+        match: request,
+        outcome: {
+          value: {
+            observations: [
+              {
+                assertion_id: "assessment-schema",
+                observed: false,
+                evidence_ref: "evidence://trial-001/replay/assessment-schema",
+              },
+            ],
+            resolved_versions: { "requirement-review": "1.0.1" },
+            substitutions: ["provider:scripted-evaluation@1.0.1"],
+            divergences: [
+              "requirement-review version drifted from 1.0.0 to 1.0.1",
+              "assessment-schema observation flipped from true to false",
+            ],
+            evidence: ["evidence://trial-001/replay/assessment-schema"],
+            achieved_fidelity: "substituted",
+          },
+        },
+      },
+    ],
+  });
+
+  const result = await adapter.replay(request);
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.ok(result.ok);
+  assert.equal(result.value.achieved_fidelity, "substituted");
+  assert.equal(result.value.divergences.length, 2);
+  assert.deepEqual(result.value.substitutions, ["provider:scripted-evaluation@1.0.1"]);
+});
+
+test("a trial cannot observe or receive another trial's scripted case", async () => {
+  const ownTrial = executeTrialRequest();
+  const otherTrial = sealRequest({
+    ...ownTrial,
+    trial: {
+      campaign_id: "campaign-001",
+      case_id: "case-001",
+      trial_id: "trial-002",
+      attempt_id: "attempt-001",
+    },
+    idempotency: {
+      key: "execute-key-002",
+      scope: "workspace-evaluation-001:campaign-001",
+      request_digest: "",
+    },
+  });
+  const authorizationCalls: WorkspaceAuthorizationRequest[] = [];
+  const adapter = new ScriptedEvaluationAdapter({
+    clock: { now: () => new Date(NOW) },
+    authorizer: allowingAuthorizer(authorizationCalls),
+    provider: { id: "scripted-evaluation", version: "1.0.0" },
+    cases: [
+      {
+        match: ownTrial,
+        outcome: {
+          value: {
+            observations: [
+              {
+                assertion_id: "hidden-case-marker",
+                observed: true,
+                evidence_ref: "evidence://trial-001/hidden-case-marker",
+              },
+            ],
+            subject_output_refs: ["assessment://trial-001-only"],
+            tool_events: [],
+            policy_events: [],
+            resource_usage: {},
+            trial_timings: {},
+            termination_observation: { state: "completed" },
+            raw_evidence_refs: ["evidence://trial-001/hidden-case-marker"],
+          },
+        },
+      },
+    ],
+  });
+
+  const result = await adapter.executeTrial(otherTrial);
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok);
+  assert.equal(result.failure.code, "unavailable");
+  assert.equal(JSON.stringify(result).includes("trial-001-only"), false);
+  assert.equal(JSON.stringify(result).includes("hidden-case-marker"), false);
+  assert.equal(authorizationCalls.length, 1);
+});
+
+test("replay fails explicitly with replay_unavailable when a dependency cannot be reconstructed", async () => {
+  const request = replayRequest();
+  const adapter = new ScriptedEvaluationAdapter({
+    clock: { now: () => new Date(NOW) },
+    authorizer: allowingAuthorizer([]),
+    provider: { id: "scripted-evaluation", version: "1.0.0" },
+    cases: [
+      {
+        match: request,
+        outcome: {
+          failure: {
+            code: "replay_unavailable",
+            retryable: true,
+            responsible_domain: "replay",
+            message: "A source evidence reference required for replay is no longer available.",
+            details: {},
+            diagnostic_evidence_refs: ["evidence://trial-001/replay/missing-source"],
+            provider_details: {},
+          },
+          evidence: ["evidence://trial-001/replay/missing-source"],
+        },
+      },
+    ],
+  });
+
+  const result = await adapter.replay(request);
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok);
+  assert.equal(result.failure.code, "replay_unavailable");
+  assert.equal(result.failure.responsible_domain, "replay");
+  assert.equal(
+    result.evidence.includes("evidence://trial-001/replay/missing-source"),
+    true,
+  );
 });

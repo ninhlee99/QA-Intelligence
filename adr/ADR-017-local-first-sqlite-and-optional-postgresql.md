@@ -2,8 +2,8 @@
 id: ADR-017
 title: Local-First SQLite Runtime and Optional PostgreSQL Collaboration
 status: accepted
-version: 1.0.0
-date: 2026-08-03
+version: 1.1.0
+date: 2026-08-05
 decision_owners:
   - Repository Owner
   - Architecture
@@ -164,6 +164,24 @@ PostgreSQL distributed/RLS behavior.
   authority, optimistic lifecycle control, and recovery attribution.
 - **Automatic local-to-cloud synchronization** was rejected because conflict,
   authority, privacy, and deletion semantics require an explicit product design.
+- **`better-sqlite3` (native binding) instead of Node's built-in `node:sqlite`**
+  was rejected. `node:sqlite` (`DatabaseSync`) is API-equivalent to
+  `better-sqlite3` — Node's implementation is derived from the same
+  synchronous design — so switching would not add capability. It would add a
+  native compiled dependency requiring prebuilt binaries per OS/architecture,
+  which ADR-011 §5 treats as a decision requiring architecture review because
+  it reduces portability and reproducibility, and it would break the
+  two-dependency (`ajv`, `ajv-formats`) surface the runtime baseline
+  currently holds. `node:sqlite` remains labeled experimental by Node (API
+  MAY change between Node minor versions outside normal semver), but is
+  loadable without a runtime flag as of Node 24 and has a stable synchronous
+  shape (`DatabaseSync`, `StatementSync`). This risk is accepted and
+  controlled rather than avoided by native substitution: the `engines` field
+  pins Node to `>=24 <25`, the record-store seam (§6) keeps `node:sqlite`
+  behind the same provider-neutral interface as the PostgreSQL adapter so a
+  future substitution would not change domain code, and a Node LTS upgrade
+  that changes `node:sqlite` behavior requires the compatibility and
+  regression evidence ADR-011 §7 already requires for any runtime upgrade.
 
 ## 9. Validation
 

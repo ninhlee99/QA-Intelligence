@@ -82,10 +82,10 @@ Host (Claude Code/Codex/Cursor) → Host Integration Package (thin) → MCP Inte
 
 ### Giai đoạn 0 — Vá tài liệu còn lại
 - [x] ROADMAP.md: đã phản ánh ADR-017 (SQLite default) và ADR-018 (spec-quality update) — xong trong phiên này.
-- [ ] 0.1 Quyết định `node:sqlite` experimental: (a) pin Node LTS có sqlite stable, (b) fallback `better-sqlite3`, (c) chấp nhận rủi ro có theo dõi — cần quyết định owner (xem §5).
+- [x] 0.1 Quyết định `node:sqlite` experimental: **giữ `node:sqlite`, không đổi `better-sqlite3`** — lý do: API tương đương, native binding vi phạm ADR-011 §5 (portability review) và phá vỡ baseline 2-dependency; rủi ro kiểm soát bằng `engines` pin (`>=24 <25`) + record-store đã có provider-neutral seam. Ghi vào ADR-017 §8 (v1.1.0).
 
 ### Giai đoạn 1 — Đóng nốt tracer bullet hiện tại (Requirement Review) trước khi nhân rộng
-- [ ] 1.1 SPEC-511 case còn thiếu: cancellation, partial-failure, evidence-integrity, replay-divergence, full isolation campaign.
+- [x] 1.1 SPEC-511 case còn thiếu: **code (`ScriptedEvaluationAdapter`, kể cả `replay()`) đã generic và hỗ trợ đủ mọi op từ trước — gap thật chỉ là thiếu test.** Đã thêm 5 test vào `tests/evaluation/scripted-evaluation-adapter.test.ts`: cancellation (failure code `cancelled`, không retry), replay không ghi đè trial gốc, replay báo `divergences`/`achieved_fidelity` tường minh thay vì im lặng khớp, `replay_unavailable` khi thiếu dependency, trial-isolation (1 trial không thể nhận/lộ scripted case của trial khác). 195/195 test pass, validator sạch.
 - [ ] 1.2 Postgres: `pg` driver thật, `PostgresTransactionManager` thật, test với DB thật (docker/testcontainers) — restart, concurrent-writer, RLS.
 - [ ] 1.3 Agent Runner durable persistence: hiện chỉ in-memory; cần SQLite/Postgres record-store cho Agent Run state (như đã làm cho Evaluation Campaign).
 - [ ] **1.4 (mới) Implement SPEC-108 Memory cho Requirement Review**: Working Memory trong `in-memory-agent-runtime.ts` (reuse context/retrieval theo AP-064), Session Memory + save-decision policy (§7.1) cho ít nhất 1 loại observation thật (ví dụ: kết quả Discovery lặp lại trong cùng Workspace). Đây là nơi tốt nhất để chứng minh kiến trúc Memory trước khi nhân rộng — tracer bullet nhỏ bên trong tracer bullet.
