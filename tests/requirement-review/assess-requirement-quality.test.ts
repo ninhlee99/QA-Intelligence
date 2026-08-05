@@ -626,3 +626,84 @@ test("a critical finding rejects even alongside other lower-severity findings, n
     assert.equal(result.value.verdict, "rejected");
   }
 });
+
+test("a critical finding whose category is not conflict/unsafe blocks rather than being mislabeled rejected (SPEC-203 §7)", async () => {
+  const rules = new RuleStub({
+    ok: true,
+    value: {
+      outcome: "satisfied",
+      rule_set: { id: "requirement-quality", version: "1.0.0" },
+      rule_versions: [{ id: "requirement-testability", version: "1.0.0" }],
+      matched_conditions: ["acceptance criteria cannot be objectively verified"],
+      relevant_facts: ["REQ-1@1.0.0#acceptance_criteria"],
+      outputs: {
+        findings: [
+          {
+            category: "testability",
+            severity: "critical",
+            message: "No acceptance criterion in this requirement is objectively verifiable.",
+            evidence: ["REQ-1@1.0.0#acceptance_criteria"],
+            next_action: "Rewrite acceptance criteria as observable, verifiable statements.",
+          },
+        ],
+      },
+      conflicts: [],
+      missing_facts: [],
+      explanation_trace: ["deterministic testability rule matched"],
+      policy_version: "policy-3",
+      duration_ms: 0,
+    },
+  });
+  const { reviewer } = createReviewer(authorized(), rules);
+
+  const result = await reviewer.review(reviewRequest());
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (result.ok) {
+    assert.equal(result.value.verdict, "blocked");
+  }
+});
+
+test("a mix of a safety-category critical finding and a non-safety critical finding still rejects (safety wins)", async () => {
+  const rules = new RuleStub({
+    ok: true,
+    value: {
+      outcome: "satisfied",
+      rule_set: { id: "requirement-quality", version: "1.0.0" },
+      rule_versions: [{ id: "requirement-mixed-critical", version: "1.0.0" }],
+      matched_conditions: ["mixed critical findings"],
+      relevant_facts: ["REQ-1@1.0.0"],
+      outputs: {
+        findings: [
+          {
+            category: "testability",
+            severity: "critical",
+            message: "No acceptance criterion in this requirement is objectively verifiable.",
+            evidence: ["REQ-1@1.0.0#acceptance_criteria"],
+            next_action: "Rewrite acceptance criteria as observable, verifiable statements.",
+          },
+          {
+            category: "security_and_privacy",
+            severity: "critical",
+            message: "The requirement exposes credentials in plain text.",
+            evidence: ["REQ-1@1.0.0#statement"],
+            next_action: "Remove the credential exposure before this requirement can be accepted.",
+          },
+        ],
+      },
+      conflicts: [],
+      missing_facts: [],
+      explanation_trace: ["deterministic rules matched"],
+      policy_version: "policy-3",
+      duration_ms: 0,
+    },
+  });
+  const { reviewer } = createReviewer(authorized(), rules);
+
+  const result = await reviewer.review(reviewRequest());
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (result.ok) {
+    assert.equal(result.value.verdict, "rejected");
+  }
+});

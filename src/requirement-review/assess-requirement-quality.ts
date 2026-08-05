@@ -12,6 +12,7 @@ import type {
   RequirementAssessmentResolvedVersions,
   RequirementFinding,
   RequirementFindingCategory,
+  RequirementQualityVerdict,
   RuleEvaluationRequest,
   RuleEvaluationResult,
   StableResult,
@@ -397,10 +398,12 @@ export class AssessRequirementQuality {
       // "critical failures block acceptance" — enforced explicitly here,
       // as the single choke point before any verdict leaves this Skill, so
       // no future branch can accidentally let a critical finding coexist
-      // with a passing verdict.
-      verdict: input.findings.some((finding) => finding.severity === "critical")
-        ? "rejected"
-        : input.verdict,
+      // with a passing verdict. §7 defines "rejected" narrowly as "conflict
+      // or unsafe intent"; a critical finding whose category doesn't carry
+      // that meaning (e.g. testability, completeness) still SHALL NOT pass,
+      // but SHALL be "blocked" — insufficient authority/context to accept —
+      // not misreported as a safety/conflict rejection it isn't.
+      verdict: criticalVerdict(input.findings) ?? input.verdict,
       findings: [...input.findings],
       questions: [...input.questions],
       rule_results: [...input.ruleResults],
@@ -634,6 +637,27 @@ function hasExactRuleVersions(versions: readonly VersionReference[]): boolean {
 
 function unresolvedQuestions(unresolved: readonly string[]): string[] {
   return unresolved.map((gap) => `Which authoritative evidence resolves ${gap}?`);
+}
+
+/**
+ * SPEC-203 §7 defines "rejected" narrowly as "conflict or unsafe intent" —
+ * only these categories carry that meaning. Any other critical finding
+ * still blocks acceptance (§9), but as "blocked" (insufficient authority or
+ * context to accept), not a safety/conflict rejection it isn't.
+ */
+const REJECTION_CATEGORIES: ReadonlySet<RequirementFindingCategory> = new Set([
+  "security_and_privacy",
+  "workspace_safety",
+]);
+
+function criticalVerdict(
+  findings: readonly RequirementFinding[],
+): RequirementQualityVerdict | undefined {
+  const critical = findings.filter((finding) => finding.severity === "critical");
+  if (critical.length === 0) return undefined;
+  return critical.some((finding) => REJECTION_CATEGORIES.has(finding.category))
+    ? "rejected"
+    : "blocked";
 }
 
 function readObject(object: JsonObject, key: string): JsonObject | undefined {

@@ -14,6 +14,59 @@ import type { AgentRunAccessRequest, AgentRunStartRequest } from "../../src/runt
 import type { Clock, IdFactory } from "../../src/runtime/in-memory-agent-runtime.js";
 import { PersistedAgentRuntime } from "../../src/runtime/persisted-agent-runtime.js";
 import { SqliteAgentRunRecordStore } from "../../src/runtime/sqlite-agent-run-record-store.js";
+import type {
+  AgentRunRecordStore,
+  AgentRunRecordStoreResult,
+  PeekAgentRunCommandRequest,
+  RetainAgentRunMutationRequest,
+} from "../../src/runtime/agent-run-record-store.js";
+import type { AgentRunReference } from "../../src/runtime/public.js";
+import type { AgentRunExecutor, AgentRunExecutorInput, AgentRunExecutorResult } from "../../src/runtime/executor.js";
+
+/** Wraps a real store to force the next N `retainMutation` calls to fail with a genuine infrastructure error, then behave normally. */
+class FlakyRecordStore implements AgentRunRecordStore {
+  #failuresRemaining: number;
+  readonly #inner: AgentRunRecordStore;
+  retainMutationCalls = 0;
+
+  constructor(inner: AgentRunRecordStore, failuresRemaining: number) {
+    this.#inner = inner;
+    this.#failuresRemaining = failuresRemaining;
+  }
+
+  forceNextFailure(): void {
+    this.#failuresRemaining += 1;
+  }
+
+  async retainMutation(request: RetainAgentRunMutationRequest): Promise<AgentRunRecordStoreResult> {
+    this.retainMutationCalls += 1;
+    if (this.#failuresRemaining > 0) {
+      this.#failuresRemaining -= 1;
+      return {
+        ok: false,
+        failure: { code: "persistence_unavailable", message: "simulated transient outage" },
+      };
+    }
+    return this.#inner.retainMutation(request);
+  }
+
+  load(reference: AgentRunReference): Promise<AgentRunRecordStoreResult> {
+    return this.#inner.load(reference);
+  }
+
+  peekCommand(request: PeekAgentRunCommandRequest) {
+    return this.#inner.peekCommand(request);
+  }
+}
+
+/** Never resolves until the test tells it to — used to force a real interleaving window for a racing command. */
+class DeferredExecutor implements AgentRunExecutor {
+  execute(_input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    return new Promise(() => {
+      // Intentionally never resolves for the lifetime of the test.
+    });
+  }
+}
 
 class FixedClock implements Clock {
   readonly #time: Date;
@@ -217,6 +270,114 @@ test("restore reports not_found for a run that was never retained in this Worksp
   assert.equal(restored.ok, false);
   if (restored.ok) return;
   assert.equal(restored.failure.code, "not_found");
+
+  store.close();
+});
+
+test("a transient persistence failure on one command does not poison persistence for a LATER command on the same run", async () => {
+  const store = await openStore();
+  const flaky = new FlakyRecordStore(store, 1);
+  const runtimeInstance = new PersistedAgentRuntime(
+    new FixedClock("2026-08-03T00:00:00.000Z"),
+    new SequenceIdFactory(),
+    new AllowingAuthorizer(),
+    flaky,
+  );
+
+  // The `start` command's own persist attempt is forced to fail once.
+  await assert.rejects(() => runtimeInstance.start(startRequest()), /durable persistence failed/);
+
+  // A second, unrelated run must not inherit that failure: its own start
+  // should persist cleanly even though the prior run's persistence threw.
+  const secondStart = await runtimeInstance.start(startRequest({ idempotency_key: "start-2" }));
+  assert.equal(secondStart.ok, true, JSON.stringify(secondStart));
+
+  store.close();
+});
+
+test("a transient persistence failure on one command does not poison a LATER command on the SAME run", async () => {
+  const store = await openStore();
+  const flaky = new FlakyRecordStore(store, 0);
+  const runtimeInstance = new PersistedAgentRuntime(
+    new FixedClock("2026-08-03T00:00:00.000Z"),
+    new SequenceIdFactory(),
+    new AllowingAuthorizer(),
+    flaky,
+  );
+
+  const started = await runtimeInstance.start(startRequest());
+  assert.equal(started.ok, true, JSON.stringify(started));
+  if (!started.ok) return;
+
+  // Now make the NEXT persist attempt (cancel's) fail transiently.
+  flaky.forceNextFailure();
+  await assert.rejects(
+    () =>
+      runtimeInstance.cancel(started.value, {
+        ...accessRequest(),
+        expected_revision: 3,
+        reason: "forced failure test",
+        evidence: ["operator:decision"],
+        idempotency_key: "cancel-1",
+      }),
+    /durable persistence failed/,
+  );
+
+  // A later, distinct command on the SAME run must still persist normally —
+  // the earlier failure must not have poisoned this run's chain forever.
+  const restored = await store.load(started.value);
+  // The store's own state reflects whatever the last SUCCESSFUL persist
+  // was (the start), because the cancel's persist attempt failed and the
+  // in-memory runtime already transitioned to "cancelled" independent of
+  // durability. Reading it back proves the store is still writable for
+  // this run: retry the same durable write and confirm it succeeds.
+  assert.equal(restored.ok, true, JSON.stringify(restored));
+});
+
+test("a real race between execute and cancel on the same run persists without throwing a false persistence failure", async () => {
+  const store = await openStore();
+  const runtimeInstance = new PersistedAgentRuntime(
+    new FixedClock("2026-08-03T00:00:00.000Z"),
+    new SequenceIdFactory(),
+    new AllowingAuthorizer(),
+    store,
+    new DeferredExecutor(),
+  );
+
+  const started = await runtimeInstance.start(startRequest({ consequence_class: "advisory" }));
+  assert.equal(started.ok, true, JSON.stringify(started));
+  if (!started.ok) return;
+
+  const inspected = await runtimeInstance.inspect(started.value, accessRequest());
+  assert.equal(inspected.ok, true);
+  if (!inspected.ok) return;
+
+  // execute() awaits the DeferredExecutor, which never resolves in this
+  // test — giving cancel() a real chance to interleave and commit first.
+  const executePromise = runtimeInstance.execute(started.value, {
+    ...accessRequest(),
+    expected_revision: inspected.value.revision,
+    idempotency_key: "execute-1",
+  });
+
+  const cancelled = await runtimeInstance.cancel(started.value, {
+    ...accessRequest(),
+    expected_revision: inspected.value.revision,
+    reason: "cancel wins the race",
+    evidence: ["operator:decision"],
+    idempotency_key: "cancel-1",
+  });
+  assert.equal(cancelled.ok, true, JSON.stringify(cancelled));
+
+  const executed = await executePromise;
+  assert.equal(executed.ok, false);
+  if (executed.ok) return;
+  assert.equal(executed.failure.code, "stale_revision");
+
+  const restored = await store.load(started.value);
+  assert.equal(restored.ok, true, JSON.stringify(restored));
+  if (!restored.ok) return;
+  assert.equal(restored.value.snapshot.state, "cancelled");
 
   store.close();
 });

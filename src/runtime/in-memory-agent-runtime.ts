@@ -161,6 +161,16 @@ export class InMemoryAgentRuntime implements AgentRuntime {
    * before any mutation). Does nothing if no hook is configured, or if the
    * run was never created (a rejected `start` never reaches this point with
    * a runId the caller could have referenced anyway).
+   *
+   * Two commands racing on the SAME run (e.g. a concurrent `execute` and
+   * `cancel`) can both reach this point observing the same final record —
+   * one of them didn't actually cause it. This is intentional and safe: the
+   * record itself is the run's one authoritative current state regardless
+   * of which command's call triggered reading it, so persisting it twice is
+   * an idempotent no-op from the store's perspective (the second call's
+   * `expected_revision` will simply be behind by the time it's applied,
+   * which the store SHALL treat as "a newer state is already durably
+   * retained," not as an error — see `PersistedAgentRuntime#retain`).
    */
   #fireCompletedCommand(reference: AgentRunReference, command: CompletedRunCommand): void {
     if (!this.#onRunPersisted) return;

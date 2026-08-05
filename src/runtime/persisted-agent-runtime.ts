@@ -46,6 +46,14 @@ import type {
 export class PersistedAgentRuntime implements AgentRuntime {
   readonly #inner: InMemoryAgentRuntime;
   readonly #store: AgentRunRecordStore;
+  // One pending-write chain per run, not one for the whole instance: two
+  // concurrent commands racing on DIFFERENT runs must never let a failure on
+  // one poison persistence for the other. The chain stored here always
+  // resolves (never rejects) once a write settles, whether that write
+  // succeeded or threw — so one run's persistence failure never poisons
+  // that SAME run's later commands either. #lastSettled below tracks the
+  // possibly-rejected promise each caller actually needs to observe.
+  readonly #pendingByRun = new Map<string, Promise<void>>();
 
   constructor(
     clock: Clock,
@@ -55,36 +63,61 @@ export class PersistedAgentRuntime implements AgentRuntime {
     executor?: AgentRunExecutor,
   ) {
     this.#store = store;
-    let pendingPersist: Promise<void> = Promise.resolve();
     this.#inner = new InMemoryAgentRuntime(clock, ids, authorizer, executor, (runId, record, command) => {
       // Commands complete synchronously from the caller's perspective in
-      // InMemoryAgentRuntime, but retainMutation is async; chain onto the
-      // last pending write so two completed commands for the same run
+      // InMemoryAgentRuntime, but retainMutation is async; chain onto this
+      // run's last pending write so two completed commands for the SAME run
       // never race each other into the store out of order.
-      pendingPersist = pendingPersist.then(() =>
-        this.#retain(runId, record, command).then((outcome) => {
-          if (!outcome.ok) {
-            throw new Error(
-              `Agent Run ${runId} completed command "${command.kind}" but durable persistence failed: ${outcome.failure.code} — ${outcome.failure.message}`,
-            );
-          }
-        }),
+      const previous = this.#pendingByRun.get(runId) ?? Promise.resolve();
+      const settled = previous.then(
+        () => this.#retain(runId, record, command),
+        () => this.#retain(runId, record, command),
       );
+      // However this settles, the NEXT command for this run starts its own
+      // chain fresh rather than inheriting this one's outcome — a transient
+      // failure (or a benign stale_revision from a command that lost a
+      // race) must not permanently block persistence for this run either.
+      this.#pendingByRun.set(
+        runId,
+        settled.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+      this.#lastSettled.set(runId, settled);
     });
-    // Surface persistence failures to whichever call triggered them, not to
-    // an unrelated later call — each public method below awaits the same
-    // chain immediately after invoking the inner runtime.
-    this.#pendingPersist = () => pendingPersist;
   }
 
-  readonly #pendingPersist: () => Promise<void>;
+  readonly #lastSettled = new Map<string, Promise<void>>();
+
+  /** Awaits whatever this run's most recently completed command's persistence settled to, surfacing a real failure to its own caller only. */
+  async #awaitPersist(runId: string): Promise<void> {
+    await (this.#lastSettled.get(runId) ?? Promise.resolve());
+  }
 
   async #retain(
     runId: string,
     record: RunRecord,
     command: Readonly<{ kind: "start" | "execute" | "approve" | "resume" | "cancel"; idempotency_key: string; expected_revision: number | null }>,
-  ) {
-    return this.#store.retainMutation({
+  ): Promise<void> {
+    // Two commands racing on the SAME run (e.g. a concurrent execute and
+    // cancel) can both fire this hook observing the same current record —
+    // one of them didn't actually cause it: either its own attempt was
+    // rejected before mutating anything (e.g. cancel on an already-terminal
+    // run, so the record never advanced past what it observed before
+    // running), or a concurrent command already advanced the run PAST what
+    // this command expected (e.g. this execute's own transition never
+    // landed because a racing cancel committed first). retainMutation
+    // requires the record's revision to be exactly expected_revision + 1;
+    // anything else here is not a persistence failure for THIS command to
+    // report — either nothing changed, or something newer already did.
+    if (
+      command.expected_revision !== null &&
+      record.snapshot.revision !== command.expected_revision + 1
+    ) {
+      return;
+    }
+    const outcome = await this.#store.retainMutation({
       record: toAgentRunRecord(runId, record),
       expected_revision: command.expected_revision,
       command: {
@@ -93,6 +126,19 @@ export class PersistedAgentRuntime implements AgentRuntime {
         request_digest: requestDigest(runId, command),
       },
     });
+    if (outcome.ok) return;
+    if (outcome.failure.code === "stale_revision" || outcome.failure.code === "idempotency_conflict") {
+      // Another command for this same run already persisted a state at
+      // least as new as this one (a legitimate race between two concurrent
+      // callers, e.g. execute() and cancel() on the same run) — the store
+      // already holds the newer, authoritative state, so there is nothing
+      // for THIS command to durably record. This is not a persistence
+      // failure the caller needs to see.
+      return;
+    }
+    throw new Error(
+      `Agent Run ${runId} completed command "${command.kind}" but durable persistence failed: ${outcome.failure.code} — ${outcome.failure.message}`,
+    );
   }
 
   /**
@@ -125,7 +171,7 @@ export class PersistedAgentRuntime implements AgentRuntime {
 
   async start(request: AgentRunStartRequest): Promise<AgentRuntimeResult<AgentRunReference>> {
     const result = await this.#inner.start(request);
-    await this.#pendingPersist();
+    if (result.ok) await this.#awaitPersist(result.value.run_id);
     return result;
   }
 
@@ -134,7 +180,7 @@ export class PersistedAgentRuntime implements AgentRuntime {
     execution: AgentRunExecution,
   ): Promise<AgentRuntimeResult<AgentRunResult>> {
     const result = await this.#inner.execute(reference, execution);
-    await this.#pendingPersist();
+    await this.#awaitPersist(reference.run_id);
     return result;
   }
 
@@ -157,7 +203,7 @@ export class PersistedAgentRuntime implements AgentRuntime {
     approval: AgentRunApproval,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
     const result = await this.#inner.approve(reference, approval);
-    await this.#pendingPersist();
+    await this.#awaitPersist(reference.run_id);
     return result;
   }
 
@@ -166,7 +212,7 @@ export class PersistedAgentRuntime implements AgentRuntime {
     checkpoint: AgentRunResume,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
     const result = await this.#inner.resume(reference, checkpoint);
-    await this.#pendingPersist();
+    await this.#awaitPersist(reference.run_id);
     return result;
   }
 
@@ -175,7 +221,7 @@ export class PersistedAgentRuntime implements AgentRuntime {
     cancellation: AgentRunCancellation,
   ): Promise<AgentRuntimeResult<AgentRunTransition>> {
     const result = await this.#inner.cancel(reference, cancellation);
-    await this.#pendingPersist();
+    await this.#awaitPersist(reference.run_id);
     return result;
   }
 
