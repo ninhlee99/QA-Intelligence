@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/report.schema.json",
+  "title": "Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "version", "report_type", "audience", "purpose", "workspace_scope", "reporting_period",
+    "generated_at", "source_artifact_refs", "metrics", "findings", "drill_down_refs"
+  ],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "report_type": {
+      "enum": [
+        "executive_quality_and_risk",
+        "requirement_and_risk_coverage",
+        "test_strategy_and_design_readiness",
+        "execution_and_evidence",
+        "defect_and_escape_analysis",
+        "release_readiness",
+        "operational_quality",
+        "governance_and_quality_gate_status",
+        "knowledge_and_learning",
+        "workspace_audit"
+      ]
+    },
+    "audience": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "workspace_scope": {"type": "string", "minLength": 1},
+    "reporting_period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "minLength": 1},
+        "end": {"type": "string", "minLength": 1}
+      }
+    },
+    "generated_at": {"type": "string", "minLength": 1},
+    "source_artifact_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "owner", "definition", "numerator", "denominator", "source_ref", "update_cadence"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "owner": {"type": "string", "minLength": 1},
+          "definition": {"type": "string", "minLength": 1},
+          "numerator": {"type": "string", "minLength": 1},
+          "denominator": {"type": "string", "minLength": 1},
+          "dimensions": {"type": "array", "items": {"type": "string"}},
+          "source_ref": {"type": "string", "minLength": 1},
+          "update_cadence": {"type": "string", "minLength": 1},
+          "interpretation": {"type": "string"},
+          "known_limitations": {"type": "string"}
+        }
+      }
+    },
+    "filters_and_exclusions": {"type": "array", "items": {"type": "string"}},
+    "freshness": {"type": "string"},
+    "completeness": {"type": "string"},
+    "findings": {"type": "array", "items": {"type": "string"}},
+    "critical_exceptions": {"type": "array", "items": {"type": "string"}},
+    "uncertainty_and_limitations": {"type": "array", "items": {"type": "string"}},
+    "drill_down_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  }
+}
