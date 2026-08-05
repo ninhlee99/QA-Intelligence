@@ -570,6 +570,7 @@ function assessmentFacts(requirement: Requirement, knowledge: readonly Knowledge
       owner: requirement.owner,
       capability_id: requirement.capability_id,
       scope: requirement.scope,
+      rationale: requirement.rationale ?? null,
       acceptance_criteria: [...requirement.acceptance_criteria],
       assumptions: [...(requirement.assumptions ?? [])],
       traceability: requirement.traceability.map((edge) => ({ ...edge })),

@@ -47,6 +47,8 @@ export type Requirement = Readonly<{
   owner: string;
   capability_id: string;
   scope: JsonObject;
+  /** SPEC-202 §4: why the requirement exists, not repeated statement text. */
+  rationale?: string;
   acceptance_criteria: readonly JsonObject[];
   assumptions?: readonly string[];
   traceability: readonly RequirementTraceability[];
