@@ -929,6 +929,63 @@ functional verification the user asked for ("cài thêm dependency phục vụ
 testing thật và host thật") — the real adapter code each dependency
 unblocks is the next, separately scoped step.
 
+## Playwright ExecutionEngine Adapter Built (ADR-022 realized, 2026-08-06)
+
+`src/adapters/playwright/` now contains a real, working `ExecutionEngine`
+(SPEC-504) implementation, closing the gap ADR-022 left open.
+
+`extract-raw-dom.ts` serializes a live Playwright `Page`'s DOM into the
+exact `RawDomNode` shape `DomCleaner` (SPEC-302) already accepts, so a real
+browser capture feeds the same deterministic
+`DeterministicDomCleaner` → `DeterministicSemanticAnalyzer` →
+`DeterministicFeatureExtractor` pipeline already proven against synthetic
+fixtures — no second, adapter-specific cleaning path. Building this hit
+and resolved a real bug: Playwright 1.62's *string-form*
+`page.evaluate("() => {...}")` was found to silently resolve to `undefined`
+instead of executing (confirmed with a minimal repro against a trivial
+expression, independent of this repository's own code). The fix uses
+Playwright's function-form `page.evaluate(fn, arg)` instead, with the
+function's parameter typed `unknown`/narrowed via `any` internally and
+`document.body` passed in as a seed argument obtained through
+`page.evaluateHandle("document.body")` (a string *expression*, not a
+string *function*, which Playwright does evaluate correctly) — this keeps
+the callback from ever referencing the ambient `document`/`Element`/`Node`
+type names, so it typechecks cleanly under the repository's deliberately
+Node-only `tsconfig.json` `lib` (ADR-011) without adding `"dom"` globally.
+
+`playwright-execution-engine.ts` implements `PlaywrightExecutionEngine`,
+mirroring `DeterministicExecutionEngine`'s authorization/idempotency/
+cancellation/envelope structure but driving a real Chromium browser:
+`start` launches a browser (fails closed with a retryable
+`infrastructure_failure` if launch throws, never a silent hang — ADR-022
+§4), navigates to a plan-supplied URL, extracts and cleans the real DOM,
+and evaluates a plan-supplied `assert(CleanedDomNode) => boolean` against
+the *cleaned* tree — never against raw selectors, satisfying ADR-003/
+ADR-022 §4's "no second raw-selector code path" rule structurally (a plan
+author cannot reach past the Semantic UI pipeline even if they wanted to,
+because the assertion function's only input is the already-cleaned tree).
+Idempotent `start` replay, cooperative cancellation (checked at each
+lifecycle boundary: before launch, after navigation, after DOM capture),
+and terminal-outcome protection against late cancellation all match the
+deterministic engine's semantics exactly.
+
+`tests/adapters/playwright/playwright-execution-engine.test.ts` passes the
+identical shared `runExecutionEngineContract` suite
+`DeterministicExecutionEngine` passes — unmodified, no relaxed assertions
+— proving SPEC-504 §6's "production engines and a deterministic simulator
+SHALL pass identical... contract tests" against a real browser, not just a
+scripted one. Three adapter-specific tests add real-browser assertions the
+shared suite cannot express: a real Chromium page with a `Log in` button
+reports `passed`, the same pipeline against a page missing that button
+reports `failed`, and a browser that fails to launch reports
+`infrastructure_failure` with `retryable: true` rather than hanging.
+
+`npm run validate` is clean: 722 tests (712 prior + 10 new), 0 failures,
+governance/schema validators pass, `npm audit` reports zero
+vulnerabilities. This closes the first of the two items ADR-022/ADR-023's
+increment left explicitly unattempted; the MCP SDK transport migration
+(ADR-023 §4) remains separate, not yet started.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
