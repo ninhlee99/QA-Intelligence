@@ -59,9 +59,11 @@ against an in-process fake (`tests/runtime/fake-postgres-transaction-manager.ts`
 and, gated on `QA_INTELLIGENCE_TEST_POSTGRES_URL`, against a real server via
 `tests/runtime/agent-run-record-store.real.test.ts` (concurrent-writer,
 RLS-without-scope, and restart-survival cases, mirroring the Evaluation
-Campaign real-driver suite) — this real-server path is typechecked and
-covered by the fake-driver contract suite but has not yet actually been run
-against a live PostgreSQL 18 instance with a non-superuser role.
+Campaign real-driver suite) — this real-server path has now been run against
+a live PostgreSQL 18 instance under a non-superuser application role
+(`qa_intelligence_app`), all 23 real-driver cases across both aggregates
+passing, so the same restart/concurrency/RLS conformance the Evaluation
+Campaign PostgreSQL adapter proved now also holds for Agent Run state.
 
 ## Spec-Quality Update (2026-08-05)
 
@@ -148,7 +150,7 @@ Implement the vertical slice in this order:
 2. **Completed:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, cleanup, cancellation, replay divergence, and trial isolation cases all pass against `ScriptedEvaluationAdapter`
 3. **Completed for the in-memory multi-trial development slice:** implement deep core modules for requirement assessment, SPEC-511 trial orchestration, bounded campaign scheduling, evidence verification, cleanup, critical aggregation, and independent evaluation verdicts without provider SDK leakage
 4. **Completed for the in-memory retained-state development slice:** define the provider-neutral campaign repository seam, canonical lifecycle, immutable Workspace-scoped snapshots and events, optimistic revisions, idempotent commands, exact-version readiness, trial boundaries, and fail-closed recovery decisions
-5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server — OIDC/internal authorization and outbox-claim/publication conformance remain. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path and passes the shared contract suite against a fake transaction manager; it has not yet been proven against a live PostgreSQL 18 server the way the Evaluation Campaign adapter has — that real-driver run, plus OIDC/internal authorization and outbox-claim/publication conformance, remain
+5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server — OIDC/internal authorization and outbox-claim/publication conformance remain. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path; it now also passes the same real-driver conformance (restart, concurrent-writer, RLS under a non-superuser role) the Evaluation Campaign adapter proved, run against a live local PostgreSQL 18 instance — OIDC/internal authorization and outbox-claim/publication conformance remain the open items for both aggregates
 6. add production provider, Tool, and repository adapters and run the same conformance suites
 7. add the host-neutral MCP facade and thin Codex, Claude Code, and Cursor packages after the relevant core capability passes development conformance
 8. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development
