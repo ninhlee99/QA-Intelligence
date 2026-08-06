@@ -549,6 +549,72 @@ has no second accepted release yet to compare against); no consumer
 to this component yet — this increment is the read component itself, not
 its integration.
 
+## Knowledge Repository (SPEC-401/SPEC-103, 2026-08-06)
+
+The existing `InMemoryKnowledgeSearch` (SPEC-501) is a read-only, fixed-seed
+search adapter — it has no create/revise/promote/deprecate/archive
+commands and does not implement SPEC-102's Knowledge Object model or
+lifecycle at all. `src/knowledge/public.ts` now defines the provider-
+neutral `KnowledgeRepository` interface with all thirteen SPEC-103 §6 core
+operations (seven commands — createDraft/reviseDraft/submitForReview/
+recordDecision/promoteCandidate/deprecateOrSupersede/archive — and six
+queries — getExactVersion/getCurrentAccepted/listHistory/query/
+traverseRelationships/appendLifecycleEvent) plus all eight SPEC-103 §14
+failure codes as distinct outcomes. `src/adapters/memory/in-memory-
+knowledge-repository.ts` (`InMemoryKnowledgeRepository`) is the reference
+adapter: it enforces SPEC-102 §9's exact lifecycle graph (draft → in_review
+→ accepted → deprecated/superseded → archived) as an explicit transition
+table, optimistic concurrency via expected_revision, immutability of
+accepted versions (reviseDraft refuses to touch anything already
+accepted), Workspace isolation that fails closed as not_found rather than
+leaking existence across Workspaces, and idempotent createDraft under a
+caller-supplied idempotency key. 15 new tests cover the full five-step
+lifecycle, an illegal direct draft-to-archived transition, a stale-revision
+conflict, the immutability refusal, cross-Workspace and global-scope
+visibility, combined query filtering, relationship traversal, and
+candidate promotion creating an accepted object directly without a
+draft/review detour. Not yet done: this is an in-memory reference adapter
+only (the SQLite/PostgreSQL durable adapter ADR-017's pattern would add is
+separate, larger scope, the same way Evaluation Campaign Repository
+started in-memory before its SQLite adapter existed); "recovery" and
+"vendor substitution" conformance (SPEC-401 §7) are untestable without a
+second durable adapter to compare against; and no Skill or other consumer
+has been wired to this repository yet.
+
+## Judge Calibration, Disagreement, Drift, Leakage, and Self-Evaluation (SPEC-310 §2/§6, SPEC-107 §4, 2026-08-06)
+
+`EvaluationManager` (SPEC-411/213) aggregates trial outcomes but has no
+concept of a Judge at all — zero calibration, disagreement, drift,
+leakage, or self-evaluation detection existed anywhere. `src/evaluation/
+judge-calibration.ts` adds all five, deliberately provider-neutral (it
+operates on already-produced `JudgeVerdict` records, never a reasoning-
+provider SDK call, mirroring ADR-002/ADR-009's deterministic-vs-LLM
+separation applied to the Judge oracle tier specifically). `detectDisagreement()`
+groups verdicts per case/trial and flags any real split without resolving
+it by majority vote (the same "never hide a failed critical invariant"
+principle SPEC-107 §7 states for aggregate scores, applied to Judge
+output). `calibrateJudge()` compares a Judge's verdicts only against
+genuine oracle labels — never against another Judge, which would be
+circular — and returns `undefined` rather than a fabricated accuracy when
+there is no overlapping oracle case. `detectDrift()` flags an accuracy
+decline across successive calibration runs beyond a caller-supplied
+threshold, since "how much decline is meaningful" is a suite-level policy
+choice (SPEC-107 §14), not a value this module should invent.
+`detectSelfEvaluation()` flags a Judge whose identity matches the subject
+it judged (SPEC-107 §4: "A Judge SHALL not evaluate its own hidden
+rationale"). `detectLeakage()` flags a Judge that received a hidden-
+holdout evidence reference (SPEC-107 §6 contamination). `judgeAuthorityPermitted()`
+gives SPEC-107 §4's authority limit a checkable boolean: a
+`high_consequence` decision backed by a Judge alone, with no corroborating
+deterministic oracle and no human review, is denied. 15 new tests (669
+total, 666 pass + 3 skip), `npm run validate` clean, no new dependency.
+Not yet done: none of this is wired into `EvaluationManager` or the
+Evaluation Campaign Runner as a live consumer yet — it exists as a
+standalone, tested module; and SPEC-107 §4's full four-rung oracle
+hierarchy (deterministic → evidence-anchored rubric → calibrated Judge →
+human) has no selection orchestration — `judgeAuthorityPermitted()` is one
+gate within that hierarchy, not the hierarchy's routing logic itself.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
