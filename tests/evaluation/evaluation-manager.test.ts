@@ -5,12 +5,14 @@ import test from "node:test";
 import {
   EvaluationManager,
   StaticEvaluationSuitePolicyRegistry,
+  type CalibrationResult,
   type Clock,
   type EvaluationInput,
   type EvaluationEvidenceVerifier,
   type EvaluationSuitePolicy,
   type FailureClass,
   type JudgeVerdict,
+  type OracleLabel,
 } from "../../src/evaluation/evaluation-manager.js";
 import {
   SchemaValidator,
@@ -449,4 +451,100 @@ test("a Judge that received a hidden holdout reference is flagged as contaminati
 
   assert.equal(result.verdict, "indeterminate");
   assert.ok(result.metrics.invalid_test_reasons.some((reason) => reason.startsWith("judge-hidden-holdout-leakage:")));
+});
+
+function oracleLabel(overrides: Partial<OracleLabel> = {}): OracleLabel {
+  return { case_id: "case-clear-requirement", trial_id: "trial-001", correct_verdict: "passed", ...overrides };
+}
+
+test("a Judge that matches its oracle label is not flagged — real calibration, not a fabricated pass (SPEC-310 §2)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:20:00.000Z",
+    "2026-08-06T09:20:01.000Z",
+  ]);
+  const input: EvaluationInput = {
+    ...passingInput(),
+    judge_verdicts: [judgeVerdict({ verdict: "passed" })],
+    oracle_labels: [oracleLabel({ correct_verdict: "passed" })],
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "passed");
+  assert.deepEqual(result.metrics.invalid_test_reasons, []);
+});
+
+test("real calibration drift against prior history makes the verdict indeterminate instead of trusting a degraded Judge (SPEC-310 §2)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:25:00.000Z",
+    "2026-08-06T09:25:01.000Z",
+  ]);
+  const priorCalibration: CalibrationResult = {
+    judge_id: "judge-alpha",
+    judge_version: "1.0.0",
+    sample_size: 10,
+    correct: 9,
+    accuracy: 0.9,
+    mismatches: [],
+  };
+  const input: EvaluationInput = {
+    ...passingInput(),
+    // This run's single verdict disagrees with its oracle label, so the
+    // freshly computed calibration for this run is 0/1 = 0 accuracy — a
+    // real, computed decline from the prior 0.9, not an asserted one.
+    judge_verdicts: [judgeVerdict({ verdict: "failed" })],
+    oracle_labels: [oracleLabel({ correct_verdict: "passed" })],
+    judge_calibration_history: [priorCalibration],
+    judge_drift_threshold: 0.2,
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.ok(result.metrics.invalid_test_reasons.includes("judge-calibration-drift:judge-alpha"));
+});
+
+test("a high_consequence suite backed by a Judge alone, with no oracle corroboration, is denied (SPEC-107 §4)", () => {
+  const highConsequencePolicy: EvaluationSuitePolicy = { ...PASSING_POLICY, consequence_class: "high_consequence" };
+  const manager = evaluationManager(
+    ["2026-08-06T09:30:00.000Z", "2026-08-06T09:30:01.000Z"],
+    [highConsequencePolicy],
+  );
+  const input: EvaluationInput = { ...passingInput(), judge_verdicts: [judgeVerdict()] };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.ok(result.metrics.invalid_test_reasons.includes("judge-sole-authority-for-high-consequence-decision"));
+});
+
+test("a high_consequence suite is permitted when a Judge verdict is corroborated by real oracle labels (SPEC-107 §4)", () => {
+  const highConsequencePolicy: EvaluationSuitePolicy = { ...PASSING_POLICY, consequence_class: "high_consequence" };
+  const manager = evaluationManager(
+    ["2026-08-06T09:35:00.000Z", "2026-08-06T09:35:01.000Z"],
+    [highConsequencePolicy],
+  );
+  const input: EvaluationInput = {
+    ...passingInput(),
+    judge_verdicts: [judgeVerdict({ verdict: "passed" })],
+    oracle_labels: [oracleLabel({ correct_verdict: "passed" })],
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "passed");
+  assert.equal(result.metrics.invalid_test_reasons.includes("judge-sole-authority-for-high-consequence-decision"), false);
+});
+
+test("a non-high_consequence suite with a Judge alone and no oracle is not gated by the authority limit", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:40:00.000Z",
+    "2026-08-06T09:40:01.000Z",
+  ]);
+  const input: EvaluationInput = { ...passingInput(), judge_verdicts: [judgeVerdict()] };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "passed");
+  assert.equal(result.metrics.invalid_test_reasons.includes("judge-sole-authority-for-high-consequence-decision"), false);
 });

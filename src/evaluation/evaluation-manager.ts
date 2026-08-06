@@ -1,6 +1,22 @@
-import { detectDisagreement, detectLeakage, detectSelfEvaluation, type JudgeVerdict } from "./judge-calibration.js";
+import {
+  calibrateJudge,
+  detectDisagreement,
+  detectDrift,
+  detectLeakage,
+  detectSelfEvaluation,
+  judgeAuthorityPermitted,
+  type CalibrationResult,
+  type ConsequenceClassForJudgeAuthority,
+  type JudgeVerdict,
+  type OracleLabel,
+} from "./judge-calibration.js";
 
-export type { JudgeVerdict } from "./judge-calibration.js";
+export type {
+  CalibrationResult,
+  ConsequenceClassForJudgeAuthority,
+  JudgeVerdict,
+  OracleLabel,
+} from "./judge-calibration.js";
 
 export interface Clock {
   now(): Date;
@@ -69,6 +85,24 @@ export interface EvaluationInput {
   readonly judge_verdicts?: readonly JudgeVerdict[];
   /** SPEC-107 §6: evidence refs this suite classifies as hidden holdout material a Judge must never see. */
   readonly hidden_holdout_refs?: readonly string[];
+  /**
+   * SPEC-310 §2 calibration: known-correct labels (from a deterministic
+   * oracle or authorized human review, never from another Judge) this run's
+   * `judge_verdicts` can be calibrated against. Absent means this run
+   * supplies no calibration evidence, not that every Judge is assumed
+   * accurate.
+   */
+  readonly oracle_labels?: readonly OracleLabel[];
+  /**
+   * SPEC-310 §2 drift: prior calibration results for the same Judge(s), in
+   * chronological order, so this run's freshly computed calibration can be
+   * compared against history. Absent means no drift check runs — a single
+   * calibration point is never itself a trend (SPEC-107 §14: drift
+   * threshold is a suite-level policy the caller supplies alongside this).
+   */
+  readonly judge_calibration_history?: readonly CalibrationResult[];
+  /** SPEC-107 §14: the minimum accuracy decline `detectDrift()` treats as meaningful rather than noise — a suite-level policy value, not one this module invents. */
+  readonly judge_drift_threshold?: number;
 }
 
 export interface EvaluationSuitePolicy {
@@ -76,6 +110,17 @@ export interface EvaluationSuitePolicy {
   readonly required_case_ids: readonly string[];
   readonly critical_invariant_ids: readonly string[];
   readonly minimum_trials_per_case: number;
+  /**
+   * SPEC-107 §4: governs whether `judgeAuthorityPermitted()` runs at all for
+   * this suite's verdict. Consequence class is accepted-authority policy
+   * (SPEC-107 §10: "suite policy SHALL resolve from accepted authority
+   * rather than caller-provided thresholds"), so it lives on the suite
+   * policy the registry resolves, not on caller-supplied `EvaluationInput`.
+   * Defaults to `"advisory"` when a policy predates this field, matching
+   * every other optional-field default in this module — never widens
+   * authority silently for an existing accepted policy.
+   */
+  readonly consequence_class?: ConsequenceClassForJudgeAuthority;
 }
 
 export interface EvaluationSuitePolicyRegistry {
@@ -176,7 +221,7 @@ export class EvaluationManager {
       trialResults,
       criticalInvariants,
       ),
-      ...judgeIntegrityReasons(input.judge_verdicts ?? [], input.hidden_holdout_refs ?? []),
+      ...judgeIntegrityReasons(input, suitePolicy),
     ];
     const evidence = [
       ...trialResults.flatMap((trial) => trial.evidence),
@@ -374,27 +419,62 @@ function verifyEvidence(
  * SPEC-310 §2/§6, SPEC-107 §4/§6: folds real Judge-calibration module
  * findings (`src/evaluation/judge-calibration.ts`) into the same
  * `invalid_test_reasons` vocabulary `unverified-evaluation-evidence`
- * already uses — a disagreement, self-evaluation, or hidden-holdout
- * leakage makes the affected trial's evidence untrustworthy the same way
- * unverified evidence does, not a separate silent pass-through this
- * function would otherwise create.
+ * already uses — a disagreement, self-evaluation, hidden-holdout leakage,
+ * calibration/drift problem, or an authority-limit violation makes the
+ * affected trial's evidence untrustworthy the same way unverified evidence
+ * does, not a separate silent pass-through this function would otherwise
+ * create.
  */
 function judgeIntegrityReasons(
-  verdicts: readonly JudgeVerdict[],
-  hiddenHoldoutRefs: readonly string[],
+  input: EvaluationInput,
+  suitePolicy: EvaluationSuitePolicy | undefined,
 ): string[] {
-  if (verdicts.length === 0) return [];
-
+  const verdicts = input.judge_verdicts ?? [];
   const reasons: string[] = [];
-  for (const report of detectDisagreement(verdicts)) {
-    if (report.disagreement) reasons.push(`judge-disagreement:${report.case_id}:${report.trial_id}`);
+
+  if (verdicts.length > 0) {
+    for (const report of detectDisagreement(verdicts)) {
+      if (report.disagreement) reasons.push(`judge-disagreement:${report.case_id}:${report.trial_id}`);
+    }
+    for (const report of detectSelfEvaluation(verdicts)) {
+      if (report.self_evaluated) reasons.push(`judge-self-evaluation:${report.case_id}:${report.trial_id}`);
+    }
+    for (const report of detectLeakage(verdicts, new Set(input.hidden_holdout_refs ?? []))) {
+      if (report.leaked) reasons.push(`judge-hidden-holdout-leakage:${report.case_id}:${report.trial_id}`);
+    }
+
+    // SPEC-310 §2 calibration/drift: only meaningful once genuine oracle
+    // labels exist to calibrate against — calibrateJudge() itself already
+    // refuses to fabricate an accuracy for zero overlap, so no additional
+    // guard is needed here beyond "were any oracle_labels supplied at all."
+    if ((input.oracle_labels?.length ?? 0) > 0) {
+      const distinctJudges = new Set(verdicts.map((verdict) => `${verdict.judge_id} ${verdict.judge_version}`));
+      for (const key of distinctJudges) {
+        const [judgeId, judgeVersion] = key.split(" ") as [string, string];
+        const calibration = calibrateJudge(judgeId, judgeVersion, verdicts, input.oracle_labels ?? []);
+        if (calibration === undefined) continue;
+
+        if ((input.judge_calibration_history?.length ?? 0) > 0) {
+          const history = [...(input.judge_calibration_history ?? []), calibration];
+          const drift = detectDrift(judgeId, history, input.judge_drift_threshold ?? 0.2);
+          if (drift.drifted) reasons.push(`judge-calibration-drift:${judgeId}`);
+        }
+      }
+    }
   }
-  for (const report of detectSelfEvaluation(verdicts)) {
-    if (report.self_evaluated) reasons.push(`judge-self-evaluation:${report.case_id}:${report.trial_id}`);
+
+  if (suitePolicy !== undefined) {
+    const consequenceClass = suitePolicy.consequence_class ?? "advisory";
+    const hasDeterministicOracle = (input.oracle_labels?.length ?? 0) > 0;
+    // Human review is out of EvaluationInput's scope entirely (this module
+    // never receives a "a human reviewed this" signal) — a caller relying
+    // solely on Judge output for a high_consequence suite with no oracle
+    // labels at all is exactly SPEC-107 §4's forbidden case.
+    if (!judgeAuthorityPermitted(consequenceClass, hasDeterministicOracle, false) && verdicts.length > 0) {
+      reasons.push("judge-sole-authority-for-high-consequence-decision");
+    }
   }
-  for (const report of detectLeakage(verdicts, new Set(hiddenHoldoutRefs))) {
-    if (report.leaked) reasons.push(`judge-hidden-holdout-leakage:${report.case_id}:${report.trial_id}`);
-  }
+
   return reasons;
 }
 
@@ -408,6 +488,7 @@ function copySuitePolicy(policy: EvaluationSuitePolicy): EvaluationSuitePolicy {
     required_case_ids: Object.freeze([...policy.required_case_ids]),
     critical_invariant_ids: Object.freeze([...policy.critical_invariant_ids]),
     minimum_trials_per_case: policy.minimum_trials_per_case,
+    ...(policy.consequence_class !== undefined ? { consequence_class: policy.consequence_class } : {}),
   });
 }
 

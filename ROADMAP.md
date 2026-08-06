@@ -827,6 +827,57 @@ through one shared test suite) remains unverified — the SQLite and
 PostgreSQL test files use similar scenarios but do not share code; no
 consumer is wired to either adapter yet.
 
+## Judge Calibration, Drift, and Authority Limit Fully Wired (2026-08-06)
+
+The remaining three `judge-calibration.ts` functions —
+`calibrateJudge()`, `detectDrift()`, and `judgeAuthorityPermitted()` —
+were previously unwired because `EvaluationInput` carried none of the
+concepts they need (an oracle-label corpus, calibration history over
+time, a consequence class). Extended in exactly that direction, nothing
+more: `EvaluationInput` gains three optional fields (`oracle_labels`,
+`judge_calibration_history`, `judge_drift_threshold`), all caller-supplied
+facts about the current run, matching how `trial_results` already works.
+
+`EvaluationSuitePolicy` gains an optional `consequence_class` field — the
+one deliberate architectural choice this increment made: consequence
+class is accepted-authority policy, not a caller-supplied value, per
+SPEC-107 §10 ("suite policy SHALL resolve from accepted authority rather
+than caller-provided thresholds"). Putting it on `EvaluationInput` instead
+would have let a caller assert its own consequence class, which is
+exactly the kind of self-graded authority SPEC-107 forbids elsewhere.
+Defaults to `"advisory"` when absent, so an existing accepted policy never
+silently gains a widened gate.
+
+`judgeIntegrityReasons()` now also computes real calibration per distinct
+`(judge_id, judge_version)` pair when oracle labels are present — reusing
+`calibrateJudge()`'s existing refusal to fabricate an accuracy for zero
+case overlap — chains it onto any supplied calibration history and runs
+`detectDrift()` for real, and calls `judgeAuthorityPermitted()` against
+the suite's actual consequence class, denying a `high_consequence`
+verdict backed by Judge output alone with no oracle corroboration
+(`EvaluationManager` has no "a human reviewed this" signal at all, so
+that branch of the authority check is always `false` here — an honest
+limitation, not a placeholder). All findings still fold into the same
+`invalid_test_reasons` field the earlier disagreement/self-evaluation/
+leakage wiring already established, so `schemas/evaluation-result.schema.json`
+needed no further change.
+
+Five new tests: a Judge matching its oracle label is not flagged (no
+fabricated pass), a Judge whose freshly computed calibration accuracy
+declines against supplied history beyond the threshold turns the verdict
+`indeterminate`, a `high_consequence` suite backed by a Judge alone with
+no oracle is denied, the same suite is permitted once oracle labels
+corroborate the verdict, and a non-`high_consequence` suite is never
+gated by the authority limit at all. 5 new tests (712 total, 708 pass + 4
+skip), `npm run validate` clean including the unmodified schema-
+conformance test, no new dependency, no schema change.
+
+This closes every function `src/evaluation/judge-calibration.ts` exports
+into `EvaluationManager`. Not yet done: no campaign runner or coordinator
+produces real `oracle_labels`/`judge_calibration_history` from an actual
+campaign yet, since no real Judge/reasoning-provider adapter exists
+outside tests to generate one.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
