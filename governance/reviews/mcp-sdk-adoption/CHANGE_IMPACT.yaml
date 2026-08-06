@@ -18,13 +18,13 @@ affected_artifacts:
   decisions: [ADR-023]
   specifications: [SPEC-503, SPEC-508, SPEC-509, SPEC-510]
   implementation:
-    - replaces src/mcp/jsonrpc.ts, src/mcp/protocol.ts, src/mcp/mcp-server.ts, src/mcp/stdio-transport.ts, src/mcp/remote/streamable-http-transport.ts (not yet migrated)
+    - replaced src/mcp/jsonrpc.ts, src/mcp/protocol.ts, src/mcp/mcp-server.ts with src/mcp/sdk-mcp-server.ts; rewrote src/mcp/stdio-transport.ts and src/mcp/remote/streamable-http-transport.ts onto the SDK's own transports
     - new package.json dependency @modelcontextprotocol/sdk
 risks_and_controls:
   - risk: migrating the transport silently changes domain seam behavior (authorization, idempotency, deadlines)
-    control: ADR-023 §4 explicitly keeps AgentRuntimeToolRegistry/OidcBearerAuthenticator/OauthCallbackServer unchanged in responsibility; only the transport layer below them changes
+    control: ADR-023 §4 explicitly keeps AgentRuntimeToolRegistry/OidcBearerAuthenticator/OauthCallbackServer unchanged in responsibility; only the transport layer below them changes — confirmed by diff at migration time (import-path-only changes to those files)
   - risk: a host that worked against the hand-rolled transport breaks against the SDK-backed one
-    control: ADR-023 §7 requires every ADR-019 §8 validation case to re-pass, plus a no-visible-behavior-change check for existing Host Integration Packages
+    control: ADR-023 §7 requires every ADR-019 §8 validation case to re-pass, except unsupported-protocol-version rejection, which §4 deliberately supersedes with the SDK's negotiate-not-reject behavior (found and closed via a post-merge spec-conformance review, not caught at merge time — now covered by a dedicated test in tests/mcp/sdk-mcp-server.test.ts)
   - risk: the SDK becomes a second, drifting identity/authorization implementation
     control: ADR-023 §4 requires OAuth/PKCE token handling to still terminate at the existing OidcWorkspaceContextIssuer seam, never a second verifier
   - risk: dependency weight reintroduces the exact concern ADR-019 raised

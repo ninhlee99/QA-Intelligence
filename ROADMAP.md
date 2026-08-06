@@ -1038,13 +1038,28 @@ using the SDK's own `Client` over `InMemoryTransport.createLinkedPair()` —
 a real client/server round trip through the same protocol code a real host
 uses, not a hand-rolled message-line harness
 (`tests/mcp/sdk-mcp-server.test.ts`, replacing the deleted
-`mcp-server.test.ts`/`jsonrpc.test.ts`). One real, documented behavior
-difference surfaced and was accepted rather than papered over: the SDK's
+`mcp-server.test.ts`/`jsonrpc.test.ts`). Two real, documented behavior
+differences surfaced and were accepted rather than papered over: the SDK's
 client-side request layer rejects (throws) an aborted `callTool()` call,
 where the hand-rolled transport resolved normally with the tool's own
 cancelled-outcome text — the cooperative-cancellation guarantee that
 actually matters (the abort signal reaching the in-flight call) still
-holds and is asserted directly.
+holds and is asserted directly. Second, and more consequential: a
+post-merge spec-conformance review found that ADR-019 §8's "an unsupported
+protocol version is rejected before any tool is exposed" case had silently
+stopped passing — the SDK's `initialize` handler negotiates rather than
+hard-rejects (an unsupported `protocolVersion` succeeds with the server's
+own latest version substituted into the response, instead of failing the
+request), and this had shipped untested and undocumented. Rather than
+patch the SDK's behavior with a custom rejection wrapper, ADR-023 §4 was
+amended to explicitly supersede that one ADR-019 §8 clause, on the
+grounds that negotiate-not-reject is the real MCP specification's
+documented client/server model — closer to standard semantics than
+ADR-019's own hard-fail, which was an implementation simplification, not
+a protocol requirement. `tests/mcp/sdk-mcp-server.test.ts` now has a
+dedicated test asserting the actual negotiated-fallback behavior
+(`LATEST_PROTOCOL_VERSION` substituted, `initialize` succeeds) so this is
+covered rather than silently relied upon.
 
 Both real entrypoints were smoke-tested end-to-end against real SDK
 clients, not just unit tests: `dev-entrypoint.ts` via a real

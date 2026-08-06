@@ -49,6 +49,7 @@ Adopt `@modelcontextprotocol/sdk` as a runtime dependency for QA Intelligence's 
 - The SDK SHALL NOT be used to implement, bypass, or duplicate Workspace authorization, idempotency, deadline, or authority-widening logic — those remain owned by SPEC-508/SPEC-511 callers through the existing seam, per ADR-016 §6 ("MCP is an untrusted transport adapter relative to domain authority").
 - Migration SHALL preserve wire-level compatibility: a host that worked against the hand-rolled transport SHALL continue to work unmodified against the SDK-backed one, since both speak standard MCP.
 - The SDK's OAuth/PKCE primitives MAY replace `src/mcp/remote/oauth-callback-server.ts`'s hand-rolled implementation where they cover the same RFC 7636 flow, but the token still SHALL be handed to `OidcWorkspaceContextIssuer.issue()` (ADR-014's proven seam) — the SDK does not become a second identity-verification implementation.
+- **This ADR supersedes ADR-019 §8's "an unsupported protocol version is rejected before any tool is exposed" validation case, deliberately, not as an unnoticed side effect.** The SDK's `initialize` handling negotiates rather than hard-rejects: an `initialize` request naming a `protocolVersion` outside `SUPPORTED_PROTOCOL_VERSIONS` succeeds with the server's own latest supported version substituted in the response, rather than failing the request. This is the real MCP specification's documented client/server negotiation model (the client, having seen the server's actual `protocolVersion` in the response, decides whether to proceed or disconnect) — closer to standard MCP semantics than ADR-019's own hand-rolled hard-fail, which was an implementation simplification, not a protocol requirement, at the time it was written. Migrating onto the SDK inherits this negotiation behavior as a deliberate consequence of adopting the standard-compliant implementation §3 already argues for, not a regression to be patched around with a custom rejection wrapper.
 
 ## 5. Alternatives Considered
 
@@ -65,7 +66,7 @@ Adopt `@modelcontextprotocol/sdk` as a runtime dependency for QA Intelligence's 
 
 ## 7. Validation
 
-- every ADR-019 §8 validation case (initialize/tools/list/tools/call, unsupported protocol version rejection, malformed input fail-closed, Workspace context/authorization pass-through, no direct Skill/persistence reference) passes against the SDK-backed transport
+- every ADR-019 §8 validation case (initialize/tools/list/tools/call, malformed input fail-closed, Workspace context/authorization pass-through, no direct Skill/persistence reference) passes against the SDK-backed transport, **except** unsupported-protocol-version rejection, which §4 above deliberately supersedes with the SDK's negotiate-not-reject behavior — an `initialize` naming an unsupported version now succeeds with the server's actual supported version substituted in, rather than failing the request
 - a Host Integration Package that worked against the hand-rolled transport connects and operates identically against the SDK-backed one, with no host-visible behavior change
 - the remote transport's bearer-token authentication and PKCE flow continue to terminate at the existing `OidcWorkspaceContextIssuer`/`DeterministicWorkspaceAuthorizer` seam, not a new one
 - `npm audit` reports no high-severity vulnerability introduced by the SDK or its dependency tree

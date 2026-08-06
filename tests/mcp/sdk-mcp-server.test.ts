@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
 import { createSdkMcpServer, type McpTool, type McpToolCallOutcome, type McpToolRegistry } from "../../src/mcp/sdk-mcp-server.js";
 
@@ -76,6 +77,29 @@ test("ADR-019 §8: tools/list and tools/call before initialize fail closed", asy
 
   assert.equal(responses.length, 1);
   assert.ok((responses[0] as { error?: unknown }).error, "tools/list before a successful initialize must be rejected");
+});
+
+test("ADR-023 §4/§7: an unsupported protocol version negotiates the server's own version rather than being rejected (deliberately supersedes ADR-019 §8's hard-reject case)", async () => {
+  const server = createSdkMcpServer({ serverInfo: { name: "qa-intelligence-test", version: "0.1.0" }, tools: new StubRegistry() });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await clientTransport.start();
+
+  const responses: unknown[] = [];
+  clientTransport.onmessage = (message) => responses.push(message);
+
+  await clientTransport.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "1999-01-01", capabilities: {}, clientInfo: { name: "old-host", version: "0.0.1" } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(responses.length, 1);
+  const response = responses[0] as { result?: { protocolVersion?: string }; error?: unknown };
+  assert.equal(response.error, undefined, "initialize with an unsupported version SHALL succeed, not fail closed (ADR-023 §4)");
+  assert.equal(response.result?.protocolVersion, LATEST_PROTOCOL_VERSION);
 });
 
 test("an unknown tool name is a normal error result, not a transport-level error", async () => {
