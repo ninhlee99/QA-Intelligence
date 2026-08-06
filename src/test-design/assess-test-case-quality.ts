@@ -16,6 +16,16 @@ import type {
   WorkspaceAuthorizer,
   WorkspaceContext,
 } from "./public.js";
+import {
+  hasExactResolvedVersions,
+  isJsonObject,
+  parseVersionReference,
+  readEnum,
+  readObject,
+  readString,
+  readStrings,
+  unique,
+} from "../shared/rule-engine-support.js";
 
 export interface Clock {
   now(): Date;
@@ -370,6 +380,49 @@ export class TestCaseQualityRuleEngine implements DeterministicRuleEngine {
       });
     }
 
+    // SPEC-207 §2 requires "actor and Workspace scope" as one contract
+    // element; workspace_scope is checked above, actor_scope was declared
+    // in facts but never checked — completing the pair.
+    if (readString(testCase, "actor_scope") === undefined) {
+      findings.push({
+        category: "completeness" satisfies TestCaseFindingCategory,
+        severity: "medium",
+        message: "The test case has no actor scope.",
+        evidence: [`${testCaseRef}#actor_scope`, "rule:test-case-has-actor-scope@1.0.0"],
+        next_action: "Record the actor this test case runs as, per SPEC-207 §2.",
+      });
+    }
+
+    // SPEC-207 §2 lists "cleanup or state restoration" as a required
+    // contract element, and §3's design principles separately require
+    // "test independence and state effects SHALL be explicit" — a test
+    // case with no cleanup declaration leaves that explicitness
+    // unenforceable, not merely undocumented.
+    const cleanup = testCase["cleanup"];
+    if (!Array.isArray(cleanup) || cleanup.length === 0) {
+      findings.push({
+        category: "independence" satisfies TestCaseFindingCategory,
+        severity: "high",
+        message: "The test case has no cleanup or state-restoration steps.",
+        evidence: [`${testCaseRef}#cleanup`, "rule:test-case-has-cleanup@1.0.0"],
+        next_action: "Record cleanup or state-restoration steps so this test case's state effects are explicit, per SPEC-207 §2/§3.",
+      });
+    }
+
+    // SPEC-207 §2 lists "priority and tags" as a Contract element. Lower
+    // severity than cleanup/actor-scope: §3's design principles don't call
+    // out priority/tags specifically, so their absence is a completeness
+    // gap, not a safety or independence concern.
+    if (readString(testCase, "priority") === undefined) {
+      findings.push({
+        category: "completeness" satisfies TestCaseFindingCategory,
+        severity: "low",
+        message: "The test case has no priority.",
+        evidence: [`${testCaseRef}#priority`, "rule:test-case-has-priority@1.0.0"],
+        next_action: "Record this test case's priority, per SPEC-207 §2.",
+      });
+    }
+
     if (findings.length > 0) {
       return Promise.resolve(successfulRuleEvaluation(request, "not_satisfied", findings));
     }
@@ -398,6 +451,9 @@ function successfulRuleEvaluation(
         { id: "test-case-has-expected-results", version: "1.0.0" },
         { id: "test-case-expected-result-has-authority", version: "1.0.0" },
         { id: "test-case-has-owner", version: "1.0.0" },
+        { id: "test-case-has-actor-scope", version: "1.0.0" },
+        { id: "test-case-has-cleanup", version: "1.0.0" },
+        { id: "test-case-has-priority", version: "1.0.0" },
       ],
       matched_conditions: findings.map((finding) => readString(finding, "category") ?? "quality-gap"),
       relevant_facts: request.fact_provenance,
@@ -465,57 +521,3 @@ function normalizeFindings(
   return findings;
 }
 
-function hasExactResolvedVersions(versions: TestCaseAssessmentResolvedVersions): boolean {
-  const reference = /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  const semver = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  return (
-    reference.test(versions.agent) &&
-    reference.test(versions.skill) &&
-    reference.test(versions.rule_set) &&
-    semver.test(versions.knowledge_snapshot) &&
-    reference.test(versions.policy) &&
-    reference.test(versions.input_schema) &&
-    reference.test(versions.output_schema)
-  );
-}
-
-function parseVersionReference(value: string): Readonly<{ id: string; version: string }> {
-  const [id, version] = value.split("@");
-  return { id: id ?? value, version: version ?? "0.0.0" };
-}
-
-function readObject(object: JsonObject, key: string): JsonObject | undefined {
-  const value = object[key];
-  return isJsonObject(value) ? value : undefined;
-}
-
-function readString(object: JsonObject, key: string): string | undefined {
-  const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readStrings(object: JsonObject, key: string): string[] {
-  const value = object[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
-}
-
-function readEnum<const Value extends string>(
-  object: JsonObject,
-  key: string,
-  values: readonly Value[],
-): Value | undefined {
-  const value = object[key];
-  return typeof value === "string" && values.some((candidate) => candidate === value)
-    ? (value as Value)
-    : undefined;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}

@@ -16,6 +16,16 @@ import type {
   WorkspaceAuthorizer,
   WorkspaceContext,
 } from "./public.js";
+import {
+  hasExactResolvedVersions,
+  isJsonObject,
+  parseVersionReference,
+  readEnum,
+  readObject,
+  readString,
+  readStrings,
+  unique,
+} from "../shared/rule-engine-support.js";
 
 export interface Clock {
   now(): Date;
@@ -356,6 +366,39 @@ export class TestDatasetQualityRuleEngine implements DeterministicRuleEngine {
       });
     }
 
+    // SPEC-208 §8: "Evaluation datasets SHALL identify labels, provenance,
+    // representativeness, known bias, contamination risks, version, and
+    // protected-data authorization." A dataset declared as an AI evaluation
+    // dataset without this metadata cannot support the representativeness/
+    // bias/contamination judgment §8 requires — this is checkable
+    // statically from the dataset's own declaration, unlike reproducibility
+    // or cross-Workspace isolation which need the data itself.
+    if (readString(dataset, "classification") === "ai_evaluation_dataset") {
+      const metadata = readObject(dataset, "ai_evaluation_metadata");
+      const missingMetadataFields: string[] = [];
+      if (metadata === undefined) {
+        missingMetadataFields.push("ai_evaluation_metadata");
+      } else {
+        const labels = metadata["labels"];
+        if (!Array.isArray(labels) || labels.length === 0) missingMetadataFields.push("labels");
+        if (readString(metadata, "representativeness") === undefined) missingMetadataFields.push("representativeness");
+        if (readString(metadata, "known_bias") === undefined) missingMetadataFields.push("known_bias");
+        if (readString(metadata, "contamination_risk") === undefined) missingMetadataFields.push("contamination_risk");
+        if (readString(metadata, "protected_data_authorization_ref") === undefined) {
+          missingMetadataFields.push("protected_data_authorization_ref");
+        }
+      }
+      if (missingMetadataFields.length > 0) {
+        findings.push({
+          category: "completeness" satisfies TestDatasetFindingCategory,
+          severity: "high",
+          message: `The dataset is classified as an AI evaluation dataset but is missing: ${missingMetadataFields.join(", ")}.`,
+          evidence: [`${datasetRef}#ai_evaluation_metadata`, "rule:test-dataset-ai-evaluation-metadata-is-complete@1.0.0"],
+          next_action: "Record labels, representativeness, known bias, contamination risk, and protected-data authorization for this AI evaluation dataset, per SPEC-208 §8.",
+        });
+      }
+    }
+
     if (findings.length > 0) {
       return Promise.resolve(successfulRuleEvaluation(request, "not_satisfied", findings));
     }
@@ -381,6 +424,7 @@ function successfulRuleEvaluation(
         { id: "test-dataset-completeness", version: "1.0.0" },
         { id: "test-dataset-has-owner", version: "1.0.0" },
         { id: "test-dataset-sensitive-fields-have-controls", version: "1.0.0" },
+        { id: "test-dataset-ai-evaluation-metadata-is-complete", version: "1.0.0" },
       ],
       matched_conditions: findings.map((finding) => readString(finding, "category") ?? "quality-gap"),
       relevant_facts: request.fact_provenance,
@@ -417,6 +461,17 @@ function assessmentFacts(dataset: TestDataset): JsonObject {
       disposal: dataset.disposal,
       contains_sensitive_fields: dataset.contains_sensitive_fields ?? false,
       sensitive_field_controls: [...(dataset.sensitive_field_controls ?? [])],
+      ai_evaluation_metadata:
+        dataset.ai_evaluation_metadata === undefined
+          ? null
+          : {
+              labels: [...(dataset.ai_evaluation_metadata.labels ?? [])],
+              representativeness: dataset.ai_evaluation_metadata.representativeness ?? null,
+              known_bias: dataset.ai_evaluation_metadata.known_bias ?? null,
+              contamination_risk: dataset.ai_evaluation_metadata.contamination_risk ?? null,
+              protected_data_authorization_ref:
+                dataset.ai_evaluation_metadata.protected_data_authorization_ref ?? null,
+            },
     },
   };
 }
@@ -452,57 +507,3 @@ function normalizeFindings(
   return findings;
 }
 
-function hasExactResolvedVersions(versions: TestDatasetAssessmentResolvedVersions): boolean {
-  const reference = /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  const semver = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  return (
-    reference.test(versions.agent) &&
-    reference.test(versions.skill) &&
-    reference.test(versions.rule_set) &&
-    semver.test(versions.knowledge_snapshot) &&
-    reference.test(versions.policy) &&
-    reference.test(versions.input_schema) &&
-    reference.test(versions.output_schema)
-  );
-}
-
-function parseVersionReference(value: string): Readonly<{ id: string; version: string }> {
-  const [id, version] = value.split("@");
-  return { id: id ?? value, version: version ?? "0.0.0" };
-}
-
-function readObject(object: JsonObject, key: string): JsonObject | undefined {
-  const value = object[key];
-  return isJsonObject(value) ? value : undefined;
-}
-
-function readString(object: JsonObject, key: string): string | undefined {
-  const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readStrings(object: JsonObject, key: string): string[] {
-  const value = object[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
-}
-
-function readEnum<const Value extends string>(
-  object: JsonObject,
-  key: string,
-  values: readonly Value[],
-): Value | undefined {
-  const value = object[key];
-  return typeof value === "string" && values.some((candidate) => candidate === value)
-    ? (value as Value)
-    : undefined;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}

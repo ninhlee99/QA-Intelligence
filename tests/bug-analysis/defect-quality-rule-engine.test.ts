@@ -120,6 +120,7 @@ test("closing a defect with all closure fields recorded satisfies the rule", asy
         status: "closed",
         fix_evidence: ["commit:abc123"],
         regression_validation_ref: "EXEC-99@1.0.0",
+        artifact_version_refs: ["service-auth@2.3.1"],
         release_ref: "RELEASE-2026.08.1",
       }),
     ),
@@ -128,6 +129,30 @@ test("closing a defect with all closure fields recorded satisfies the rule", asy
   assert.equal(result.ok, true);
   assert.ok(result.ok);
   assert.equal(result.value.outcome, "satisfied");
+});
+
+test("closing a defect with fix/regression/release but no impacted artifacts is a critical closure_governance finding (SPEC-211 §8)", async () => {
+  const engine = new DefectQualityRuleEngine();
+
+  const result = await engine.evaluate(
+    requestWith(
+      defect({
+        status: "closed",
+        fix_evidence: ["commit:abc123"],
+        regression_validation_ref: "EXEC-99@1.0.0",
+        release_ref: "RELEASE-2026.08.1",
+      }),
+    ),
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  const finding = findings.find((f) => f["category"] === "closure_governance");
+  assert.notEqual(finding, undefined);
+  assert.equal(finding?.["severity"], "critical");
+  assert.ok((finding?.["message"] as string).includes("artifact_version_refs"));
 });
 
 test("a triaged (non-closed) defect is not penalized for missing closure fields", async () => {

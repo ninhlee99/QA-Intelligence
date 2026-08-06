@@ -68,6 +68,64 @@ class DeferredExecutor implements AgentRunExecutor {
   }
 }
 
+/** Resolves only when the test calls `resolve()` — gives a real window to attempt a racing `restore()` before completing execute(). */
+class ControllableExecutor implements AgentRunExecutor {
+  #resolve: ((result: AgentRunExecutorResult) => void) | undefined;
+  readonly started: Promise<void>;
+  #signalStarted!: () => void;
+
+  constructor() {
+    this.started = new Promise((resolve) => {
+      this.#signalStarted = resolve;
+    });
+  }
+
+  execute(_input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    this.#signalStarted();
+    return new Promise((resolve) => {
+      this.#resolve = resolve;
+    });
+  }
+
+  resolve(result: AgentRunExecutorResult): void {
+    this.#resolve?.(result);
+  }
+}
+
+function successfulExecutorResult(): AgentRunExecutorResult {
+  return {
+    ok: true,
+    value: {
+      output: { assessment_id: "assessment-001", verdict: "changes_required" },
+      output_validated: true,
+      satisfied_evidence_requirements: [],
+      resolved_versions: {
+        agent: "requirement-review-agent@1.0.0",
+        skill: "assess-requirement-quality@1.0.0",
+        policy: "policy@1.0.0",
+      },
+      rule_results: ["rule:requirement-quality:indeterminate"],
+      skill_usage: ["assess-requirement-quality@1.0.0"],
+      tool_usage: [],
+      citations: ["REQ-1@1.0.0"],
+      uncertainty: {
+        level: "high",
+        reasons: ["response-time threshold is missing"],
+      },
+      policy_events: ["authorization:allow"],
+      usage: {
+        steps: 1,
+        duration_seconds: 1,
+        tool_calls: 0,
+        retries: 0,
+      },
+      evidence: ["run://exec-1/step-1/observation"],
+      cleanup_status: "completed",
+      knowledge_candidates: [],
+    },
+  };
+}
+
 class FixedClock implements Clock {
   readonly #time: Date;
   constructor(time: string) {
@@ -378,6 +436,94 @@ test("a real race between execute and cancel on the same run persists without th
   assert.equal(restored.ok, true, JSON.stringify(restored));
   if (!restored.ok) return;
   assert.equal(restored.value.snapshot.state, "cancelled");
+
+  store.close();
+});
+
+test("restore() on the SAME instance is refused while a run is active, instead of rolling back and losing a real completed effect", async () => {
+  const store = await openStore();
+  const executor = new ControllableExecutor();
+  const runtimeInstance = new PersistedAgentRuntime(
+    new FixedClock("2026-08-03T00:00:00.000Z"),
+    new SequenceIdFactory(),
+    new AllowingAuthorizer(),
+    store,
+    executor,
+  );
+
+  const started = await runtimeInstance.start(
+    startRequest({
+      consequence_class: "advisory",
+      allowed_skills: [{ id: "assess-requirement-quality", version: "1.0.0" }],
+    }),
+  );
+  assert.equal(started.ok, true, JSON.stringify(started));
+  if (!started.ok) return;
+
+  const inspected = await runtimeInstance.inspect(started.value, accessRequest());
+  assert.equal(inspected.ok, true);
+  if (!inspected.ok) return;
+
+  // execute() starts and awaits the executor — it is now in-flight and
+  // in-process, at revision `running` past what the store durably holds.
+  const executePromise = runtimeInstance.execute(started.value, {
+    ...accessRequest(),
+    expected_revision: inspected.value.revision,
+    idempotency_key: "execute-1",
+  });
+  await executor.started;
+
+  // Attempting to restore the SAME run on the SAME instance while it is
+  // still active must be refused, not silently roll `#runs` back.
+  const restoredWhileActive = await runtimeInstance.restore(started.value);
+  assert.equal(restoredWhileActive.ok, false, JSON.stringify(restoredWhileActive));
+  if (restoredWhileActive.ok) return;
+  assert.equal(restoredWhileActive.failure.code, "invalid_request");
+
+  // The executor now genuinely completes — its real effect must not have
+  // been discarded as stale by the refused restore attempt above.
+  executor.resolve(successfulExecutorResult());
+  const executed = await executePromise;
+  assert.equal(executed.ok, true, JSON.stringify(executed));
+  if (!executed.ok) return;
+  assert.equal(executed.value.outcome, "completed");
+
+  const persisted = await store.load(started.value);
+  assert.equal(persisted.ok, true, JSON.stringify(persisted));
+  if (!persisted.ok) return;
+  assert.equal(persisted.value.snapshot.state, "completed");
+
+  store.close();
+});
+
+test("restore() succeeds for a run this instance holds only in a TERMINAL state", async () => {
+  const store = await openStore();
+  const before = new PersistedAgentRuntime(
+    new FixedClock("2026-08-03T00:00:00.000Z"),
+    new SequenceIdFactory(),
+    new AllowingAuthorizer(),
+    store,
+  );
+
+  const started = await before.start(startRequest());
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+
+  const cancelled = await before.cancel(started.value, {
+    ...accessRequest(),
+    expected_revision: 3,
+    reason: "no longer needed",
+    evidence: ["operator:decision"],
+    idempotency_key: "cancel-1",
+  });
+  assert.equal(cancelled.ok, true, JSON.stringify(cancelled));
+
+  // The SAME instance re-restoring a run it already holds, but now
+  // terminal, is harmless and must remain allowed.
+  const restored = await before.restore(started.value);
+  assert.equal(restored.ok, true, JSON.stringify(restored));
+  if (!restored.ok) return;
+  assert.equal(restored.value.state, "cancelled");
 
   store.close();
 });

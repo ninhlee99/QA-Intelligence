@@ -50,6 +50,9 @@ function testCase(overrides: Partial<JsonObject> = {}): JsonObject {
     steps: [{ action: "Attempt authentication with invalid credentials until the threshold.", input: {} }],
     expected_results: [{ assertion: "The account becomes locked exactly at the threshold.", authority: "RULE-1@1.0.0" }],
     owner: "Quality Owner",
+    actor_scope: "authenticated-user",
+    cleanup: ["Unlock the account and reset failed-attempt counter."],
+    priority: "high",
     ...overrides,
   };
 }
@@ -130,6 +133,46 @@ test("a test case with no owner is a high completeness finding", async () => {
   assert.equal(result.value.outcome, "not_satisfied");
   const findings = result.value.outputs["findings"] as JsonObject[];
   assert.equal(findings.some((f) => f["message"] === "The test case has no owner."), true);
+});
+
+test("a test case with no cleanup is a high independence finding (SPEC-207 §2/§3)", async () => {
+  const engine = new TestCaseQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(testCase({ cleanup: [] })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  const finding = findings.find((f) => f["category"] === "independence");
+  assert.notEqual(finding, undefined);
+  assert.equal(finding?.["severity"], "high");
+});
+
+test("a test case with no actor scope is a medium completeness finding (SPEC-207 §2)", async () => {
+  const engine = new TestCaseQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(testCase({ actor_scope: undefined })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  assert.equal(findings.some((f) => f["message"] === "The test case has no actor scope."), true);
+});
+
+test("a test case with no priority is a low completeness finding (SPEC-207 §2)", async () => {
+  const engine = new TestCaseQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(testCase({ priority: undefined })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  const finding = findings.find((f) => f["message"] === "The test case has no priority.");
+  assert.notEqual(finding, undefined);
+  assert.equal(finding?.["severity"], "low");
 });
 
 test("fails closed on missing test case facts", async () => {

@@ -102,19 +102,14 @@ export class PersistedAgentRuntime implements AgentRuntime {
   ): Promise<void> {
     // Two commands racing on the SAME run (e.g. a concurrent execute and
     // cancel) can both fire this hook observing the same current record —
-    // one of them didn't actually cause it: either its own attempt was
-    // rejected before mutating anything (e.g. cancel on an already-terminal
-    // run, so the record never advanced past what it observed before
-    // running), or a concurrent command already advanced the run PAST what
-    // this command expected (e.g. this execute's own transition never
-    // landed because a racing cancel committed first). retainMutation
-    // requires the record's revision to be exactly expected_revision + 1;
-    // anything else here is not a persistence failure for THIS command to
-    // report — either nothing changed, or something newer already did.
-    if (
-      command.expected_revision !== null &&
-      record.snapshot.revision !== command.expected_revision + 1
-    ) {
+    // one of them didn't actually cause it: its own attempt was rejected or
+    // superseded before mutating anything (e.g. cancel on an
+    // already-terminal run, or this execute's own transition never landed
+    // because a racing cancel committed first), so the record never
+    // advanced past what it observed before running. Nothing changed for
+    // THIS command to durably record — skip it rather than asking the
+    // store to reject a no-op mutation.
+    if (command.expected_revision !== null && record.snapshot.revision <= command.expected_revision) {
       return;
     }
     const outcome = await this.#store.retainMutation({
@@ -145,11 +140,11 @@ export class PersistedAgentRuntime implements AgentRuntime {
    * Restores in-process state for one Workspace-scoped run from the durable
    * store, so a fresh `PersistedAgentRuntime` (e.g. after a process restart)
    * can serve `inspect`/`result`/`streamEvents` for a run it did not itself
-   * create in this process. Idempotent: restoring an already-known run is a
-   * caller error to avoid, but this method does not need to guard it — the
-   * composed `InMemoryAgentRuntime` has no public "seed" API, so restoration
-   * happens once, before any command is issued against this reference in
-   * this process.
+   * create in this process. Fails closed — rather than silently rolling
+   * back state — if this SAME instance already holds the run active
+   * (non-terminal): see `InMemoryAgentRuntime#seed`'s docstring for the
+   * concrete data-loss scenario this prevents (a concurrent `execute()`
+   * losing a real completed effect to a spurious `stale_revision`).
    */
   async restore(reference: AgentRunReference): Promise<AgentRuntimeResult<AgentRunSnapshot>> {
     const loaded = await this.#store.load(reference);
@@ -165,7 +160,19 @@ export class PersistedAgentRuntime implements AgentRuntime {
         },
       };
     }
-    this.#inner.seed(reference.run_id, fromAgentRunRecord(loaded.value));
+    const seeded = this.#inner.seed(reference.run_id, fromAgentRunRecord(loaded.value));
+    if (!seeded.ok) {
+      return {
+        ok: false,
+        failure: {
+          class: "orchestration",
+          code: "invalid_request",
+          message: `Agent Run ${reference.run_id} is already active in this process; restoring it now would roll back in-flight state.`,
+          retryable: false,
+          evidence: [],
+        },
+      };
+    }
     return { ok: true, value: loaded.value.snapshot };
   }
 

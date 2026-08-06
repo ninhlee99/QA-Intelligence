@@ -20,6 +20,17 @@ import type {
   WorkspaceAuthorizer,
   WorkspaceContext,
 } from "./public.js";
+import {
+  isExactVersionReference,
+  hasExactResolvedVersions as hasExactCoreResolvedVersions,
+  isJsonObject,
+  parseVersionReference,
+  readEnum,
+  readObject,
+  readString,
+  readStrings,
+  unique,
+} from "../shared/rule-engine-support.js";
 
 export interface Clock {
   now(): Date;
@@ -597,29 +608,9 @@ function assessmentFacts(requirement: Requirement, knowledge: readonly Knowledge
   };
 }
 
-function parseVersionReference(value: string): VersionReference {
-  const separator = value.lastIndexOf("@");
-  if (separator <= 0 || separator === value.length - 1) {
-    return { id: value, version: "unresolved" };
-  }
-  return { id: value.slice(0, separator), version: value.slice(separator + 1) };
-}
-
-function hasExactResolvedVersions(
-  versions: RequirementAssessmentResolvedVersions,
-): boolean {
-  const reference = /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  const semanticVersion = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  return (
-    reference.test(versions.agent) &&
-    reference.test(versions.skill) &&
-    reference.test(versions.prompt) &&
-    reference.test(versions.rule_set) &&
-    semanticVersion.test(versions.knowledge_snapshot) &&
-    reference.test(versions.policy) &&
-    reference.test(versions.input_schema) &&
-    reference.test(versions.output_schema)
-  );
+/** `prompt` is required here (this Skill may invoke a Reasoning Provider) but is not part of the 7 core fields every other Skill's `resolved_versions` shares — checked separately alongside the shared core check. */
+function hasExactResolvedVersions(versions: RequirementAssessmentResolvedVersions): boolean {
+  return hasExactCoreResolvedVersions(versions) && isExactVersionReference(versions.prompt);
 }
 
 function hasExactRuleVersions(versions: readonly VersionReference[]): boolean {
@@ -660,36 +651,3 @@ function criticalVerdict(
     : "blocked";
 }
 
-function readObject(object: JsonObject, key: string): JsonObject | undefined {
-  const value = object[key];
-  return isJsonObject(value) ? value : undefined;
-}
-
-function readString(object: JsonObject, key: string): string | undefined {
-  const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readStrings(object: JsonObject, key: string): string[] {
-  const value = object[key];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
-}
-
-function readEnum<const Value extends string>(
-  object: JsonObject,
-  key: string,
-  values: readonly Value[],
-): Value | undefined {
-  const value = object[key];
-  return typeof value === "string" && values.some((candidate) => candidate === value)
-    ? (value as Value)
-    : undefined;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}

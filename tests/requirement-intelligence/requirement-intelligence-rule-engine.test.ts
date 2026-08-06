@@ -128,6 +128,36 @@ test("an implemented requirement with only one traceability edge fails the broad
   );
 });
 
+test("an implemented requirement with ZERO traceability edges gets the broader-traceability message, not the generic after-draft one (regression for the if/else-if ordering bug)", async () => {
+  const engine = new RequirementIntelligenceRuleEngine();
+
+  const result = await engine.evaluate(
+    requestWith(requirement({ status: "implemented", traceability: [] })),
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding["category"] === "traceability" &&
+        typeof finding["message"] === "string" &&
+        finding["message"].includes("upstream intent and downstream impact"),
+    ),
+    true,
+    "expected the broadly-traceable-at-implementation message, not the generic no-traceability-edge one",
+  );
+  assert.equal(
+    findings.some(
+      (finding) => typeof finding["message"] === "string" && finding["message"] === 'A requirement in status "implemented" has no traceability edge.',
+    ),
+    false,
+    "the generic after-draft message should not fire when the more specific implementation-stage rule already covers this case",
+  );
+});
+
 test("an implemented requirement with two traceability edges satisfies the broader-traceability rule", async () => {
   const engine = new RequirementIntelligenceRuleEngine();
 

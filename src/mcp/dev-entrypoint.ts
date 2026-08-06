@@ -27,7 +27,9 @@ import {
   AssessRequirementQuality,
   RequirementQualityRuleEngine,
 } from "../requirement-review/assess-requirement-quality.js";
+import { CompositeRuleEngine } from "../requirement-review/composite-rule-engine.js";
 import { RequirementReviewRuntimeExecutor } from "../requirement-review/runtime-executor.js";
+import { RequirementIntelligenceRuleEngine } from "../requirement-intelligence/requirement-intelligence-rule-engine.js";
 import { InMemoryAgentRuntime, type IdFactory } from "../runtime/in-memory-agent-runtime.js";
 import type { Requirement, WorkspaceContext } from "../requirement-review/public.js";
 
@@ -109,7 +111,15 @@ function main(): void {
       projection_freshness: clock.now().toISOString(),
       records: [],
     }),
-    rules: new RequirementQualityRuleEngine(),
+    // SPEC-203 (quality: acceptance criteria, source, ambiguous terms) and
+    // SPEC-202 (contract completeness: rationale, traceability-count-by-
+    // status) are independent accepted rule sets that both govern the same
+    // Requirement — merge them so this dev entrypoint doesn't silently run
+    // only one of the two rule sets a Requirement is actually subject to.
+    rules: new CompositeRuleEngine([
+      new RequirementQualityRuleEngine(),
+      new RequirementIntelligenceRuleEngine(),
+    ]),
     reasoning: new ScriptedReasoningProvider([]),
     clock,
     ids: { next: (scope): string => `${scope}-${++reviewId}` },

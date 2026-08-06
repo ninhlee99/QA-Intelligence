@@ -149,9 +149,26 @@ export class InMemoryAgentRuntime implements AgentRuntime {
    * `#starts`/`#commands`/`#executions` idempotency indexes, so a command
    * replayed against a freshly seeded run re-authorizes and re-validates
    * exactly as it would for any other in-flight run at that revision.
+   *
+   * Refuses to seed over a run this SAME instance already holds in a
+   * non-terminal state (SPEC-508 §5 / SPEC-606 §7: a stale writer SHALL
+   * NOT overwrite newer or in-flight state). Without this guard, calling
+   * `restore()` while `execute()` is still awaiting its executor on the
+   * very same instance would roll `#runs` back to the pre-execute
+   * snapshot; when the executor later resolves, `execute()` would compare
+   * against a revision that no longer matches its own reservation, discard
+   * a real completed effect as `stale_revision`, and never persist it —
+   * silently losing an effect that already happened. Re-seeding a run
+   * already in a TERMINAL state is harmless (terminal snapshots don't
+   * change) and remains allowed for idempotent re-restoration.
    */
-  seed(runId: string, record: RunRecord): void {
+  seed(runId: string, record: RunRecord): Readonly<{ ok: true } | { ok: false; reason: "run_active_in_process" }> {
+    const existing = this.#runs.get(runId);
+    if (existing !== undefined && !TERMINAL_STATES.has(existing.snapshot.state)) {
+      return { ok: false, reason: "run_active_in_process" };
+    }
     this.#runs.set(runId, record);
+    return { ok: true };
   }
 
   /**

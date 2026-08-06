@@ -365,8 +365,13 @@ function validateMutation(request: RetainAgentRunMutationRequest): string | unde
     }
     return undefined;
   }
-  if (snapshot.revision !== request.expected_revision + 1) {
-    return "The retained record must advance the Agent Run revision by exactly one.";
+  // A single public command (e.g. `execute`) can internally advance the
+  // run through several transitions (step_proposed → ... → run_completed),
+  // each bumping the revision by one, before this store ever sees it — the
+  // record's revision only has to have advanced past what the caller
+  // expected, not landed exactly one past it.
+  if (snapshot.revision <= request.expected_revision) {
+    return "The retained record must advance past the expected Agent Run revision.";
   }
   return undefined;
 }

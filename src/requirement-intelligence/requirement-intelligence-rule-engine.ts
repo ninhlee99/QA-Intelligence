@@ -1,12 +1,12 @@
 import type {
   DeterministicRuleEngine,
   JsonObject,
-  JsonValue,
   RequirementFindingCategory,
   RequirementStatus,
   RuleEvaluationRequest,
   RuleEvaluationResult,
 } from "../requirement-review/public.js";
+import { readEnum, readObject, readString } from "../shared/rule-engine-support.js";
 
 const STATUSES_AFTER_DRAFT: ReadonlySet<RequirementStatus> = new Set([
   "in_review",
@@ -74,15 +74,13 @@ export class RequirementIntelligenceRuleEngine implements DeterministicRuleEngin
     const traceability = requirement["traceability"];
     const edgeCount = Array.isArray(traceability) ? traceability.length : 0;
 
-    if (status !== undefined && STATUSES_AFTER_DRAFT.has(status) && edgeCount < MIN_TRACEABILITY_EDGES_AFTER_DRAFT) {
-      findings.push({
-        category: "traceability" satisfies RequirementFindingCategory,
-        severity: "high",
-        message: `A requirement in status "${status}" has no traceability edge.`,
-        evidence: [`${requirementRef}#traceability`, "rule:requirement-traceable-after-draft@1.0.0"],
-        next_action: "Record at least one traceability relationship before leaving draft status.",
-      });
-    } else if (
+    // Check the stricter (implemented/verified, 2-edge) requirement FIRST:
+    // both status sets can be simultaneously true for the same status, and
+    // an implemented/verified requirement with 0 edges is a broadly-
+    // traceable gap, not merely an after-draft gap — checking the looser
+    // condition first would have reported the wrong, less specific finding
+    // for exactly that case.
+    if (
       status !== undefined &&
       STATUSES_REQUIRING_BROADER_TRACEABILITY.has(status) &&
       edgeCount < MIN_TRACEABILITY_EDGES_AT_IMPLEMENTATION
@@ -93,6 +91,14 @@ export class RequirementIntelligenceRuleEngine implements DeterministicRuleEngin
         message: `A requirement in status "${status}" has only ${edgeCount} traceability edge(s); SPEC-202 §11 expects both upstream intent and downstream impact to be traceable by this stage.`,
         evidence: [`${requirementRef}#traceability`, "rule:requirement-broadly-traceable-at-implementation@1.0.0"],
         next_action: "Record traceability to both the originating intent and at least one downstream artifact (risk, design, rule, test, automation, execution evidence, defect, or release).",
+      });
+    } else if (status !== undefined && STATUSES_AFTER_DRAFT.has(status) && edgeCount < MIN_TRACEABILITY_EDGES_AFTER_DRAFT) {
+      findings.push({
+        category: "traceability" satisfies RequirementFindingCategory,
+        severity: "high",
+        message: `A requirement in status "${status}" has no traceability edge.`,
+        evidence: [`${requirementRef}#traceability`, "rule:requirement-traceable-after-draft@1.0.0"],
+        next_action: "Record at least one traceability relationship before leaving draft status.",
       });
     }
 
@@ -133,29 +139,4 @@ function successfulRuleEvaluation(
       duration_ms: 0,
     },
   };
-}
-
-function readObject(object: JsonObject, key: string): JsonObject | undefined {
-  const value = object[key];
-  return isJsonObject(value) ? value : undefined;
-}
-
-function readString(object: JsonObject, key: string): string | undefined {
-  const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readEnum<const Value extends string>(
-  object: JsonObject,
-  key: string,
-  values: readonly Value[],
-): Value | undefined {
-  const value = object[key];
-  return typeof value === "string" && values.some((candidate) => candidate === value)
-    ? (value as Value)
-    : undefined;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

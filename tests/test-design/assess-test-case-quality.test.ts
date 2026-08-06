@@ -79,6 +79,9 @@ function completeTestCase(overrides: Partial<TestCase> = {}): TestCase {
     steps: [{ action: "Attempt authentication with invalid credentials until the threshold." }],
     expected_results: [{ assertion: "The account becomes locked exactly at the threshold.", authority: "RULE-1@1.0.0" }],
     owner: "Quality Owner",
+    actor_scope: "authenticated-user",
+    cleanup: ["Unlock the account and reset failed-attempt counter."],
+    priority: "high",
     ...overrides,
   };
 }

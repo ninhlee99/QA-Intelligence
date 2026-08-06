@@ -57,6 +57,9 @@ function strategy(overrides: Partial<JsonObject> = {}): JsonObject {
     exit_criteria: ["No critical or high defects open."],
     evidence_and_reporting: "Evidence retained in the Evaluation Campaign record store.",
     residual_risk: "Low, once rate limiting is verified in staging.",
+    roles_and_escalation: "Quality Engineering owns triage; escalates to Security for critical findings.",
+    exclusions: ["Third-party identity provider outages are out of scope."],
+    assumptions: ["Staging traffic shape matches production within 10%."],
     owner: "Quality Engineering",
     ...overrides,
   };
@@ -136,6 +139,31 @@ test("a strategy with no owner is a high governance finding", async () => {
   const finding = findings.find((f) => f["message"] === "The test strategy has no accountable owner.");
   assert.notEqual(finding, undefined);
   assert.equal(finding?.["category"], "governance");
+});
+
+test("a strategy with no roles and escalation path is a high completeness finding (SPEC-206 §3)", async () => {
+  const engine = new TestStrategyQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(strategy({ roles_and_escalation: undefined })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  assert.equal(findings.some((f) => f["message"] === "The test strategy has no roles and escalation path."), true);
+});
+
+test("a strategy with no exclusions or assumptions is a high completeness finding (SPEC-206 §3)", async () => {
+  const engine = new TestStrategyQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(strategy({ exclusions: [], assumptions: [] })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  assert.equal(findings.some((f) => f["message"] === "The test strategy has no exclusions."), true);
+  assert.equal(findings.some((f) => f["message"] === "The test strategy has no assumptions."), true);
 });
 
 test("fails closed on missing test strategy facts", async () => {

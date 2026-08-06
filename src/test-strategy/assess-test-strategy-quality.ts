@@ -16,6 +16,16 @@ import type {
   WorkspaceAuthorizer,
   WorkspaceContext,
 } from "./public.js";
+import {
+  hasExactResolvedVersions,
+  isJsonObject,
+  parseVersionReference,
+  readEnum,
+  readObject,
+  readString,
+  readStrings,
+  unique,
+} from "../shared/rule-engine-support.js";
 
 export interface Clock {
   now(): Date;
@@ -319,6 +329,8 @@ export class TestStrategyQualityRuleEngine implements DeterministicRuleEngine {
       ["entry_criteria", "entry criteria"],
       ["exit_criteria", "exit criteria"],
       ["objectives", "objectives"],
+      ["exclusions", "exclusions"],
+      ["assumptions", "assumptions"],
     ] as const) {
       const value = strategy[field];
       if (!Array.isArray(value) || value.length === 0) {
@@ -337,6 +349,7 @@ export class TestStrategyQualityRuleEngine implements DeterministicRuleEngine {
       ["automation_approach", "automation approach"],
       ["evidence_and_reporting", "evidence and reporting approach"],
       ["scope", "scope"],
+      ["roles_and_escalation", "roles and escalation path"],
     ] as const) {
       if (readString(strategy, field) === undefined) {
         findings.push({
@@ -478,57 +491,3 @@ function normalizeFindings(
   return findings;
 }
 
-function hasExactResolvedVersions(versions: TestStrategyAssessmentResolvedVersions): boolean {
-  const reference = /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  const semver = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-  return (
-    reference.test(versions.agent) &&
-    reference.test(versions.skill) &&
-    reference.test(versions.rule_set) &&
-    semver.test(versions.knowledge_snapshot) &&
-    reference.test(versions.policy) &&
-    reference.test(versions.input_schema) &&
-    reference.test(versions.output_schema)
-  );
-}
-
-function parseVersionReference(value: string): Readonly<{ id: string; version: string }> {
-  const [id, version] = value.split("@");
-  return { id: id ?? value, version: version ?? "0.0.0" };
-}
-
-function readObject(object: JsonObject, key: string): JsonObject | undefined {
-  const value = object[key];
-  return isJsonObject(value) ? value : undefined;
-}
-
-function readString(object: JsonObject, key: string): string | undefined {
-  const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readStrings(object: JsonObject, key: string): string[] {
-  const value = object[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
-}
-
-function readEnum<const Value extends string>(
-  object: JsonObject,
-  key: string,
-  values: readonly Value[],
-): Value | undefined {
-  const value = object[key];
-  return typeof value === "string" && values.some((candidate) => candidate === value)
-    ? (value as Value)
-    : undefined;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}

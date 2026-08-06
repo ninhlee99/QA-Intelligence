@@ -153,3 +153,80 @@ test("fails closed on missing test dataset facts", async () => {
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_facts");
 });
+
+test("an AI evaluation dataset with no metadata is a high completeness finding (SPEC-208 §8)", async () => {
+  const engine = new TestDatasetQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(dataset({ classification: "ai_evaluation_dataset" })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  const finding = findings.find((f) => (f["message"] as string).includes("AI evaluation dataset"));
+  assert.notEqual(finding, undefined);
+  assert.equal(finding?.["severity"], "high");
+  assert.ok((finding?.["message"] as string).includes("ai_evaluation_metadata"));
+});
+
+test("an AI evaluation dataset with partial metadata reports exactly the missing fields", async () => {
+  const engine = new TestDatasetQualityRuleEngine();
+
+  const result = await engine.evaluate(
+    requestWith(
+      dataset({
+        classification: "ai_evaluation_dataset",
+        ai_evaluation_metadata: {
+          labels: ["boundary", "negative"],
+          representativeness: "Covers threshold boundary and one negative case.",
+        },
+      }),
+    ),
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  const finding = findings.find((f) => (f["message"] as string).includes("AI evaluation dataset"));
+  assert.notEqual(finding, undefined);
+  const message = finding?.["message"] as string;
+  assert.ok(message.includes("known_bias"));
+  assert.ok(message.includes("contamination_risk"));
+  assert.ok(message.includes("protected_data_authorization_ref"));
+  assert.ok(!message.includes("labels"));
+  assert.ok(!message.includes("representativeness"));
+});
+
+test("an AI evaluation dataset with complete metadata satisfies the rule", async () => {
+  const engine = new TestDatasetQualityRuleEngine();
+
+  const result = await engine.evaluate(
+    requestWith(
+      dataset({
+        classification: "ai_evaluation_dataset",
+        ai_evaluation_metadata: {
+          labels: ["boundary", "negative"],
+          representativeness: "Covers threshold boundary and one negative case.",
+          known_bias: "Skews toward English-language input.",
+          contamination_risk: "None — synthetic, generated after model training cutoff.",
+          protected_data_authorization_ref: "AUTH-2026-004",
+        },
+      }),
+    ),
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "satisfied");
+});
+
+test("a non-AI-evaluation dataset is not penalized for missing ai_evaluation_metadata", async () => {
+  const engine = new TestDatasetQualityRuleEngine();
+
+  const result = await engine.evaluate(requestWith(dataset({ classification: "synthetic" })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "satisfied");
+});
