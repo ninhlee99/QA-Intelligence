@@ -45,6 +45,19 @@ All packages use the ADR-019 minimal in-house `stdio` JSON-RPC transport
 (`2025-06-18`), so any compliant host can connect regardless of which
 implementation produced the message.
 
+## Remote transport (shared/team profile, not wired into any package here)
+
+ADR-020 adds a remote Streamable HTTP transport (`src/mcp/remote/streamable-http-transport.ts`)
+and an OIDC Authorization Code + PKCE callback service
+(`src/mcp/remote/oauth-callback-server.ts`) for a future shared/team
+deployment. Both exist and are conformance-tested
+(`tests/mcp/remote/`), but no package in this directory points at them —
+every package above still uses the local `stdio` dev entrypoint. Wiring a
+remote entrypoint together (provider config, `AgentRuntime`, tool
+definitions) and enabling it in any package remains separately scoped,
+and production enablement is blocked on GOV-012 G1-G4 regardless (ADR-016
+§8, ADR-020 §4).
+
 ## Directories
 
 - `claude-code/.claude-plugin/plugin.json` — Claude Code plugin manifest

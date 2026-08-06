@@ -31,6 +31,7 @@ import { CompositeRuleEngine } from "../requirement-review/composite-rule-engine
 import { RequirementReviewRuntimeExecutor } from "../requirement-review/runtime-executor.js";
 import { RequirementIntelligenceRuleEngine } from "../requirement-intelligence/requirement-intelligence-rule-engine.js";
 import { InMemoryAgentRuntime, type IdFactory } from "../runtime/in-memory-agent-runtime.js";
+import { SessionMemory } from "../memory/session-memory.js";
 import type { Requirement, WorkspaceContext } from "../requirement-review/public.js";
 
 import { AgentRuntimeToolRegistry, fixedWorkspaceContext } from "./agent-runtime-tool-registry.js";
@@ -165,6 +166,13 @@ function main(): void {
     now: () => new Date(),
     nextIdempotencyKey: () => `mcp-dev-${++idempotencySequence}-${Date.now()}`,
     deadlineSeconds: 120,
+    // SPEC-108 §4.2/§8: one Session Memory instance for this process's
+    // lifetime, shared across every tools/call — a later call in the same
+    // Workspace can read a prior call's retained outcome via
+    // registry.readSessionMemory(). Local stdio serves one Workspace per
+    // process (ADR-016 §3's Local Parent Runtime), so this instance never
+    // needs to isolate more than the one WORKSPACE_ID this entrypoint uses.
+    sessionMemory: new SessionMemory(clock),
     tools: [
       {
         name: "assess_requirement_quality",

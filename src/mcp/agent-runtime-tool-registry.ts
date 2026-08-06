@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { AgentRuntime, AgentRunBudgets, AgentRunStartRequest } from "../runtime/public.js";
+import type { AgentRuntime, AgentRunBudgets, AgentRunResult, AgentRunStartRequest } from "../runtime/public.js";
 import type { WorkspaceContext, ConsequenceClass, JsonObject } from "../requirement-review/public.js";
 import { resolveAgentRunBudgets } from "../runtime/default-budgets.js";
+import type { SessionMemory, SessionMemoryEntry } from "../memory/session-memory.js";
 import type { McpToolCallOutcome, McpToolRegistry } from "./mcp-server.js";
 import type { McpTool } from "./protocol.js";
 
@@ -40,7 +41,24 @@ export type AgentRuntimeToolRegistryDependencies = Readonly<{
   nextIdempotencyKey(): string;
   /** Deadline offset in seconds from `now()`; overridable per call site, not per MCP request. */
   deadlineSeconds: number;
+  /**
+   * SPEC-108 §4.2/§8: Workspace-scoped Session Memory shared across calls to
+   * this registry (unlike Working Memory, which is run-scoped and lives
+   * inside a Skill's own construction — SPEC-108 §4.1). When provided, a
+   * completed run's outcome is offered to Session Memory's §7.1 save
+   * decision, keyed per tool per Workspace, so a later call in the same
+   * Workspace MAY read a prior outcome summary through `get()`. Omitted by
+   * default: no MCP entrypoint is required to carry Session Memory.
+   */
+  sessionMemory?: SessionMemory;
+  sessionMemoryTtlSeconds?: number;
 }>;
+
+export const DEFAULT_SESSION_MEMORY_TTL_SECONDS = 60 * 60;
+
+function sessionMemoryKey(toolName: string): string {
+  return `${toolName}:last_outcome`;
+}
 
 /**
  * Translates MCP `tools/call` into the SPEC-508 Agent Runtime `start` +
@@ -122,10 +140,50 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
       return { ok: false, text: `Run did not complete: ${executed.failure.code} — ${executed.failure.message}` };
     }
 
+    this.#retainOutcomeInSessionMemory(context.workspace_id, definition, executed.value);
+
     return {
       ok: executed.value.outcome === "completed",
       text: JSON.stringify(executed.value, null, 2),
     };
+  }
+
+  /**
+   * SPEC-108 §4.2 example: "a prior run's outcome summary for the same
+   * Workspace" is the canonical Session Memory candidate. Every candidate
+   * still passes through `SessionMemory.evaluate()`'s §7.1 save-decision
+   * policy unchanged — this call never bypasses reuse-likelihood,
+   * provenance, consequence-tier, or applicability-scope checks; a
+   * non-`completed` outcome is simply not considered reuse-likely.
+   */
+  #retainOutcomeInSessionMemory(
+    workspaceId: string,
+    definition: AgentRuntimeToolDefinition,
+    result: AgentRunResult,
+  ): void {
+    const sessionMemory = this.#dependencies.sessionMemory;
+    if (sessionMemory === undefined) return;
+
+    const sourceRef = result.evidence[0] ?? `agent-run:${result.run_id}`;
+    sessionMemory.evaluate({
+      workspace_id: workspaceId,
+      key: sessionMemoryKey(definition.name),
+      value: JSON.stringify({ run_id: result.run_id, outcome: result.outcome, output: result.output }),
+      source_ref: sourceRef,
+      consequence_class: definition.consequence_class,
+      reuse_likely: result.outcome === "completed",
+      ttl_seconds: this.#dependencies.sessionMemoryTtlSeconds ?? DEFAULT_SESSION_MEMORY_TTL_SECONDS,
+    });
+  }
+
+  /**
+   * Reads a prior retained outcome for one tool in one Workspace, if
+   * Session Memory is configured and an unexpired entry exists (SPEC-108
+   * §9 fail-safe read — never throws, never returns a cross-Workspace or
+   * expired entry).
+   */
+  readSessionMemory(workspaceId: string, toolName: string): SessionMemoryEntry | undefined {
+    return this.#dependencies.sessionMemory?.get(workspaceId, sessionMemoryKey(toolName));
   }
 }
 
