@@ -72,6 +72,13 @@ jobs:
           psql -h localhost -U postgres -d postgres \
             -f migrations/postgresql/0001_evaluation_campaign_store.up.sql
 
+      - name: Apply Knowledge Repository migration
+        env:
+          PGPASSWORD: qa-intelligence-ci
+        run: |
+          psql -h localhost -U postgres -d postgres \
+            -f migrations/postgresql/0004_knowledge_repository.up.sql
+
       - name: Create the non-superuser application role
         env:
           PGPASSWORD: qa-intelligence-ci
@@ -86,6 +93,12 @@ jobs:
             qa_evaluation_campaign_commands,
             qa_platform_outbox
             TO qa_intelligence_app;
+          GRANT SELECT, INSERT, UPDATE ON
+            qa_knowledge_objects,
+            qa_knowledge_history,
+            qa_knowledge_lifecycle_events,
+            qa_knowledge_idempotency
+            TO qa_intelligence_app;
           SQL
           # ADR-017 §6 / PgTransactionManager real test: PostgreSQL superusers
           # always bypass Row-Level Security regardless of FORCE ROW LEVEL
@@ -98,3 +111,4 @@ jobs:
         run: |
           npm run build
           node --test dist/tests/evaluation/pg-transaction-manager.real.test.js
+          node --test dist/tests/knowledge/postgres-knowledge-repository.real.test.js

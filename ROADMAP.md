@@ -777,6 +777,56 @@ interfaces against a live browser is still separate, larger scope
 requiring its own `playwright` dependency decision (mirroring ADR-021's
 `js-yaml` precedent) and has not been attempted here.
 
+## Knowledge Repository PostgreSQL Adapter (2026-08-06)
+
+Following the SQLite adapter, `KnowledgeRepository` now also has the
+ADR-017 optional shared/team-profile PostgreSQL counterpart, proven
+against a real, live PostgreSQL 18 server rather than only committed as
+untested code. Migration `0004_knowledge_repository.up.sql`/`.down.sql`
+adds the same four tables the SQLite adapter uses, with `FORCE ROW LEVEL
+SECURITY` scoped by the `qa.workspace_id` session variable (the same
+pattern migration `0002_agent_run_store` already established) — the two
+object-bearing tables additionally allow reading rows where
+`workspace_id = 'global'`, matching SPEC-102 §13's "Global knowledge MAY
+be shared." `src/adapters/postgres/postgres-knowledge-repository.ts`
+(`PostgresKnowledgeRepository`) reuses the existing
+`PostgresTransactionManager`/`PostgresTransaction` seam from the
+Evaluation Campaign adapter and implements each `KnowledgeRepository`
+method directly, the same shape the SQLite adapter uses. Writing it
+surfaced one real bug before any test ran: TypeScript caught
+`existing?.status` where `existing` is a `{object, revision}` pair, not
+the object itself — the correct access is `existing?.object.status`.
+
+Verification here went beyond writing a gated test that skips cleanly:
+PostgreSQL 18 (installed in an earlier session but not currently running)
+was started, migration 0004 applied to the existing `qa_intelligence_test`
+database, and the non-superuser `qa_intelligence_app` role granted access
+to the four new tables. `tests/knowledge/postgres-knowledge-repository.real.test.ts`
+then ran for real (not just typechecked) against that live server: retain-
+and-load, the full lifecycle (confirming `accepted` cannot skip straight
+to `archived` without deprecating/superseding first), a concurrency
+conflict, idempotent `createDraft`, and — critically — Row-Level Security
+Workspace isolation exercised under the non-superuser role specifically,
+since a superuser connection always bypasses RLS regardless of `FORCE ROW
+LEVEL SECURITY` and would make that test meaningless, a lesson this
+repository's own `pg-transaction-manager.real.test.ts` already recorded.
+All five tests passed against the real server. The CI workflow's existing
+`postgres-adapter` job now also applies migration 0004, grants the new
+tables, and runs this test file — extending the existing job rather than
+adding a new one; the workflow's pre-existing gap where migrations 0002/
+0003 are never applied or exercised in CI was not touched, as it predates
+this work and is out of scope here.
+
+5 new tests (707 total, 703 pass + 4 skip — the skip count rose by one for
+this file's own clean skip when no database is configured), `npm run
+validate` clean, no new dependency (`pg` was already accepted under
+ADR-017). Not yet done: no shared `run*KnowledgeRepositoryContract`
+function exists the way record-stores have, so "vendor substitution"
+conformance (proving SQLite and PostgreSQL are semantically equivalent
+through one shared test suite) remains unverified — the SQLite and
+PostgreSQL test files use similar scenarios but do not share code; no
+consumer is wired to either adapter yet.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
