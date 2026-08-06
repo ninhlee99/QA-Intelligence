@@ -31,7 +31,8 @@ related_adrs:
   - ADR-016
   - ADR-018
   - ADR-019
-last_updated: 2026-08-05
+  - ADR-020
+last_updated: 2026-08-06
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -91,6 +92,7 @@ Implementation and Evidence
 | ADR-017 Local-First SQLite and Optional PostgreSQL | SPEC-103, SPEC-309, SPEC-501, SPEC-601, SPEC-606, SPEC-607 |
 | ADR-018 Memory, Proportional Rigor, and Cost/Latency Efficiency | SPEC-108, SPEC-001, SPEC-107, SPEC-206, SPEC-209, SPEC-210, SPEC-213, SPEC-309, SPEC-501, SPEC-508 |
 | ADR-019 Minimal Self-Implemented MCP Transport | SPEC-503, SPEC-508, SPEC-509, SPEC-510 |
+| ADR-020 Remote Streamable HTTP MCP Transport with OAuth | SPEC-306, SPEC-406, SPEC-506, SPEC-508, SPEC-511 |
 
 ## 3.1 Agent and Skill Realization
 
