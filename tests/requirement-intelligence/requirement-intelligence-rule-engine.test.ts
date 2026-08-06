@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { RequirementIntelligenceRuleEngine } from "../../src/requirement-intelligence/requirement-intelligence-rule-engine.js";
 import type { JsonObject, RuleEvaluationRequest } from "../../src/requirement-review/public.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
   return {
@@ -208,4 +209,19 @@ test("fails closed on missing requirement facts", async () => {
   assert.equal(result.ok, false);
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_facts");
+});
+
+runRuleEngineContract("requirement-intelligence", {
+  makeEngine: () => new RequirementIntelligenceRuleEngine(),
+  satisfiedRequest: () => requestWith(requirement()),
+  emptyFactsRequest: () => ({
+    evaluation_id: "evaluation-1",
+    context: baseContext(),
+    rule_set: { id: "requirement-intelligence", version: "1.0.0" },
+    effective_at: "2026-08-05T08:00:00.000Z",
+    facts: {},
+    fact_provenance: [],
+    requested_decisions: [],
+    trace_level: "summary",
+  }),
 });

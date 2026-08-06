@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TestCaseQualityRuleEngine } from "../../src/test-design/assess-test-case-quality.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 import type { JsonObject, RuleEvaluationRequest } from "../../src/requirement-review/public.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
@@ -192,4 +193,19 @@ test("fails closed on missing test case facts", async () => {
   assert.equal(result.ok, false);
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_facts");
+});
+
+runRuleEngineContract("test-case-quality", {
+  makeEngine: () => new TestCaseQualityRuleEngine(),
+  satisfiedRequest: () => requestWith(testCase()),
+  emptyFactsRequest: () => ({
+    evaluation_id: "evaluation-1",
+    context: baseContext(),
+    rule_set: { id: "test-case-quality", version: "1.0.0" },
+    effective_at: "2026-08-05T08:00:00.000Z",
+    facts: {},
+    fact_provenance: [],
+    requested_decisions: [],
+    trace_level: "summary",
+  }),
 });

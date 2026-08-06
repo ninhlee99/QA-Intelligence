@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ExecutionRecordQualityRuleEngine } from "../../src/execution/assess-execution-record-quality.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 import type { JsonObject, RuleEvaluationRequest } from "../../src/requirement-review/public.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
@@ -145,4 +146,19 @@ test("fails closed on missing execution record facts", async () => {
   assert.equal(result.ok, false);
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_facts");
+});
+
+runRuleEngineContract("execution-record-quality", {
+  makeEngine: () => new ExecutionRecordQualityRuleEngine(),
+  satisfiedRequest: () => requestWith(execution()),
+  emptyFactsRequest: () => ({
+    evaluation_id: "evaluation-1",
+    context: baseContext(),
+    rule_set: { id: "execution-record-quality", version: "1.0.0" },
+    effective_at: "2026-08-05T08:00:00.000Z",
+    facts: {},
+    fact_provenance: [],
+    requested_decisions: [],
+    trace_level: "summary",
+  }),
 });

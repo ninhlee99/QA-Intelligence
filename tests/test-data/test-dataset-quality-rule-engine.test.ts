@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TestDatasetQualityRuleEngine } from "../../src/test-data/assess-test-dataset-quality.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 import type { JsonObject, RuleEvaluationRequest } from "../../src/requirement-review/public.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
@@ -229,4 +230,19 @@ test("a non-AI-evaluation dataset is not penalized for missing ai_evaluation_met
   assert.equal(result.ok, true);
   assert.ok(result.ok);
   assert.equal(result.value.outcome, "satisfied");
+});
+
+runRuleEngineContract("test-dataset-quality", {
+  makeEngine: () => new TestDatasetQualityRuleEngine(),
+  satisfiedRequest: () => requestWith(dataset()),
+  emptyFactsRequest: () => ({
+    evaluation_id: "evaluation-1",
+    context: baseContext(),
+    rule_set: { id: "test-dataset-quality", version: "1.0.0" },
+    effective_at: "2026-08-05T08:00:00.000Z",
+    facts: {},
+    fact_provenance: [],
+    requested_decisions: [],
+    trace_level: "summary",
+  }),
 });

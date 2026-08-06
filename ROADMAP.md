@@ -234,6 +234,40 @@ a durable, contract-tested seam like the Evaluation Campaign and Agent Run
 record-stores; no Skill yet calls the failure-avoidance path from a real
 run.
 
+`AgentRuntimeToolRegistry` (`src/mcp/agent-runtime-tool-registry.ts`) now
+accepts an optional Session Memory instance, closing the "not yet connected
+to any MCP tool call" gap the memory increment above left open. A completed
+`tools/call`'s outcome (run id, outcome, output) is offered to
+`SessionMemory.evaluate()` — SPEC-108 §7.1's save-decision policy still
+governs it unchanged, so a non-`completed` outcome is simply not
+reuse-likely and nothing is retained — keyed per tool name and scoped to the
+resolved Workspace, matching SPEC-108 §4.2's own example of what Session
+Memory is for ("a prior run's outcome summary for the same Workspace"). A
+new `readSessionMemory(workspaceId, toolName)` accessor performs the fail-
+safe §9 read. Because Session Memory must outlive any single request while a
+Workspace's isolation must not (SPEC-108 §8), it is constructed once per
+process and threaded through explicitly rather than rebuilt per call: the
+local `stdio` dev entrypoint (`src/mcp/dev-entrypoint.ts`) now owns one
+`SessionMemory` for its single-Workspace process lifetime, and the remote
+`OidcBearerAuthenticator` (`src/mcp/remote/oidc-bearer-authenticator.ts`)
+accepts the same instance shared across every authenticated request it
+serves, even though each request still gets its own short-lived
+`AgentRuntimeToolRegistry`. `tests/mcp/agent-runtime-tool-registry-session-memory.integration.test.ts`
+proves retention, Workspace isolation (a retained outcome in one Workspace
+is invisible to a `readSessionMemory` call for another), and that the
+§7.1 gate still declines an incomplete run — all against the real
+`InMemoryAgentRuntime`, not a mock.
+`tests/mcp/remote/streamable-http-transport.test.ts` adds a real-HTTP proof
+that a retained outcome survives across two independent requests to
+`StreamableHttpTransport`, each of which is its own MCP session with no
+other shared state. 514 tests total (511 pass + 3 skip, +5 from this
+increment), `npm run validate` clean, no new dependency. Not yet done: no
+Skill reads a prior Session Memory entry back into its own reasoning (this
+increment only proves the write/read seam works through a real tool call);
+Working Memory (SPEC-108 §4.1, run-scoped) still has no equivalent MCP-level
+seam because it is constructed once per Skill instance rather than per run,
+a pre-existing gap this increment did not touch.
+
 ## Current Phase — Requirement Review Tracer-Bullet Implementation
 
 The documentation baseline has passed ownership, semantic alignment, dependency, traceability, schema, example, lifecycle, and governance review. The selected advisory tracer bullet is now in development: its deterministic core, test adapters, schema validator, evaluation guardrails, in-memory runtime contract, and runtime-owned Requirement Review execution path exist. Source code remains subordinate to accepted contracts.
@@ -245,6 +279,222 @@ Specification acceptance is not implementation conformance or release approval. 
 Start with the advisory `Requirement Review Agent` and its `Assess Requirement Quality` Skill because it exercises Discovery, deterministic rules before LLM reasoning, governed knowledge retrieval, evidence, uncertainty, evaluation, and Workspace isolation without production write side effects.
 
 The first deterministic development increment is implemented. The SPEC-508 development runtime now executes retained input through the Requirement Review Agent/Skill, validates output, evidence requirements, exact versions, Skill/Tool authority, budgets, and cleanup, and retains the immutable terminal result. The SPEC-511 provider-neutral Interface and scripted deterministic/replay Adapter enforce common envelopes, operation-and-resource-scoped Workspace authorization, canonical request digests, idempotency, strict UTC deadlines, late-result retention, capability declaration, observation-only execution results, and fail-closed cleanup. The Evaluation Campaign Runner orchestrates one isolated deterministic trial, while the Evaluation Campaign Coordinator validates and schedules a multi-trial matrix with bounded parallelism, stable declared ordering, exact cross-trial versions, critical-invariant dominance, cancellation stop, cleanup consistency, and one independent Evaluation Manager analysis. A provider-neutral retained campaign repository contract and in-memory conformance baseline now retain immutable Workspace-scoped snapshots and attributable events, enforce canonical lifecycle transitions with optimistic revisions and idempotent commands, pin versions before readiness, and fail closed during recovery when active effects cannot be reconciled. Per ADR-017 (superseding ADR-012 as the default persistence decision), a `SqliteEvaluationCampaignRecordStore` now provides a working, tested, local-first per-Workspace SQLite adapter behind the same `EvaluationCampaignRecordStore` seam, and a `PostgresEvaluationCampaignRecordStore` remains available as the optional shared/team-profile adapter — both define an atomic campaign/event/command/outbox transaction model plus up/down migrations with forced Workspace RLS for the PostgreSQL path; deterministic transaction tests cover idempotent replay, optimistic update, concurrent-command reconciliation, corrupt JSONB, and outbox rollback for both adapters against the shared contract suite. PostgreSQL 18 real-driver integration and real database concurrency/RLS/worker-loss/restart conformance (the PostgreSQL adapter is currently proven only against a fake transaction manager), Judge orchestration, production identity, and production adapters remain pending. G1–G4 must pass before enablement beyond development.
+
+## Remote MCP Transport Decision (ADR-020, 2026-08-06)
+
+Giai đoạn 2's remaining items (2.5 remote transport, 2.6 Memory Workspace-scope
+through a real MCP transport call) required a decision ADR-019 §6 explicitly
+deferred: how remote Streamable HTTP transport and its interactive OIDC login
+terminate without building a second authorization implementation alongside
+the one ADR-014 already proved (`JwksWorkspaceIntegrityProofVerifier`,
+`OidcWorkspaceContextIssuer`). **ADR-020** now records that decision:
+`StreamableHttpTransport` extends the existing transport-agnostic
+`McpServer`/`jsonrpc`/`protocol` core (unchanged) with a single-endpoint
+`node:http` POST handler — no SSE, no session resumption, no new HTTP
+framework — and a separate `oauth-callback-server.ts` terminates the
+Authorization Code + PKCE leg by handing the resulting token straight to
+`OidcWorkspaceContextIssuer.issue()`, the same seam a local `stdio` caller's
+`resolveWorkspaceContext()` would use. Per-request authorization for remote
+therefore has no independent allow/deny logic of its own; a bearer token is
+re-verified through `issue()` on every request rather than cached in a
+session. The governance side of this decision (governance/reviews/mcp-remote-
+transport/CHANGE_IMPACT.yaml, meta/ADR_INDEX.yaml, meta/REPOSITORY_GRAPH.yaml,
+governance/DECISION_GRAPH.md, MANIFEST.yaml) landed first; `StreamableHttpTransport`
+(src/mcp/remote/streamable-http-transport.ts) and `OauthCallbackServer`
+(src/mcp/remote/oauth-callback-server.ts) are now implemented against it,
+plus `OidcBearerAuthenticator` (src/mcp/remote/oidc-bearer-authenticator.ts)
+as the concrete bridge between a verified bearer token and a per-request
+`AgentRuntimeToolRegistry` — `McpServer` itself is unmodified. Every HTTP
+request is its own MCP session (no session resumption in scope): the
+transport performs the `initialize` handshake transparently, re-verifies the
+bearer token through `WorkspaceContextIssuer.issue()` on every request (no
+session cache), and refuses to bind to a non-loopback host without an
+explicit test-only opt-out. `tests/mcp/remote/streamable-http-transport.test.ts`
+proves a valid token reaches the same `tools/call` outcome a `stdio` caller
+would, and that a missing, expired, or suspended-Workspace token fails
+closed (401) before `tools/list` is reachable, against a real listening HTTP
+server and a real `InMemoryAgentRuntime` — not a mock.
+`tests/mcp/remote/oauth-callback-server.test.ts` proves the PKCE
+authorization-code round trip (including a wrong-verifier rejection and an
+unknown-state rejection) against a real listening HTTP server and the
+deterministic `WorkspaceContextIssuer`, with the token endpoint faked via
+dependency injection (`fetchImpl`) rather than a real IdP. No new dependency
+was added (`node:http`/`node:crypto`/native `fetch` only, per ADR-020 §4).
+509 tests total (506 pass + 3 skip, +11 from this increment), `npm run
+validate` clean. Building and conformance-testing this in development does
+not require production enablement; ADR-016 §8's GOV-012 G1–G4 gate still
+blocks turning remote on, matching the precedent ADR-019's own `stdio`
+transport already set (built and tested before its own gate passed). Not
+yet done: no host package in `hosts/` points at the remote transport (it is
+code-complete and tested but unwired to any entrypoint), a real
+`WorkspaceMembershipResolver` backed by governed platform state, durable
+cross-instance rate limiting, and refresh-token rotation (all explicit
+ADR-020 §8 open items).
+
+## Rule Engine Interface Conformance (SPEC-502 §7, 2026-08-06)
+
+Eleven `DeterministicRuleEngine` implementations exist across the tracer
+bullet and the twelve replicated capabilities
+(`RequirementQualityRuleEngine`, `CompositeRuleEngine`,
+`RequirementIntelligenceRuleEngine`, `RiskQualityRuleEngine`,
+`TestCaseQualityRuleEngine`, `TestStrategyQualityRuleEngine`,
+`TestDatasetQualityRuleEngine`, `AutomationAssetQualityRuleEngine`,
+`ExecutionRecordQualityRuleEngine`, `DefectQualityRuleEngine`,
+`ReportQualityRuleEngine`), and the shared `RuleEvaluationRequest`/
+`RuleEvaluationValue`/`RuleEvaluationFailure`/`DeterministicRuleEngine`
+type contract in `src/requirement-review/public.ts` already matched
+SPEC-502 §2/§3/§5 closely. What none of them had was SPEC-502 §7's own
+requirement: "A deterministic reference adapter and each production
+adapter SHALL pass the same golden-vector contract suite" — the pattern
+already used for the record-store, outbox, workspace-authorizer, and
+workspace-context-issuer seams (`run*Contract` functions), but never built
+for rule engines. `tests/shared/rule-engine-contract.ts`
+(`runRuleEngineContract`) now provides that suite: determinism (identical
+inputs produce identical outputs), missing facts never becoming a
+`satisfied` decision, response-shape conformance against §3's required
+fields, a non-empty explanation trace for any non-`satisfied` outcome, and
+no state leakage between independent evaluations. Every one of the eleven
+engines now calls it once from its own test file, reusing that file's
+existing fixture builders rather than duplicating domain setup — including
+`RequirementQualityRuleEngine`, which previously had no test calling
+`.evaluate()` directly at all (only indirectly through
+`AssessRequirementQuality`). 55 new tests (569 total, 566 pass + 3 skip),
+`npm run validate` clean, no production code changed and no new
+dependency — this closed a conformance-evidence gap, not a missing
+implementation.
+
+## Execution Engine Contract (SPEC-504, 2026-08-06)
+
+SPEC-504 previously had zero implementation — unlike SPEC-502 (Rule Engine
+Interface), where the type contract already existed and only the shared
+conformance suite was missing, SPEC-504 had no interface, no adapter, and
+no test at all before this increment. `src/execution-engine/public.ts` now
+defines the provider-neutral interface ADR-009 requires between the Core
+Platform and any Execution Plugin: `descriptor`/`validate`/`prepare`/
+`start`/`cancel`/`finalize`, a request/result envelope with an idempotency
+digest (`executionRequestDigest`, mirroring `src/evaluation/adapter.ts`'s
+already-proven pattern for SPEC-511), and an event-sink callback `start`
+drives for SPEC-504 §4's ordered event stream (accepted/preparing/started/
+progress/evidence_created/assertion_result/completed/failed/cancelled/
+cleanup_completed) rather than a separate poll operation. Result outcomes
+reuse the exact `ExecutionOutcome` literal union SPEC-210 §4 already owns
+as its single source of truth (passed/failed/blocked/skipped/cancelled/
+flaky/infrastructure_error/indeterminate) — this module does not define a
+competing vocabulary.
+
+`src/adapters/replay/deterministic-execution-engine.ts`
+(`DeterministicExecutionEngine`) is the "deterministic simulator/replay
+engine" SPEC-504 §7 requires to exist and pass the same conformance suite a
+production engine eventually will. It scripts scenarios per `attempt_id`
+(SPEC-602 §4: retries are distinct attempts) rather than per exact-request
+match, proving idempotent `start` (a duplicate start replays the same
+retained events instead of re-executing), cooperative cancellation that
+never rewrites an already-terminal outcome (SPEC-602 §5), and cleanup
+reporting. `tests/execution-engine/execution-engine-contract.ts`
+(`runExecutionEngineContract`) is the first shared golden-vector suite for
+this seam — the same `run*Contract` pattern already used for record-stores,
+outbox, workspace-authorizer/context-issuer, and (as of the prior
+increment) rule engines, now extended to Execution Engine adapters. 11 new
+tests (580 total, 577 pass + 3 skip), `npm run validate` clean, no new
+dependency.
+
+A real Playwright adapter (SPEC-407) was deliberately not attempted in this
+increment — not deferred arbitrarily, but blocked by a real, verified
+dependency gap: SPEC-407 §2/§3 requires semantic locate/interact against
+governed UI evidence (ADR-003, "Semantic UI Instead of Raw DOM"), which
+requires SPEC-301 (Semantic Analyzer), SPEC-302 (DOM Cleaner), SPEC-303
+(Feature Extractor), and SPEC-408 (Ontology Repository) — all four still at
+0% implementation. Building a Playwright adapter today could only use raw
+CSS/XPath selectors, which would violate ADR-003 outright rather than
+partially satisfy it. The correct next step toward a real browser
+execution engine is the semantic UI specs, not a non-conformant shortcut.
+
+## Platform Event Contract (SPEC-505, 2026-08-06)
+
+SPEC-505's exact §2 envelope field set (event id/type, schema version,
+occurred+recorded timestamps, producer identity+version, Workspace/actor,
+correlation/causation ids, aggregate id+sequence, payload, classification,
+integrity metadata) already existed — but only inside `OutboxRecord`
+(`src/evaluation/outbox-publisher.ts`), a consumer-side shape read back out
+of the transactional outbox rather than a producer-facing type any domain
+module could construct an event against. `src/events/public.ts` now
+provides `PlatformEvent`/`buildPlatformEvent()`: validates every §2
+required field (failing closed and reporting every violation at once, not
+just the first), rejects a command-shaped payload per §3 ("Events describe
+completed facts and SHALL NOT be used as ambiguous commands"), defaults
+`causation_id` to `correlation_id` for a root event, and computes a
+deterministic `sha256` `integrity_digest` over every other field so
+`verifyPlatformEventIntegrity()` can independently detect tampering rather
+than trusting a stored digest. `toOutboxRecord()` converts a built
+`PlatformEvent` into the exact `OutboxRecord` shape `OutboxPublisher`
+requires, proving by working code (not just documentation) that the two
+types share one field definition rather than two that could silently
+drift. §6's duplicate-delivery, reordering, and poison-event conformance
+requirements were deliberately not re-tested here —
+`runOutboxPublisherContract` already proves claim exclusivity, lease-expiry
+reclaim, and retry-vs-dead-letter against real SQLite and PostgreSQL
+adapters, and authorization/redaction are already proven at the RLS/role
+boundary in the real-driver PostgreSQL suite; this increment's scope was
+specifically the producer-side envelope construction and integrity half
+SPEC-505 had no dedicated type for. 14 new tests (594 total, 591 pass + 3
+skip), `npm run validate` clean, no new dependency, and neither
+`OutboxRecord` nor `OutboxPublisher` were modified.
+
+## Skill and Tool Contracts (SPEC-509/SPEC-510, 2026-08-06)
+
+Both interfaces had zero implementation before this increment — unlike
+SPEC-502 and SPEC-505, where the underlying field/type shape already
+existed and only a shared conformance suite or a producer-facing type was
+missing. None of the nine Skills built so far (`AssessRequirementQuality`,
+`AssessRiskQuality`, `AssessTestCaseQuality`, ...) implemented a common
+interface; each exposed its own `.review()`-shaped method. No Tool
+interface existed at all — `AgentRunStartRequest.allowed_tools` was only a
+`VersionReference[]` allowlist, not SPEC-510's actual contract.
+
+`src/skills/public.ts` defines the SPEC-509 §2 interface
+(`describe`/`match`/`validate`/`invoke`), its §3 descriptor, and its §4
+match/result shapes. `src/adapters/replay/skill-invocation-adapter.ts`
+(`RequirementQualitySkill`) wraps the real, already-shipped
+`AssessRequirementQuality` behind it — proving the new interface actually
+fits a production Skill rather than only a synthetic scenario built to
+satisfy its own shape. `tests/skills/skill-contract.ts`
+(`runSkillContract`) is the shared conformance suite SPEC-509 §5 requires
+(positive/negative trigger, permission denial without widening authority,
+invalid-input fail-closed, postcondition/evidence, deterministic replay);
+writing it surfaced a real assumption error — the first version compared
+entire `output` objects for the replay test, which failed because
+`AssessRequirementQuality` legitimately mints a fresh assessment id per
+call. The fix lets a fixture supply a `decisionFingerprint()` comparing
+only the decision-relevant subset (verdict/findings), not incidental
+identity fields.
+
+`src/tools/public.ts` defines the SPEC-510 §2 interface
+(`list_capabilities`/`validate_call`/`invoke`/`inspect_effect`/`compensate`),
+its §3 descriptor/call shapes, and all ten §4 result codes
+(success/denial/invalid_input/not_found/conflict/throttling/timeout/
+provider_failure/partial_effect/unknown_effect).
+`src/adapters/replay/deterministic-tool.ts` (`DeterministicTool`) is the
+required deterministic fake adapter (§6) — it cannot wrap a real Tool
+because none exists yet (Playwright remains blocked exactly as recorded in
+the SPEC-504 entry above), so its scenarios are scripted per
+`idempotency_key` rather than wrapping production code, but it still
+proves least privilege, idempotency, redaction, and compensation
+structurally. `tests/tools/tool-contract.ts` (`runToolContract`) is the
+shared suite for SPEC-510 §5 (least privilege, no-authorization-proof
+denial, idempotency without effect re-application, conflict on a
+different call reusing the same key, timeout/partial-effect distinction,
+`inspect_effect` never fabricating a status for an unknown reference,
+redaction, cross-Workspace, deterministic replay). Writing it found one
+real bug: `DeterministicTool.validate_call()` originally treated "no
+scripted scenario for this key" as an `invalid_arguments` policy denial,
+which meant `invoke()`'s already-correct `not_found` branch (SPEC-510 §4)
+could never execute — `validate_call()` always denied first. Fixed by
+removing that check from `validate_call()`: whether a simulator happens to
+have a scripted answer is an adapter-internal detail, not a policy
+decision a real Tool's `validate_call()` would ever make.
+
+30 new tests (624 total, 621 pass + 3 skip), `npm run validate` clean, no
+new dependency.
 
 ## Implementation Sequence
 

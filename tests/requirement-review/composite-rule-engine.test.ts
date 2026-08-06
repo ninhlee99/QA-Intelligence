@@ -8,6 +8,7 @@ import type {
   RuleEvaluationRequest,
   RuleEvaluationResult,
 } from "../../src/requirement-review/public.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
   return {
@@ -156,4 +157,41 @@ test("merges rule_versions from both engines uniquely", async () => {
 
 test("throws when constructed with zero engines", () => {
   assert.throws(() => new CompositeRuleEngine([]));
+});
+
+/** Mimics a real leaf engine's fail-closed behavior for the shared contract's empty-facts case. */
+function factsAwareStubEngine(ruleId: string): DeterministicRuleEngine {
+  return {
+    evaluate: (request: RuleEvaluationRequest): Promise<RuleEvaluationResult> => {
+      const requirement = request.facts["requirement"];
+      if (requirement === undefined) {
+        return Promise.resolve({
+          ok: false,
+          failure: { code: "invalid_facts", message: "The requirement fact is required.", retryable: false, evidence: [] },
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        value: {
+          outcome: "satisfied",
+          rule_set: { ...request.rule_set },
+          rule_versions: [{ id: ruleId, version: "1.0.0" }],
+          matched_conditions: [],
+          relevant_facts: request.fact_provenance,
+          outputs: { findings: [] },
+          conflicts: [],
+          missing_facts: [],
+          explanation_trace: [`${ruleId} evaluated`],
+          policy_version: request.context.policy_version,
+          duration_ms: 1,
+        },
+      });
+    },
+  };
+}
+
+runRuleEngineContract("composite-rule-engine", {
+  makeEngine: () => new CompositeRuleEngine([factsAwareStubEngine("engine-a"), factsAwareStubEngine("engine-b")]),
+  satisfiedRequest: () => requestBase(),
+  emptyFactsRequest: () => ({ ...requestBase(), facts: {} }),
 });

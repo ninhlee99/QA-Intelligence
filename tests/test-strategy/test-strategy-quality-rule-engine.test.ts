@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TestStrategyQualityRuleEngine } from "../../src/test-strategy/assess-test-strategy-quality.js";
+import { runRuleEngineContract } from "../shared/rule-engine-contract.js";
 import type { JsonObject, RuleEvaluationRequest } from "../../src/requirement-review/public.js";
 
 function baseContext(): RuleEvaluationRequest["context"] {
@@ -183,4 +184,19 @@ test("fails closed on missing test strategy facts", async () => {
   assert.equal(result.ok, false);
   assert.ok(!result.ok);
   assert.equal(result.failure.code, "invalid_facts");
+});
+
+runRuleEngineContract("test-strategy-quality", {
+  makeEngine: () => new TestStrategyQualityRuleEngine(),
+  satisfiedRequest: () => requestWith(strategy()),
+  emptyFactsRequest: () => ({
+    evaluation_id: "evaluation-1",
+    context: baseContext(),
+    rule_set: { id: "test-strategy-quality", version: "1.0.0" },
+    effective_at: "2026-08-05T08:00:00.000Z",
+    facts: {},
+    fact_provenance: [],
+    requested_decisions: [],
+    trace_level: "summary",
+  }),
 });
