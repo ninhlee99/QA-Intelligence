@@ -98,6 +98,77 @@ of assuming it lands in the first bounded claim batch). OIDC/internal
 authorization remains the one open item from ADR-012 §7's original
 validation list.
 
+ADR-014/SPEC-506 §7 required the production identity adapter to pass the
+same validation vectors as the deterministic identity fixtures, but only the
+deterministic `DeterministicWorkspaceAuthorizer` (`src/adapters/deterministic/workspace-authorizer.ts`)
+existed — its cryptographic proof check was deliberately left to an injected
+`WorkspaceIntegrityProofVerifier` seam rather than substitute crypto. A
+production `JwksWorkspaceIntegrityProofVerifier`
+(`src/adapters/oidc/jwks-integrity-proof-verifier.ts`, using `jose`) now
+implements that seam: it treats `integrity_proof` as a compact JWT signed by
+the Workspace Manager's identity provider, verifies signature, issuer,
+audience, and expiry against a remote JWKS (rotation handled by re-fetching
+on an unknown `kid`), and only then compares the verified payload's
+`canonical_claims` against the caller-supplied canonical claims — denying
+rather than throwing or defaulting to allow on any mismatch, decode error,
+expiry, or unreachable JWKS endpoint. Because a real verifier needs a
+network round trip, `WorkspaceIntegrityProofVerifier.verify` was widened
+from `boolean` to `boolean | Promise<boolean>` and
+`DeterministicWorkspaceAuthorizer.authorize` now genuinely awaits it instead
+of wrapping every branch in `Promise.resolve` — a mechanical control-flow
+change with no effect on any existing deny/allow decision. The prior
+`tests/adapters/workspace-authorizer.test.ts` assertions were extracted into
+a shared `runWorkspaceAuthorizerContract` suite
+(`tests/adapters/workspace-authorizer-contract.ts`), matching the
+record-store/outbox seams' existing "one suite, many adapters" pattern, so
+both the deterministic and OIDC/JWKS adapters are proven against the same
+17-case vector set. A real-driver test
+(`tests/adapters/jwks-integrity-proof-verifier.real.test.ts`) mints its own
+ephemeral RSA keypair and serves its own local JWKS HTTP endpoint — no
+external identity provider or environment variable is needed, so it runs
+unconditionally in `npm test` — and additionally proves rejection of an
+unknown signing key, an expired token, a wrong issuer, a wrong audience, and
+an unreachable JWKS endpoint, plus acceptance of a freshly rotated key once
+published. This closes the "production OIDC verifier" implementation gap for
+the integrity-proof-verification seam specifically; OIDC discovery, the
+Authorization Code + PKCE interactive login flow, and constructing a trusted
+`WorkspaceContext` from raw IdP claims remained the Workspace Manager's
+responsibility (SPEC-306/406).
+
+The claims-to-context half of that responsibility is now also implemented.
+A `WorkspaceContextIssuer` seam (`src/requirement-review/public.ts`) defines
+`issue()` from an already-obtained identity token to a
+`WorkspaceContextIssuanceResult`. `OidcWorkspaceContextIssuer`
+(`src/adapters/oidc/workspace-context-issuer.ts`) verifies that token's
+signature, issuer, audience, and expiry against a remote JWKS (the same
+`jose` primitives as the integrity-proof verifier), resolves Workspace
+membership/roles/permissions/policy for its subject through an injected
+`WorkspaceMembershipResolver` seam, denies if the actor has no membership in
+the target Workspace or the Workspace is suspended (SPEC-406 §4's
+suspended-Workspace invariant), and — only once every check passes — signs a
+fresh `integrity_proof` with the Workspace Manager's own key (distinct from
+the upstream IdP's key) over `canonicalWorkspaceIntegrityClaims`, reusing
+the same canonicalization the verifier already checks against. A
+`DeterministicWorkspaceContextIssuer` pairs with it as ADR-014 §2's required
+"deterministic signed-claims test adapter." Both pass a shared
+`runWorkspaceContextIssuerContract` suite
+(`tests/adapters/workspace-context-issuer-contract.ts`), and a real-driver
+test (`tests/adapters/oidc-workspace-context-issuer.real.test.ts`) mints two
+independent local JWKS endpoints — one standing in for the upstream IdP, one
+for the Workspace Manager's own key — and proves the issued
+`integrity_proof` round-trips successfully through the already-built
+`JwksWorkspaceIntegrityProofVerifier`/`DeterministicWorkspaceAuthorizer`,
+the first test in the repo exercising both real cryptographic adapters
+together end-to-end rather than independently. No "governed platform state"
+membership store exists yet, so `WorkspaceMembershipResolver` has only a
+deterministic fixture implementation; a real platform membership/role/policy
+store is a separate, larger, not-yet-scoped effort. Interactive
+Authorization Code + PKCE login is also still unimplemented — it needs a
+browser redirect/callback surface the stdio-only MCP dev entrypoint doesn't
+have (ADR-016 §8) — so `src/mcp/dev-entrypoint.ts` remains unchanged and
+still explicitly non-production; this closes the claims-to-context mapping
+gap specifically, not ADR-014 end-to-end.
+
 ## Spec-Quality Update (2026-08-05)
 
 A critical review of the accepted spec baseline (governance/reviews/memory-and-efficiency/CHANGE_IMPACT.yaml)
@@ -183,7 +254,7 @@ Implement the vertical slice in this order:
 2. **Completed:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, cleanup, cancellation, replay divergence, and trial isolation cases all pass against `ScriptedEvaluationAdapter`
 3. **Completed for the in-memory multi-trial development slice:** implement deep core modules for requirement assessment, SPEC-511 trial orchestration, bounded campaign scheduling, evidence verification, cleanup, critical aggregation, and independent evaluation verdicts without provider SDK leakage
 4. **Completed for the in-memory retained-state development slice:** define the provider-neutral campaign repository seam, canonical lifecycle, immutable Workspace-scoped snapshots and events, optimistic revisions, idempotent commands, exact-version readiness, trial boundaries, and fail-closed recovery decisions
-5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path; it now also passes the same real-driver conformance (restart, concurrent-writer, RLS under a non-superuser role) the Evaluation Campaign adapter proved, run against a live local PostgreSQL 18 instance. The outbox-claim/publication consumer half (`OutboxPublisher`/`SqliteOutboxPublisher`/`PostgresOutboxPublisher`, migration `0003_outbox_dead_letter`, dedicated `qa_intelligence_outbox_worker` role) is now implemented and proven against a live PostgreSQL 18 server too — claim, publish, retry-vs-dead-letter, and cross-worker no-double-claim all pass. OIDC/internal authorization remains the sole open item from ADR-012 §7's original validation list
+5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path; it now also passes the same real-driver conformance (restart, concurrent-writer, RLS under a non-superuser role) the Evaluation Campaign adapter proved, run against a live local PostgreSQL 18 instance. The outbox-claim/publication consumer half (`OutboxPublisher`/`SqliteOutboxPublisher`/`PostgresOutboxPublisher`, migration `0003_outbox_dead_letter`, dedicated `qa_intelligence_outbox_worker` role) is now implemented and proven against a live PostgreSQL 18 server too — claim, publish, retry-vs-dead-letter, and cross-worker no-double-claim all pass. A production `JwksWorkspaceIntegrityProofVerifier` now implements ADR-014/SPEC-506 §7's integrity-proof-verification seam with real JWT/JWKS signature, issuer, audience, and expiry checks, proven against the same shared `runWorkspaceAuthorizerContract` suite as the deterministic adapter plus real-driver rotation/tamper/unreachable-endpoint cases. A production `OidcWorkspaceContextIssuer`/`DeterministicWorkspaceContextIssuer` pair now also implements the claims-to-context issuance half (SPEC-306/406's "authorize and issue Workspace context"), proven both independently against a shared `runWorkspaceContextIssuerContract` suite and interoperating end-to-end with the already-built verifier via a real two-JWKS round-trip test; interactive OIDC discovery and the Authorization Code + PKCE login flow (no browser redirect/callback surface exists yet) and a real Workspace membership/role/policy platform store remain unimplemented, so full OIDC/internal authorization is not yet closed end-to-end
 6. add production provider, Tool, and repository adapters and run the same conformance suites
 7. add the host-neutral MCP facade and thin Codex, Claude Code, and Cursor packages after the relevant core capability passes development conformance
 8. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development

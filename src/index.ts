@@ -99,9 +99,24 @@ export { DeterministicWorkspaceAuthorizer } from "./adapters/deterministic/works
 export type {
   DeterministicWorkspaceAuthorizerOptions,
   WorkspaceIntegrityProofVerifier,
+  WorkspaceIntegrityProofVerification,
   WorkspaceAuthorizationPolicy,
   WorkspaceState,
 } from "./adapters/deterministic/workspace-authorizer.js";
+export { JwksWorkspaceIntegrityProofVerifier } from "./adapters/oidc/jwks-integrity-proof-verifier.js";
+export type { JwksWorkspaceIntegrityProofVerifierOptions } from "./adapters/oidc/jwks-integrity-proof-verifier.js";
+export {
+  DeterministicWorkspaceContextIssuer,
+  OidcWorkspaceContextIssuer,
+} from "./adapters/oidc/workspace-context-issuer.js";
+export type {
+  DeterministicIdentityClaims,
+  DeterministicIdentityTokenDecoder,
+  DeterministicWorkspaceContextIssuerOptions,
+  MembershipRecord,
+  OidcWorkspaceContextIssuerOptions,
+  WorkspaceMembershipResolver,
+} from "./adapters/oidc/workspace-context-issuer.js";
 export { InMemoryKnowledgeSearch } from "./adapters/memory/knowledge-search.js";
 export { InMemoryRequirementResolver } from "./adapters/memory/requirement-resolver.js";
 export type {

@@ -194,6 +194,44 @@ export interface WorkspaceAuthorizer {
   ): Promise<WorkspaceAuthorizationResult>;
 }
 
+/**
+ * Request to issue a trusted Workspace context from an already-obtained
+ * identity token (SPEC-306 §2, SPEC-406 §3). Request-scoped fields that do
+ * not come from the token are supplied explicitly per SPEC-506 §2.
+ */
+export type WorkspaceContextIssuanceRequest = Readonly<{
+  id_token: string;
+  operation_id: string;
+  request_id: string;
+  correlation_id: string;
+  environment: string;
+}>;
+
+export type WorkspaceContextIssuanceFailure = Readonly<{
+  code:
+    | "invalid_token"
+    | "untrusted_issuer"
+    | "wrong_audience"
+    | "expired_token"
+    | "no_workspace_membership"
+    | "suspended_workspace";
+  message: string;
+  retryable: boolean;
+  evidence: readonly string[];
+}>;
+
+export type WorkspaceContextIssuanceResult = StableResult<
+  WorkspaceContext,
+  WorkspaceContextIssuanceFailure
+>;
+
+/** Seam for constructing a trusted WorkspaceContext (ADR-014 §2, SPEC-406 §3). */
+export interface WorkspaceContextIssuer {
+  issue(
+    request: WorkspaceContextIssuanceRequest,
+  ): Promise<WorkspaceContextIssuanceResult>;
+}
+
 export type KnowledgeSearchRequest = Readonly<{
   operation_id: string;
   context: WorkspaceContext;

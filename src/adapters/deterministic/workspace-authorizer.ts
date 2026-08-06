@@ -28,9 +28,13 @@ export type WorkspaceIntegrityProofVerification = Readonly<{
 /**
  * Verification seam for a real signature/MAC verifier or a deterministic test
  * verifier. This adapter deliberately does not implement substitute cryptography.
+ * A production verifier typically needs a network round-trip (JWKS fetch), so
+ * `verify` may return its result synchronously or asynchronously.
  */
 export interface WorkspaceIntegrityProofVerifier {
-  verify(verification: WorkspaceIntegrityProofVerification): boolean;
+  verify(
+    verification: WorkspaceIntegrityProofVerification,
+  ): boolean | Promise<boolean>;
 }
 
 export type DeterministicWorkspaceAuthorizerOptions = Readonly<{
@@ -50,7 +54,7 @@ export class DeterministicWorkspaceAuthorizer implements WorkspaceAuthorizer {
     this.#options = options;
   }
 
-  authorize(
+  async authorize(
     request: WorkspaceAuthorizationRequest,
   ): Promise<WorkspaceAuthorizationResult> {
     if (request.context.schema_version !== "1.0.0") {
@@ -169,10 +173,10 @@ export class DeterministicWorkspaceAuthorizer implements WorkspaceAuthorizer {
     }
 
     if (
-      !verifiedIntegrityProof(
+      !(await verifiedIntegrityProof(
         request.context,
         this.#options.integrity_proof_verifier,
-      )
+      ))
     ) {
       return Promise.resolve(
         denied(
@@ -311,16 +315,16 @@ export function canonicalWorkspaceIntegrityClaims(
   });
 }
 
-function verifiedIntegrityProof(
+async function verifiedIntegrityProof(
   context: WorkspaceAuthorizationRequest["context"],
   verifier: WorkspaceIntegrityProofVerifier | undefined,
-): boolean {
+): Promise<boolean> {
   if (verifier === undefined || context.integrity_proof.length === 0) {
     return false;
   }
 
   try {
-    return verifier.verify({
+    return await verifier.verify({
       canonical_claims: canonicalWorkspaceIntegrityClaims(context),
       integrity_proof: context.integrity_proof,
     });
