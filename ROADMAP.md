@@ -650,6 +650,39 @@ one; the Workspace membership resolver remains a single-actor inline
 fixture, the same pre-existing ADR-014 gap noted elsewhere, not something
 this increment introduced.
 
+## Knowledge Repository SQLite Adapter (2026-08-06)
+
+`KnowledgeRepository` previously had only an in-memory reference adapter.
+`src/adapters/sqlite/sqlite-knowledge-repository.ts`
+(`SqliteKnowledgeRepository`) implements the same interface directly
+against a real SQLite file, one database per Workspace (ADR-017). Unlike
+`SqliteEvaluationCampaignRecordStore`/`SqliteAgentRunRecordStore` (which
+implement a generic `retainMutation` envelope over an event-sourced
+aggregate), `KnowledgeRepository`'s interface already exposes direct
+per-operation commands, so this adapter implements each one directly
+against SQLite rows across four tables (`qa_knowledge_objects` for current
+state, `qa_knowledge_history` for every version, `qa_knowledge_lifecycle_events`,
+`qa_knowledge_idempotency`) inside `BEGIN IMMEDIATE`/COMMIT/ROLLBACK
+transactions, matching the concurrency and lifecycle rules already proven
+in the in-memory adapter. Seven tests exercise it against real SQLite
+files: retain-and-load, a genuine restart-survival test (a completely
+separate repository instance opening the same file sees the prior
+Workspace-scoped state — not the same in-process object), the full
+five-step lifecycle, a stale-revision conflict, idempotent `createDraft`,
+cross-Workspace isolation, and combined query filtering. Writing it
+surfaced a real TypeScript inference issue (not a logic bug): generic
+type parameters on `#transaction`/`checkRevision`/`succeeded` failed to
+infer correctly when a callback had multiple return branches, because
+`failure()`'s branch left the generic unconstrained and poisoned the
+whole union to `unknown` — fixed by supplying explicit type arguments at
+each call site rather than relying on inference. 7 new tests (676 total,
+673 pass + 3 skip), `npm run validate` clean, no new dependency (`node:sqlite`
+was already an accepted baseline choice from Giai đoạn 0). Not yet done: a
+PostgreSQL adapter (the optional ADR-017 shared/team-profile counterpart)
+does not exist, so "vendor substitution" conformance (SPEC-401 §7) remains
+untested against a second durable adapter; no consumer is wired to either
+Knowledge Repository adapter yet.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
