@@ -20,13 +20,13 @@ export function readObject(object: JsonObject, key: string): JsonObject | undefi
 
 export function readString(object: JsonObject, key: string): string | undefined {
   const value = object[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 export function readStrings(object: JsonObject, key: string): string[] {
   const value = object[key];
   return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
 }
 

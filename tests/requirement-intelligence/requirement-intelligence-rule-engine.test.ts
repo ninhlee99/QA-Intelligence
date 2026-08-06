@@ -79,6 +79,19 @@ test("a requirement with no rationale is a completeness finding (SPEC-202 §4)",
   assert.equal(findings[0]?.["category"], "completeness");
 });
 
+test("a requirement with a whitespace-only rationale is a completeness finding", async () => {
+  const engine = new RequirementIntelligenceRuleEngine();
+
+  const result = await engine.evaluate(requestWith(requirement({ rationale: "   " })));
+
+  assert.equal(result.ok, true);
+  assert.ok(result.ok);
+  assert.equal(result.value.outcome, "not_satisfied");
+  const findings = result.value.outputs["findings"] as JsonObject[];
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]?.["category"], "completeness");
+});
+
 test("a draft requirement is not penalized for having no traceability edge", async () => {
   const engine = new RequirementIntelligenceRuleEngine();
 

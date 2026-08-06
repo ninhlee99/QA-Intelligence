@@ -113,6 +113,42 @@ test("re-resolves when the query text changes even with the same scope", async (
   assert.equal(inner.calls(), 2);
 });
 
+test("re-resolves when applicability changes with the same query and scope", async () => {
+  const inner = countingKnowledgeSearch(OK_RESULT);
+  const memory = new WorkingMemoryKnowledgeSearch(inner.search);
+
+  await memory.search(request({ applicability: { capability_id: "requirement-review" } }));
+  await memory.search(request({ applicability: { capability_id: "risk-analysis" } }));
+
+  assert.equal(inner.calls(), 2, "a changed applicability must force re-resolution");
+});
+
+test("re-resolves when limit changes with the same query and scope", async () => {
+  const inner = countingKnowledgeSearch(OK_RESULT);
+  const memory = new WorkingMemoryKnowledgeSearch(inner.search);
+
+  await memory.search(request({ limit: 10 }));
+  await memory.search(request({ limit: 20 }));
+
+  assert.equal(inner.calls(), 2, "a changed limit must force re-resolution");
+});
+
+test("interleaved requests differing only by applicability each reuse their own entry", async () => {
+  const inner = countingKnowledgeSearch(OK_RESULT);
+  const memory = new WorkingMemoryKnowledgeSearch(inner.search);
+
+  const a = request({ applicability: { capability_id: "requirement-review" } });
+  const b = request({ applicability: { capability_id: "risk-analysis" } });
+
+  await memory.search(a);
+  await memory.search(b);
+  await memory.search(a);
+  await memory.search(b);
+
+  assert.equal(inner.calls(), 2, "each distinct applicability should be cached, not thrashed on every call");
+  assert.deepEqual(memory.reuseStats(), { hits: 2, misses: 2 });
+});
+
 test("does not reuse across different Workspaces even with an identical query", async () => {
   const inner = countingKnowledgeSearch(OK_RESULT);
   const memory = new WorkingMemoryKnowledgeSearch(inner.search);
