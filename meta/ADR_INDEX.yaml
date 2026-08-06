@@ -20,6 +20,8 @@ artifacts:
   - { id: ADR-016, status: accepted, path: ../adr/ADR-016-host-neutral-mcp-integration.md }
   - { id: ADR-017, status: accepted, path: ../adr/ADR-017-local-first-sqlite-and-optional-postgresql.md }
   - { id: ADR-018, status: accepted, path: ../adr/ADR-018-memory-proportional-rigor-and-cost-efficiency.md }
-  - { id: ADR-019, status: accepted, path: ../adr/ADR-019-minimal-self-implemented-mcp-transport.md }
+  - { id: ADR-019, status: superseded, path: ../adr/ADR-019-minimal-self-implemented-mcp-transport.md }
   - { id: ADR-020, status: accepted, path: ../adr/ADR-020-remote-streamable-http-mcp-transport.md }
   - { id: ADR-021, status: accepted, path: ../adr/ADR-021-js-yaml-for-ontology-repository.md }
+  - { id: ADR-022, status: accepted, path: ../adr/ADR-022-playwright-for-browser-execution.md }
+  - { id: ADR-023, status: accepted, path: ../adr/ADR-023-adopt-official-mcp-sdk.md }

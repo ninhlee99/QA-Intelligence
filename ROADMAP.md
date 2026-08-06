@@ -878,6 +878,57 @@ produces real `oracle_labels`/`judge_calibration_history` from an actual
 campaign yet, since no real Judge/reasoning-provider adapter exists
 outside tests to generate one.
 
+## Playwright and Official MCP SDK Dependencies Adopted (ADR-022/ADR-023, 2026-08-06)
+
+Two new runtime dependencies were adopted by explicit owner instruction,
+each behind its own ADR following the same pattern every prior dependency
+decision in this repository used (ADR-017/pg, ADR-021/js-yaml).
+
+**ADR-022** adopts `playwright` for real browser execution (SPEC-407/
+SPEC-504). This was previously blocked on the Semantic UI pipeline
+(SPEC-301/302/303/408) existing first, per ADR-003's "no raw selectors"
+rule — that blocker closed in the prior increment, so this ADR addresses
+only the remaining browser-automation-technology choice itself. Playwright
+was installed (`npm install playwright`) and its Chromium binary
+downloaded and smoke-tested (`chromium.launch()` → `newPage()` →
+`setContent()` → `content()`, closed cleanly) — confirmed functional, not
+just present in `package.json`. Building the actual
+`src/adapters/playwright/` `ExecutionEngine` adapter against this
+dependency, per ADR-022 §4's decision rules (route all locate/interact
+through the existing Semantic UI pipeline, pass the same
+`runExecutionEngineContract` suite `DeterministicExecutionEngine` already
+passes, fail closed on a missing browser), remains separate implementation
+work not attempted in this increment.
+
+**ADR-023** reverses ADR-019 under the exact condition ADR-019 §6 itself
+named as sufficient grounds to revisit it: "If QA Intelligence later needs
+remote Streamable HTTP transport with OAuth... adopting the official SDK
+at that point, once its full surface has real consumers, remains an
+option this ADR does not foreclose." That condition is now met —
+`StreamableHttpTransport`, `OauthCallbackServer`, and a real host-facing
+remote entrypoint all exist and work. ADR-019 is marked `superseded` (by
+ADR-023), following the same status-transition precedent ADR-012 already
+set when ADR-017 superseded it. `@modelcontextprotocol/sdk` was installed
+(`npm install @modelcontextprotocol/sdk`) and its server module load was
+smoke-tested. ADR-023 §4 is explicit that this changes only the transport
+layer: `AgentRuntimeToolRegistry`, `OidcBearerAuthenticator`, and
+`OauthCallbackServer`'s handoff to `OidcWorkspaceContextIssuer` remain
+unchanged in responsibility — the SDK owns protocol framing, this
+repository's own code continues to own the domain seam. Migrating
+`src/mcp/jsonrpc.ts`/`protocol.ts`/`mcp-server.ts`/`stdio-transport.ts`/
+`remote/streamable-http-transport.ts` off the hand-rolled implementation
+onto the SDK, re-verifying every ADR-019 §8 validation case against it,
+remains separate implementation work not attempted in this increment.
+
+Both ADRs are fully registered (CHANGE_IMPACT.yaml, ADR_INDEX, REPOSITORY_GRAPH,
+DECISION_GRAPH, MANIFEST — architecture_decisions 21→23), `npm run
+validate` clean (712 tests unchanged, governance validator clean, `npm
+audit` reports zero vulnerabilities across both new dependency trees).
+This increment is deliberately scoped to the dependency decision and
+functional verification the user asked for ("cài thêm dependency phục vụ
+testing thật và host thật") — the real adapter code each dependency
+unblocks is the next, separately scoped step.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:

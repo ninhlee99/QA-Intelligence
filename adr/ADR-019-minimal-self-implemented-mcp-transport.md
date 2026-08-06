@@ -1,7 +1,7 @@
 ---
 id: ADR-019
 title: Minimal Self-Implemented MCP Transport Instead of the Official SDK
-status: accepted
+status: superseded
 version: 1.0.0
 date: 2026-08-05
 decision_owners:
@@ -17,7 +17,7 @@ related_adrs:
   - ADR-011
   - ADR-016
 supersedes: []
-superseded_by: null
+superseded_by: ADR-023
 approved_by:
   - Repository Owner through explicit continue-and-decide instruction
   - Codex Technical and Governance Review
