@@ -27,9 +27,11 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "jose": "6.2.8",
+    "js-yaml": "^5.2.3",
     "pg": "8.22.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "24.13.3",
     "@types/pg": "8.20.4",
     "typescript": "7.0.2"

@@ -496,6 +496,59 @@ decision a real Tool's `validate_call()` would ever make.
 30 new tests (624 total, 621 pass + 3 skip), `npm run validate` clean, no
 new dependency.
 
+## Ontology Repository (SPEC-408, 2026-08-06)
+
+`ontology/*.yaml` (entities, relationships, enumerations, constraints) was
+already an accepted spec baseline, validated by the Python governance
+tooling (`tests/validate_repository.py` via PyYAML) — but no TypeScript
+runtime code could read it at all; no YAML parser existed among the
+TypeScript dependencies. **ADR-021** decided this before code: adopt
+`js-yaml` (one direct dependency, one transitive `argparse`, both pure
+JavaScript with no native binding) rather than hand-rolling a YAML parser.
+This differs from ADR-019's JSON-RPC decision — JSON-RPC framing is a
+small, bounded surface a correct in-house implementation could realistically
+cover, but full YAML (anchors, block styles, multi-line scalars) is not,
+and nothing guarantees `ontology/*.yaml` stays within today's narrow
+flow-style subset forever.
+
+`src/ontology/public.ts` defines the SPEC-408 §3 interface
+(`currentRelease`/`release`/`resolveTerm`/`validateExtension`/
+`compareReleases`) and all six §5 failure codes as distinct outcomes.
+`src/ontology/yaml-ontology-repository.ts` (`YamlOntologyRepository`) is
+the real, production adapter: it reads `meta/ONTOLOGY_INDEX.yaml` and the
+four `ontology/*.yaml` files it indexes via `js-yaml`'s safe-by-default
+`load()`, caches the parsed release once (SPEC-408 §4 "accepted ontology
+releases are immutable"), and fails closed with `integrity_failure` if the
+four files' own `ontology_version` fields disagree. `validateExtension()`
+rejects a Workspace extension that redeclares a global-scope entity id
+(§6), a duplicate id, or a relationship pointing at an unknown endpoint.
+Writing this surfaced a real path-resolution bug before any test caught
+it: the first version of `defaultRepositoryRoot()` walked up two directory
+levels from the compiled file's own location, which is wrong given
+`tsconfig.json`'s `rootDir: "."` (`src/ontology/x.ts` compiles to
+`dist/src/ontology/x.js`, three levels below the actual repository root
+that contains `meta/`/`ontology/`) — found by running the compiled module
+directly against the real files before writing tests, not by a test
+catching it after the fact.
+
+`tests/ontology/yaml-ontology-repository.test.ts` has two halves: nine
+tests read this repository's own real, already-accepted `ontology/*.yaml`
+files directly (no mock) — confirming the actual 47-entity release loads,
+`Requirement` and `depends_on` resolve as real terms, and the cached
+release is the same object across calls — and six tests use disposable
+`mkdtemp` fixture directories to exercise failure paths a passing
+repository state cannot exhibit (missing index file, `ontology_version`
+mismatch, an index missing a required artifact entry, duplicate/unknown-
+endpoint extension rejection). 15 new tests (639 total, 636 pass + 3
+skip), `npm run validate` clean, `npm audit` reports zero vulnerabilities
+including the two new packages. Not yet done: only one release (`1.0.0`)
+exists on disk, so `compareReleases()` between two genuinely different
+versions is untested beyond comparing a release against itself (SPEC-408
+has no second accepted release yet to compare against); no consumer
+(Knowledge Repository, Semantic Analyzer, or anything else) has been wired
+to this component yet — this increment is the read component itself, not
+its integration.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
