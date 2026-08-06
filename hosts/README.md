@@ -45,25 +45,44 @@ All packages use the ADR-019 minimal in-house `stdio` JSON-RPC transport
 (`2025-06-18`), so any compliant host can connect regardless of which
 implementation produced the message.
 
-## Remote transport (shared/team profile, not wired into any package here)
+## Remote transport (shared/team profile, development only)
 
-ADR-020 adds a remote Streamable HTTP transport (`src/mcp/remote/streamable-http-transport.ts`)
-and an OIDC Authorization Code + PKCE callback service
-(`src/mcp/remote/oauth-callback-server.ts`) for a future shared/team
-deployment. Both exist and are conformance-tested
-(`tests/mcp/remote/`), but no package in this directory points at them —
-every package above still uses the local `stdio` dev entrypoint. Wiring a
-remote entrypoint together (provider config, `AgentRuntime`, tool
-definitions) and enabling it in any package remains separately scoped,
-and production enablement is blocked on GOV-012 G1-G4 regardless (ADR-016
-§8, ADR-020 §4).
+`src/mcp/remote-dev-entrypoint.ts` (compiled to
+`dist/src/mcp/remote-dev-entrypoint.js`) wires the same Agent Runtime,
+reviewer, and seeded `REQ-DEMO-001` requirement `dev-entrypoint.ts` uses,
+but exposes them over ADR-020's `StreamableHttpTransport`
+(`src/mcp/remote/streamable-http-transport.ts`) with **real** cryptographic
+identity instead of a fixture proof: it mints its own ephemeral RSA
+keypair, serves its own local JWKS endpoint standing in for an upstream
+IdP, and issues real signed OIDC ID tokens through
+`OidcWorkspaceContextIssuer` — the same production identity seam ADR-014
+proved, not a shortcut. Run it directly:
+
+```sh
+npm run build
+node dist/src/mcp/remote-dev-entrypoint.js
+```
+
+It listens on `http://127.0.0.1:8787/mcp` by default (override with
+`QA_INTELLIGENCE_DEV_REMOTE_PORT`/`QA_INTELLIGENCE_DEV_REMOTE_HOST`) and
+prints a real, signed demo bearer token to stderr on startup — paste it
+into `cursor/mcp-remote.json.example`'s `Authorization` header (copy that
+file into your Cursor MCP settings) to connect a real host over the remote
+transport. The inline single-actor membership fixture and the
+self-signed JWKS server are still explicitly non-production (ADR-014's
+real governed membership store remains unbuilt), and production enablement
+is blocked on GOV-012 G1-G4 regardless (ADR-016 §8, ADR-020 §4) — but this
+is a real, working remote MCP round trip a host can actually connect to
+today, not only conformance tests (`tests/mcp/remote/`).
 
 ## Directories
 
-- `claude-code/.claude-plugin/plugin.json` — Claude Code plugin manifest
-- `codex/.codex-plugin/plugin.json` — Codex plugin manifest
-- `cursor/mcp.json.example` — Cursor MCP server config (copy into your
-  Cursor MCP settings and replace the absolute path)
+- `claude-code/.claude-plugin/plugin.json` — Claude Code plugin manifest (local `stdio`)
+- `codex/.codex-plugin/plugin.json` — Codex plugin manifest (local `stdio`)
+- `cursor/mcp.json.example` — Cursor MCP server config for local `stdio`
+  (copy into your Cursor MCP settings and replace the absolute path)
+- `cursor/mcp-remote.json.example` — Cursor MCP server config for the
+  remote Streamable HTTP transport (see "Remote transport" below)
 
 ## Before use
 

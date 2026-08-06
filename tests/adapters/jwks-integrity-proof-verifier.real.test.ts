@@ -10,7 +10,7 @@ import {
   generateSigningKey,
   startJwksServer,
   type SigningKey,
-} from "./jwks-fixture-server.js";
+} from "../../src/adapters/oidc/jwks-fixture-server.js";
 import {
   EXPECTED_AUDIENCE,
   EXPECTED_ISSUER,

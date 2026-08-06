@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "qa-intelligence-remote": {
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer <paste the demo token printed by remote-dev-entrypoint.js on startup>"
+      }
+    }
+  }
+}

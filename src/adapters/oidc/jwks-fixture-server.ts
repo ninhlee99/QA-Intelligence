@@ -4,11 +4,13 @@ import type { AddressInfo } from "node:net";
 import { exportJWK, generateKeyPair, type JWK } from "jose";
 
 /**
- * Local JWKS HTTP fixture server plus ephemeral RSA keypair generation,
- * shared by every real-driver test that needs a real JWKS endpoint without
- * depending on an external identity provider (mirrors the "real driver, not
- * a fake" intent of pg-transaction-manager.real.test.ts for the OIDC/JWKS
- * seam, ADR-014, SPEC-506 §7).
+ * Local JWKS HTTP fixture server plus ephemeral RSA keypair generation.
+ * Used by real-driver OIDC/JWKS tests (ADR-014, SPEC-506 §7) and by
+ * `src/mcp/remote-dev-entrypoint.ts` (ADR-020) — both need a real JWKS
+ * endpoint and real RSA signing without depending on an external identity
+ * provider. Lives under `src/` (not `tests/`) because a runtime dev
+ * entrypoint needs it too; it mints keys fresh per process and is not
+ * suitable for anything beyond development/test use.
  */
 
 type GeneratedKeyPair = Awaited<ReturnType<typeof generateKeyPair>>;

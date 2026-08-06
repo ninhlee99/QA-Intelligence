@@ -615,6 +615,41 @@ hierarchy (deterministic → evidence-anchored rubric → calibrated Judge →
 human) has no selection orchestration — `judgeAuthorityPermitted()` is one
 gate within that hierarchy, not the hierarchy's routing logic itself.
 
+## Remote Transport Host Wiring (2026-08-06)
+
+`StreamableHttpTransport` and `OidcBearerAuthenticator` (ADR-020) existed
+and were conformance-tested but nothing in `hosts/` pointed at them — every
+host package still used the local `stdio` dev entrypoint only.
+`src/mcp/remote-dev-entrypoint.ts` closes that gap: it wires the identical
+Agent Runtime, reviewer, and seeded `REQ-DEMO-001` requirement
+`dev-entrypoint.ts` uses, but serves them over the remote transport with
+real cryptographic identity rather than a fixture proof — it mints its own
+ephemeral RSA keypair, runs two independent local JWKS servers (one
+standing in for an upstream IdP, one for the Workspace Manager's own key,
+mirroring the real-driver interop test's two-JWKS pattern), and issues a
+real signed OIDC ID token through `OidcWorkspaceContextIssuer` on startup.
+Running it and calling it with `curl` end-to-end (not just unit tests)
+confirms a real token reaches a real Agent Runtime verdict
+(`changes_required` for the seeded requirement's missing rationale) and
+that a missing bearer token is denied with 401 before `tools/list` is
+reachable.
+
+`tests/adapters/jwks-fixture-server.ts` moved to
+`src/adapters/oidc/jwks-fixture-server.ts` since the dev entrypoint needs
+its ephemeral-keypair/local-JWKS-server logic at runtime, not only in
+tests — the two existing real-driver OIDC tests were updated to import
+from the new location with no behavior change. `hosts/cursor/mcp-remote.json.example`
+demonstrates the standard MCP remote client config shape (`"url"` instead
+of `"command"`/`"args"`) pointing at the dev server with a bearer token
+header. No new tests were added for this increment (it is host wiring
+confirmed by a real end-to-end `curl` call, not a new unit-testable
+module); 669 tests remain, `npm run validate` clean. Not yet done: Claude
+Code and Codex plugin manifests have no remote variant yet — their exact
+remote-server declaration format needs confirming per host before adding
+one; the Workspace membership resolver remains a single-actor inline
+fixture, the same pre-existing ADR-014 gap noted elsewhere, not something
+this increment introduced.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
