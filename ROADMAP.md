@@ -65,6 +65,39 @@ a live PostgreSQL 18 instance under a non-superuser application role
 passing, so the same restart/concurrency/RLS conformance the Evaluation
 Campaign PostgreSQL adapter proved now also holds for Agent Run state.
 
+ADR-012 §7 and SPEC-505 §7 required a transactional outbox with explicit
+claim, retry, and dead-letter handling, but only the producer half (atomic
+outbox-intent commit inside `PostgresEvaluationCampaignRecordStore`'s own
+transaction) previously existed — nothing claimed, published, retried, or
+dead-lettered a row afterward. A provider-neutral `OutboxPublisher` seam
+(`src/evaluation/outbox-publisher.ts`) now defines that consumer half:
+`claimBatch` leases a bounded batch of unpublished, unleased-or-expired rows
+(PostgreSQL via `FOR UPDATE SKIP LOCKED` so concurrent workers partition
+instead of double-claim, ADR-012 §7), `markPublished` finalizes one claimed
+event, and `markFailed` either schedules a backoff retry or — at
+`max_attempts` — dead-letters the row into a new terminal state migration
+`0003_outbox_dead_letter` adds (`dead_lettered_at`, mutually exclusive with
+`published_at`). Because the outbox worker is a platform-level publisher
+across every Workspace rather than a Workspace-scoped caller, it runs under
+a dedicated `qa_intelligence_outbox_worker` database role that migration
+0003 grants a table-wide RLS policy — not the Workspace-scoped application
+role, and not a superuser. `SqliteOutboxPublisher` and
+`PostgresOutboxPublisher` both pass a shared
+`runOutboxPublisherContract` suite (claim atomicity, lease-expiry reclaim,
+duplicate-delivery prevention, retry-vs-dead-letter, batch bounding), and a
+real-driver suite (`tests/evaluation/outbox-publisher.real.test.ts`, gated
+on both `QA_INTELLIGENCE_TEST_POSTGRES_URL` and
+`QA_INTELLIGENCE_TEST_POSTGRES_OUTBOX_WORKER_URL`) proves a row committed by
+the application-role producer is claimable and publishable by the
+worker-role consumer, that two concurrent workers never double-claim the
+same row, and that the application role cannot see outbox rows outside its
+own Workspace-scoped query — all verified against a live local PostgreSQL 18
+instance, run 5 consecutive times with zero flakes after fixing a shared
+same-database interference issue (draining ahead of a target event instead
+of assuming it lands in the first bounded claim batch). OIDC/internal
+authorization remains the one open item from ADR-012 §7's original
+validation list.
+
 ## Spec-Quality Update (2026-08-05)
 
 A critical review of the accepted spec baseline (governance/reviews/memory-and-efficiency/CHANGE_IMPACT.yaml)
@@ -150,7 +183,7 @@ Implement the vertical slice in this order:
 2. **Completed:** implement deterministic fake/replay adapters; SPEC-511 common-envelope, authorization, idempotency, deadline, late-result retention, capability, execution-observation, cleanup, cancellation, replay divergence, and trial isolation cases all pass against `ScriptedEvaluationAdapter`
 3. **Completed for the in-memory multi-trial development slice:** implement deep core modules for requirement assessment, SPEC-511 trial orchestration, bounded campaign scheduling, evidence verification, cleanup, critical aggregation, and independent evaluation verdicts without provider SDK leakage
 4. **Completed for the in-memory retained-state development slice:** define the provider-neutral campaign repository seam, canonical lifecycle, immutable Workspace-scoped snapshots and events, optimistic revisions, idempotent commands, exact-version readiness, trial boundaries, and fail-closed recovery decisions
-5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server — OIDC/internal authorization and outbox-claim/publication conformance remain. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path; it now also passes the same real-driver conformance (restart, concurrent-writer, RLS under a non-superuser role) the Evaluation Campaign adapter proved, run against a live local PostgreSQL 18 instance — OIDC/internal authorization and outbox-claim/publication conformance remain the open items for both aggregates
+5. **In progress:** the PostgreSQL campaign record-store transaction contract, outbox handoff, Workspace RLS migration, rollback migration, and deterministic transaction tests exist; a real `pg`-driver `PgTransactionManager` now proves restart, concurrent-writer, and RLS behavior against a live PostgreSQL 18 server. A parallel `AgentRunRecordStore`/`SqliteAgentRunRecordStore` seam gives Agent Run state the same contract-tested persistence path SPEC-410 §5 requires, and `InMemoryAgentRuntime` now writes through it via `PersistedAgentRuntime`. A `PostgresAgentRunRecordStore` (migration `0002_agent_run_store`) gives Agent Run state the same optional PostgreSQL adapter path; it now also passes the same real-driver conformance (restart, concurrent-writer, RLS under a non-superuser role) the Evaluation Campaign adapter proved, run against a live local PostgreSQL 18 instance. The outbox-claim/publication consumer half (`OutboxPublisher`/`SqliteOutboxPublisher`/`PostgresOutboxPublisher`, migration `0003_outbox_dead_letter`, dedicated `qa_intelligence_outbox_worker` role) is now implemented and proven against a live PostgreSQL 18 server too — claim, publish, retry-vs-dead-letter, and cross-worker no-double-claim all pass. OIDC/internal authorization remains the sole open item from ADR-012 §7's original validation list
 6. add production provider, Tool, and repository adapters and run the same conformance suites
 7. add the host-neutral MCP facade and thin Codex, Claude Code, and Cursor packages after the relevant core capability passes development conformance
 8. produce and approve GOV-012 G1–G4 evidence before enabling the Agent or Skill beyond development
