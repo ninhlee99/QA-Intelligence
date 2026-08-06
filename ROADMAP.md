@@ -715,6 +715,68 @@ runner or coordinator produces real `judge_verdicts` yet either, since no
 real Judge/reasoning-provider adapter exists to generate one outside a
 test.
 
+## Semantic UI Pipeline: DOM Cleaner, Semantic Analyzer, Feature Extractor (SPEC-302/301/303, 2026-08-06)
+
+All three had zero implementation. Built in their real dependency order
+(SPEC-302 depends only on 101/201/301; SPEC-301 depends on 302 output as
+one source type; SPEC-303 depends on both). None of the three drive a
+live browser — each is a pure data-transformation stage over
+already-captured or already-derived data — so none needed a Playwright
+dependency, consistent with the SPEC-504 entry above's finding that
+building a Playwright adapter itself remains separately blocked.
+
+`src/dom-cleaner/public.ts` defines the SPEC-302 §3/§4 input/output
+contracts and all seven §8 failure codes.
+`src/adapters/dom-cleaner/deterministic-dom-cleaner.ts`
+(`DeterministicDomCleaner`) implements the exact §5 pipeline stage order
+against an already-typed `RawDomNode` tree: prohibited tags
+(script/style/etc.) are removed entirely, noise attributes (style/class/
+event handlers) are dropped without a redaction event (they are not
+sensitive, just irrelevant), policy-driven redaction is recorded as a
+distinct event, accessible role/name/interaction hints are retained, and
+size/depth/byte limits fail closed before any output is returned. 10
+tests confirm removal, redaction, accessibility retention, size-limit
+enforcement, deterministic byte-identical output across repeated runs,
+and honest coverage reporting.
+
+`src/semantic-analyzer/public.ts` defines the SPEC-301 §3 request/
+observation contracts (fact vs. derived-observation vs. hypothesis kept
+structurally distinct) and all six §6 failure codes.
+`src/adapters/semantic-analyzer/deterministic-semantic-analyzer.ts`
+(`DeterministicSemanticAnalyzer`) performs only the deterministic
+"Apply Deterministic Extraction" / "Resolve Ontology Concepts" pipeline
+stages and never the "Perform Bounded AI Analysis" stage — the same
+pattern `ScriptedReasoningProvider([])` already uses elsewhere in this
+codebase to report `unavailable` rather than fabricate a model call. It
+currently accepts `cleaned_dom` source content and resolves interactive
+elements to `Action`/`Field` fact observations, flagging (not silently
+dropping) any element with no accessible name. 7 tests include a real
+end-to-end run of `DeterministicDomCleaner` output through this analyzer.
+
+`src/feature-extractor/public.ts` defines the SPEC-303 §3 candidate
+contract (Page/Region/Feature/Field/Action/State) and all seven §8
+failure codes. `src/adapters/feature-extractor/deterministic-feature-extractor.ts`
+(`DeterministicFeatureExtractor`) maps each `Action`/`Field` observation
+into a `FeatureCandidate` whose identity is its own accessible name
+(SPEC-303 §5: "semantic anchors... not fragile DOM position"), fails
+closed on an identity collision between two distinct observations rather
+than silently merging them, and classifies changes against an optional
+prior feature map (§6) — a changed accessible name is correctly
+classified `semantic`, not `presentation_only`, since it is a meaning
+change an assistive technology or an assertion would observe, not mere
+styling. 9 tests include a full, real, three-stage
+DomCleaner → SemanticAnalyzer → FeatureExtractor pipeline run with no
+mocks at any stage.
+
+26 new tests across the three modules (706 total, 703 pass + 3 skip),
+`npm run validate` clean, no new dependency. This clears SPEC-407's stated
+blocker (ADR-003 semantic locate/interact requires SPEC-301/302/303/408,
+all now implemented at the interface + deterministic-adapter level) at
+the design level — a real Playwright *adapter* implementing these
+interfaces against a live browser is still separate, larger scope
+requiring its own `playwright` dependency decision (mirroring ADR-021's
+`js-yaml` precedent) and has not been attempted here.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
