@@ -4,8 +4,7 @@ import type { AgentRuntime, AgentRunBudgets, AgentRunResult, AgentRunStartReques
 import type { WorkspaceContext, ConsequenceClass, JsonObject } from "../requirement-review/public.js";
 import { resolveAgentRunBudgets } from "../runtime/default-budgets.js";
 import type { SessionMemory, SessionMemoryEntry } from "../memory/session-memory.js";
-import type { McpToolCallOutcome, McpToolRegistry } from "./mcp-server.js";
-import type { McpTool } from "./protocol.js";
+import type { McpTool, McpToolCallOutcome, McpToolRegistry } from "./sdk-mcp-server.js";
 
 export type AgentRuntimeToolDefinition = Readonly<{
   /** MCP tool name, e.g. "assess_requirement_quality". */

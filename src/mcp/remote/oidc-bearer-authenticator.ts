@@ -4,14 +4,14 @@ import type { AgentRuntime } from "../../runtime/public.js";
 import type { WorkspaceContextIssuer } from "../../requirement-review/public.js";
 import type { SessionMemory } from "../../memory/session-memory.js";
 import { AgentRuntimeToolRegistry, type AgentRuntimeToolDefinition } from "../agent-runtime-tool-registry.js";
-import type { McpServerDependencies } from "../mcp-server.js";
+import type { SdkMcpServerDependencies } from "../sdk-mcp-server.js";
 import type { BearerAuthenticationResult, BearerAuthenticator } from "./streamable-http-transport.js";
 
 export type OidcBearerAuthenticatorOptions = Readonly<{
   issuer: WorkspaceContextIssuer;
   runtime: AgentRuntime;
   tools: readonly AgentRuntimeToolDefinition[];
-  serverInfo: McpServerDependencies["serverInfo"];
+  serverInfo: SdkMcpServerDependencies["serverInfo"];
   /** Deployment environment recorded on every issuance request (SPEC-506 §2). */
   environment: string;
   deadlineSeconds: number;

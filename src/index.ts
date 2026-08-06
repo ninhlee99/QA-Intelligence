@@ -17,11 +17,15 @@ export { SqliteAgentRunRecordStore } from "./runtime/sqlite-agent-run-record-sto
 export type { SqliteAgentRunRecordStoreDependencies } from "./runtime/sqlite-agent-run-record-store.js";
 export { defaultAgentRunBudgets, resolveAgentRunBudgets } from "./runtime/default-budgets.js";
 
-export * from "./mcp/jsonrpc.js";
-export * from "./mcp/protocol.js";
-export { McpServer } from "./mcp/mcp-server.js";
-export type { McpToolCallOutcome, McpToolRegistry, McpServerDependencies } from "./mcp/mcp-server.js";
-export { StdioTransport, stdioSender } from "./mcp/stdio-transport.js";
+export { createSdkMcpServer } from "./mcp/sdk-mcp-server.js";
+export type {
+  McpTool,
+  McpToolCallOutcome,
+  McpToolRegistry,
+  McpImplementationInfo,
+  SdkMcpServerDependencies,
+} from "./mcp/sdk-mcp-server.js";
+export { StdioTransport } from "./mcp/stdio-transport.js";
 export {
   AgentRuntimeToolRegistry,
   fixedWorkspaceContext,

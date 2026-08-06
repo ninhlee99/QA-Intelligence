@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
 import { InMemoryAgentRuntime } from "../../src/runtime/in-memory-agent-runtime.js";
 import {
   AgentRuntimeToolRegistry,
   fixedWorkspaceContext,
 } from "../../src/mcp/agent-runtime-tool-registry.js";
-import { McpServer } from "../../src/mcp/mcp-server.js";
-import { MCP_PROTOCOL_VERSION } from "../../src/mcp/protocol.js";
+import { createSdkMcpServer } from "../../src/mcp/sdk-mcp-server.js";
 import type {
   AgentRunExecutor,
   AgentRunExecutorInput,
@@ -144,34 +146,16 @@ test("a real tools/call reaches InMemoryAgentRuntime and returns the terminal re
     ],
   });
 
-  const sent: unknown[] = [];
-  const server = new McpServer({
-    serverInfo: { name: "qa-intelligence", version: "0.1.0" },
-    tools: registry,
-    send: (line) => sent.push(JSON.parse(line)),
-  });
+  const server = createSdkMcpServer({ serverInfo: { name: "qa-intelligence", version: "0.1.0" }, tools: registry });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "claude-code", version: "1.0.0" });
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 
-  await server.handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "claude-code", version: "1.0.0" } },
-    }),
-  );
-  await server.handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/call",
-      params: { name: "assess_requirement_quality", arguments: { requirement_ref: "REQ-1@1.0.0" } },
-    }),
-  );
+  const called = await client.callTool({ name: "assess_requirement_quality", arguments: { requirement_ref: "REQ-1@1.0.0" } });
 
-  assert.equal(sent.length, 2);
-  const callResult = (sent[1] as { result: { isError: boolean; content: Array<{ text: string }> } }).result;
-  assert.equal(callResult.isError, false, JSON.stringify(callResult));
-  const resultPayload = JSON.parse(callResult.content[0]?.text ?? "{}");
+  assert.equal(called.isError, false, JSON.stringify(called));
+  const content = called.content as ReadonlyArray<{ text: string }>;
+  const resultPayload = JSON.parse(content[0]?.text ?? "{}");
   assert.equal(resultPayload.outcome, "completed");
   assert.equal(resultPayload.output.verdict, "pass");
 

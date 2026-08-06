@@ -35,8 +35,8 @@ import { SessionMemory } from "../memory/session-memory.js";
 import type { Requirement, WorkspaceContext } from "../requirement-review/public.js";
 
 import { AgentRuntimeToolRegistry, fixedWorkspaceContext } from "./agent-runtime-tool-registry.js";
-import { McpServer } from "./mcp-server.js";
-import { StdioTransport, stdioSender } from "./stdio-transport.js";
+import { createSdkMcpServer } from "./sdk-mcp-server.js";
+import { StdioTransport } from "./stdio-transport.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-dev-mcp-001";
 const AGENT = { id: "requirement-review-agent", version: "0.1.0" } as const;
@@ -201,10 +201,9 @@ function main(): void {
     ],
   });
 
-  const server = new McpServer({
+  const server = createSdkMcpServer({
     serverInfo: { name: "qa-intelligence-dev", version: "0.1.0" },
     tools: registry,
-    send: stdioSender(process.stdout),
   });
 
   const transport = new StdioTransport(server, process.stdin, process.stdout);

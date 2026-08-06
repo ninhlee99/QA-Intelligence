@@ -986,6 +986,83 @@ vulnerabilities. This closes the first of the two items ADR-022/ADR-023's
 increment left explicitly unattempted; the MCP SDK transport migration
 (ADR-023 §4) remains separate, not yet started.
 
+## MCP Transport Migrated to the Official SDK (ADR-023 realized, 2026-08-06)
+
+The second of the two items ADR-022/ADR-023's dependency-adoption
+increment left unattempted is now closed: `src/mcp/jsonrpc.ts`,
+`src/mcp/protocol.ts`, and `src/mcp/mcp-server.ts` are deleted, replaced by
+`src/mcp/sdk-mcp-server.ts`, which builds a real `@modelcontextprotocol/sdk`
+`Server` — per ADR-023 §4's decision rule, this is a transport/protocol
+replacement only. The domain seam
+(`src/mcp/agent-runtime-tool-registry.ts`, `src/mcp/remote/
+oidc-bearer-authenticator.ts`, `src/mcp/remote/oauth-callback-server.ts`'s
+handoff to `OidcWorkspaceContextIssuer`) needed **zero logic changes** —
+only two import-path updates in `agent-runtime-tool-registry.ts` and
+`oidc-bearer-authenticator.ts`, confirming the seam ADR-023 §4 promised to
+preserve actually held under a real migration, not just on paper.
+
+`sdk-mcp-server.ts` keeps the exact same `McpToolRegistry`/
+`McpToolCallOutcome`/`McpTool` types the old `mcp-server.ts` exported, so
+`AgentRuntimeToolRegistry` (the seam translating `tools/call` into the
+SPEC-508 Agent Runtime contract) still implements the identical interface.
+It registers `ListToolsRequestSchema`/`CallToolRequestSchema` handlers
+against the SDK's low-level `Server`, and re-implements ADR-019 §8's
+"`tools/list`/`tools/call` before `initialize` fail closed" case
+explicitly via `server.oninitialized` — a deliberate choice, because the
+SDK's own protocol layer does **not** enforce that gate itself (it accepts
+requests as soon as a transport connects); dropping this repository's own
+check would have silently regressed an ADR-019 §8 case ADR-023 §7 requires
+still pass. Cooperative cancellation is now the SDK's own
+`RequestHandlerExtra.signal`, replacing the hand-rolled
+`notifications/cancelled` → `AbortController` map `McpServer` maintained
+itself under ADR-019.
+
+`stdio-transport.ts` now wraps the SDK's `StdioServerTransport` instead of
+a hand-rolled `readline` loop. `remote/streamable-http-transport.ts` now
+wraps the SDK's `WebStandardStreamableHTTPServerTransport` in stateless
+mode (`sessionIdGenerator` omitted) — this surfaced a real, load-bearing
+constraint the hand-rolled transport never had: a stateless SDK transport
+instance accepts exactly **one** `handleRequest` call ever (a second call
+throws `"Stateless transport cannot be reused across requests"`), which
+ruled out the first implementation attempt (a discarded synthetic
+`initialize` call followed by the real client message on the same
+transport instance) and required a different design — `createSdkMcpServer`
+gained a `requireHandshake` option (`true` for `stdio`, `false` for this
+transport), since ADR-020 §3.3 already authenticates the whole HTTP
+request before any JSON-RPC message is parsed, making a client-visible
+`initialize` round trip both unnecessary and, for a stateless transport,
+structurally impossible to combine with the real request in one call.
+
+Every ADR-019 §8 case was re-verified against the SDK-backed transport
+using the SDK's own `Client` over `InMemoryTransport.createLinkedPair()` —
+a real client/server round trip through the same protocol code a real host
+uses, not a hand-rolled message-line harness
+(`tests/mcp/sdk-mcp-server.test.ts`, replacing the deleted
+`mcp-server.test.ts`/`jsonrpc.test.ts`). One real, documented behavior
+difference surfaced and was accepted rather than papered over: the SDK's
+client-side request layer rejects (throws) an aborted `callTool()` call,
+where the hand-rolled transport resolved normally with the tool's own
+cancelled-outcome text — the cooperative-cancellation guarantee that
+actually matters (the abort signal reaching the in-flight call) still
+holds and is asserted directly.
+
+Both real entrypoints were smoke-tested end-to-end against real SDK
+clients, not just unit tests: `dev-entrypoint.ts` via a real
+`StdioClientTransport` spawning the compiled entrypoint as a subprocess,
+and `remote-dev-entrypoint.ts` via a real HTTP `curl` call carrying its
+minted demo bearer token — both returned the real
+`assess_requirement_quality` assessment output, confirming wire-level
+compatibility end-to-end, not just through the test suite.
+
+`npm run validate` is clean: 712 tests (2 old transport-framing test files
+deleted, replaced with `sdk-mcp-server.test.ts`'s 4 tests plus updated
+assertions in the existing integration/remote-transport suites — net test
+count differs from a simple delta because the deleted files tested
+framing internals the SDK now owns), 0 failures, governance/schema
+validators pass, `npm audit` reports zero vulnerabilities. This closes
+both items ADR-022/ADR-023's dependency-adoption increment left
+unattempted.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:

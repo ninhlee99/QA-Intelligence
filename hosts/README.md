@@ -38,12 +38,12 @@ approval, cancellation, evidence, and operational conformance (ADR-016
 
 ## Transport
 
-All packages use the ADR-019 minimal in-house `stdio` JSON-RPC transport
-(`src/mcp/jsonrpc.ts`, `src/mcp/mcp-server.ts`,
-`src/mcp/stdio-transport.ts`), not the official
-`@modelcontextprotocol/sdk`. The wire protocol is standard MCP
-(`2025-06-18`), so any compliant host can connect regardless of which
-implementation produced the message.
+All packages use the official `@modelcontextprotocol/sdk` (ADR-023,
+superseding ADR-019's prior in-house implementation) via
+`src/mcp/sdk-mcp-server.ts` and `src/mcp/stdio-transport.ts`. The wire
+protocol is standard MCP (`2025-06-18`), so any compliant host can connect
+regardless of which implementation produced the message — migrating off
+the hand-rolled transport changed no host-visible behavior.
 
 ## Remote transport (shared/team profile, development only)
 

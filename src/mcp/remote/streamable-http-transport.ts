@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { McpServer, type McpServerDependencies } from "../mcp-server.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+
+import { createSdkMcpServer, type SdkMcpServerDependencies } from "../sdk-mcp-server.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -12,16 +14,16 @@ export type BearerAuthenticationFailure = Readonly<{
 }>;
 
 export type BearerAuthenticationResult =
-  | Readonly<{ ok: true; buildServerDependencies(): Omit<McpServerDependencies, "send"> }>
+  | Readonly<{ ok: true; buildServerDependencies(): SdkMcpServerDependencies }>
   | Readonly<{ ok: false; failure: BearerAuthenticationFailure }>;
 
 /**
  * Resolves the bearer token from one HTTP request's Authorization header
- * into everything McpServer needs to serve exactly that request (ADR-020
- * §3.3). Denial (missing/expired/malformed/wrong-issuer token, no Workspace
- * membership, suspended Workspace) SHALL happen here, before any JSON-RPC
- * message is parsed — the same "no inaccessible Workspace, secret, or
- * protected artifact revealed" requirement ADR-016 §6 already states for
+ * into everything the MCP server needs to serve exactly that request
+ * (ADR-020 §3.3). Denial (missing/expired/malformed/wrong-issuer token, no
+ * Workspace membership, suspended Workspace) SHALL happen here, before any
+ * JSON-RPC message is parsed — the same "no inaccessible Workspace, secret,
+ * or protected artifact revealed" requirement ADR-016 §6 already states for
  * `tools/list`.
  */
 export interface BearerAuthenticator {
@@ -36,14 +38,33 @@ export type StreamableHttpTransportOptions = Readonly<{
 }>;
 
 /**
- * Remote Streamable HTTP MCP transport (ADR-020 §3.1): a single stateless
- * `POST {path}` endpoint. Each request is authenticated independently
- * (§3.3), re-verified through the same OIDC seam a local `stdio` caller
- * uses, and served by a fresh McpServer instance carrying its own
- * `initialize` handshake — there is no session resumption or server-push
- * (GET/SSE) in this scope (ADR-020 §3.1, §8). McpServer itself is
- * unmodified; this transport only supplies the per-request `send` and
- * Workspace-context-resolving tool registry a fresh McpServer needs.
+ * Remote Streamable HTTP MCP transport (ADR-020 §3.1), now backed by the
+ * official SDK's `WebStandardStreamableHTTPServerTransport` in stateless
+ * mode (`sessionIdGenerator: undefined`) per ADR-023 §4 — the SDK owns
+ * JSON-RPC parsing, protocol-version negotiation, and response shaping;
+ * this class still owns everything ADR-020 requires that isn't generic MCP
+ * transport concern: binding policy (loopback-only unless explicitly
+ * overridden), the single `POST {path}` route, and per-request bearer
+ * authentication performed before any JSON-RPC message reaches the SDK
+ * server. A stateless SDK transport instance accepts exactly one
+ * `handleRequest` call ever (a second call throws "Stateless transport
+ * cannot be reused"), so — unlike the hand-rolled transport, which drove
+ * its own McpServer directly and could freely feed it a synthetic
+ * `initialize` before the caller's real message — this transport passes
+ * `requireHandshake: false` to `createSdkMcpServer` and serves the
+ * caller's message directly with no separate handshake round trip at all:
+ * the SDK's own protocol layer does not itself require an `initialize`
+ * before honoring a request over a session-less (stateless) transport, and
+ * this repository's own initialized-gate is intentionally not enforced on
+ * this path since ADR-020 §3.3 already authenticates the whole request
+ * before any JSON-RPC message is parsed. The Web Standard transport (not
+ * the Node-specific wrapper) is used directly to build that single
+ * synthetic `Request` in-process from the already-read body. Each request
+ * is authenticated independently (§3.3), re-verified through the same OIDC
+ * seam a local `stdio` caller uses, and served by a fresh SDK server
+ * instance and fresh transport instance — there is no session resumption
+ * across requests (ADR-020 §3.1, §8), matching the hand-rolled transport's
+ * prior behavior exactly.
  */
 export class StreamableHttpTransport {
   readonly #options: StreamableHttpTransportOptions;
@@ -115,35 +136,37 @@ export class StreamableHttpTransport {
       return;
     }
 
-    let reply: string | undefined;
-    const server = new McpServer({
-      ...authentication.buildServerDependencies(),
-      send: (line) => {
-        reply = line;
-      },
+    const requestUrl = new URL(path, "http://mcp.local");
+    const server = createSdkMcpServer({ ...authentication.buildServerDependencies(), requireHandshake: false });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
     });
+    await server.connect(transport);
 
     // Each HTTP request is its own MCP session (ADR-020 §3.1: no session
-    // resumption): perform the handshake transparently, then forward the
-    // client's actual message, so a caller never needs a prior `initialize`
-    // round trip of its own.
-    await server.handleLine(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: "__streamable-http-handshake__",
-        method: "initialize",
-        params: {
-          protocolVersion: "2025-06-18",
-          capabilities: {},
-          clientInfo: { name: "streamable-http-client", version: "0.0.0" },
-        },
+    // resumption, transparent handshake): the caller's message is served
+    // directly, with no prior `initialize` round trip required of it —
+    // `requireHandshake: false` above is what makes this transport's own
+    // initialized-gate not apply here.
+    const webResponse = await transport.handleRequest(
+      new Request(requestUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body,
       }),
     );
-    reply = undefined;
-    await server.handleLine(body);
-
-    response.writeHead(200, { "content-type": "application/json" }).end(reply ?? "");
+    await writeWebResponse(webResponse, response);
   }
+}
+
+async function writeWebResponse(webResponse: Response, response: ServerResponse): Promise<void> {
+  const headers: Record<string, string> = {};
+  webResponse.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  response.writeHead(webResponse.status, headers);
+  const text = await webResponse.text();
+  response.end(text);
 }
 
 function extractBearerToken(header: string | string[] | undefined): string | undefined {
