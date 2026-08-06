@@ -10,6 +10,7 @@ import {
   type EvaluationEvidenceVerifier,
   type EvaluationSuitePolicy,
   type FailureClass,
+  type JudgeVerdict,
 } from "../../src/evaluation/evaluation-manager.js";
 import {
   SchemaValidator,
@@ -366,4 +367,86 @@ test("emits an Evaluation Result that conforms to its governed schema", async ()
   );
 
   assert.equal(validation.ok, true, JSON.stringify(validation));
+});
+
+function judgeVerdict(overrides: Partial<JudgeVerdict> = {}): JudgeVerdict {
+  return {
+    judge_id: "judge-alpha",
+    judge_version: "1.0.0",
+    case_id: "case-clear-requirement",
+    trial_id: "trial-001",
+    subject_id: "assess-requirement-quality@1.0.0",
+    verdict: "passed",
+    confidence: 0.9,
+    rationale: "meets the rubric anchors",
+    context_refs: ["evidence://trial-001/rubric"],
+    ...overrides,
+  };
+}
+
+test("a clean set of Judge verdicts with no integrity findings does not affect an otherwise passing verdict (SPEC-310 §2)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:00:00.000Z",
+    "2026-08-06T09:00:01.000Z",
+  ]);
+  const input: EvaluationInput = { ...passingInput(), judge_verdicts: [judgeVerdict()] };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "passed");
+  assert.deepEqual(result.metrics.invalid_test_reasons, []);
+});
+
+test("real Judge disagreement makes the verdict indeterminate instead of silently passing (SPEC-310 §2)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:05:00.000Z",
+    "2026-08-06T09:05:01.000Z",
+  ]);
+  const input: EvaluationInput = {
+    ...passingInput(),
+    judge_verdicts: [
+      judgeVerdict({ judge_id: "judge-alpha", verdict: "passed" }),
+      judgeVerdict({ judge_id: "judge-beta", verdict: "failed" }),
+    ],
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.ok(result.metrics.invalid_test_reasons.some((reason) => reason.startsWith("judge-disagreement:")));
+});
+
+test("a Judge evaluating its own subject is flagged and makes the verdict indeterminate (SPEC-107 §4)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:10:00.000Z",
+    "2026-08-06T09:10:01.000Z",
+  ]);
+  const input: EvaluationInput = {
+    ...passingInput(),
+    judge_verdicts: [
+      judgeVerdict({ judge_id: "assess-requirement-quality@1.0.0", subject_id: "assess-requirement-quality@1.0.0" }),
+    ],
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.ok(result.metrics.invalid_test_reasons.some((reason) => reason.startsWith("judge-self-evaluation:")));
+});
+
+test("a Judge that received a hidden holdout reference is flagged as contamination (SPEC-107 §6)", () => {
+  const manager = evaluationManager([
+    "2026-08-06T09:15:00.000Z",
+    "2026-08-06T09:15:01.000Z",
+  ]);
+  const input: EvaluationInput = {
+    ...passingInput(),
+    judge_verdicts: [judgeVerdict({ context_refs: ["evidence://trial-001/rubric", "holdout://secret-case"] })],
+    hidden_holdout_refs: ["holdout://secret-case"],
+  };
+
+  const result = manager.evaluate(input);
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.ok(result.metrics.invalid_test_reasons.some((reason) => reason.startsWith("judge-hidden-holdout-leakage:")));
 });

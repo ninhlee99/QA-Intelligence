@@ -1,3 +1,7 @@
+import { detectDisagreement, detectLeakage, detectSelfEvaluation, type JudgeVerdict } from "./judge-calibration.js";
+
+export type { JudgeVerdict } from "./judge-calibration.js";
+
 export interface Clock {
   now(): Date;
 }
@@ -53,6 +57,18 @@ export interface EvaluationInput {
   readonly critical_invariants: readonly CriticalInvariant[];
   /** Runtime cancellation is normalized here; it is not an evaluation-result verdict. */
   readonly campaign_state?: "completed" | "blocked" | "cancelled";
+  /**
+   * SPEC-310 §2: Judge verdicts a suite's cases relied on, if any (a suite
+   * with only deterministic oracles supplies none). When present, every
+   * disagreement, self-evaluation, and hidden-holdout leakage
+   * (SPEC-107 §4/§6) is checked before the verdict is decided — a
+   * contaminated or self-evaluated Judge result makes the affected trial's
+   * evidence untrustworthy the same way `unverified-evaluation-evidence`
+   * already does, not a separate silent pass-through.
+   */
+  readonly judge_verdicts?: readonly JudgeVerdict[];
+  /** SPEC-107 §6: evidence refs this suite classifies as hidden holdout material a Judge must never see. */
+  readonly hidden_holdout_refs?: readonly string[];
 }
 
 export interface EvaluationSuitePolicy {
@@ -160,6 +176,7 @@ export class EvaluationManager {
       trialResults,
       criticalInvariants,
       ),
+      ...judgeIntegrityReasons(input.judge_verdicts ?? [], input.hidden_holdout_refs ?? []),
     ];
     const evidence = [
       ...trialResults.flatMap((trial) => trial.evidence),
@@ -351,6 +368,34 @@ function verifyEvidence(
   } catch {
     return false;
   }
+}
+
+/**
+ * SPEC-310 §2/§6, SPEC-107 §4/§6: folds real Judge-calibration module
+ * findings (`src/evaluation/judge-calibration.ts`) into the same
+ * `invalid_test_reasons` vocabulary `unverified-evaluation-evidence`
+ * already uses — a disagreement, self-evaluation, or hidden-holdout
+ * leakage makes the affected trial's evidence untrustworthy the same way
+ * unverified evidence does, not a separate silent pass-through this
+ * function would otherwise create.
+ */
+function judgeIntegrityReasons(
+  verdicts: readonly JudgeVerdict[],
+  hiddenHoldoutRefs: readonly string[],
+): string[] {
+  if (verdicts.length === 0) return [];
+
+  const reasons: string[] = [];
+  for (const report of detectDisagreement(verdicts)) {
+    if (report.disagreement) reasons.push(`judge-disagreement:${report.case_id}:${report.trial_id}`);
+  }
+  for (const report of detectSelfEvaluation(verdicts)) {
+    if (report.self_evaluated) reasons.push(`judge-self-evaluation:${report.case_id}:${report.trial_id}`);
+  }
+  for (const report of detectLeakage(verdicts, new Set(hiddenHoldoutRefs))) {
+    if (report.leaked) reasons.push(`judge-hidden-holdout-leakage:${report.case_id}:${report.trial_id}`);
+  }
+  return reasons;
 }
 
 function suiteKey(suite: SuiteReference): string {

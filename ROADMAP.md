@@ -683,6 +683,38 @@ does not exist, so "vendor substitution" conformance (SPEC-401 §7) remains
 untested against a second durable adapter; no consumer is wired to either
 Knowledge Repository adapter yet.
 
+## Judge Calibration Wired Into EvaluationManager (2026-08-06)
+
+`src/evaluation/judge-calibration.ts` existed as a standalone, tested
+module with no consumer. `EvaluationInput` now accepts two optional
+fields — `judge_verdicts` and `hidden_holdout_refs` — that leave every
+existing required field and all twelve prior tests unchanged. A new
+`judgeIntegrityReasons()` helper calls the real `detectDisagreement()`,
+`detectSelfEvaluation()`, and `detectLeakage()` functions and folds any
+finding into the same `invalid_test_reasons` vocabulary
+`unverified-evaluation-evidence` already populates — a Judge integrity
+problem makes the affected trial's evidence untrustworthy the exact same
+way unverified evidence already does, reusing one mechanism rather than
+adding a parallel one. Because this reuses an existing output field,
+`schemas/evaluation-result.schema.json` (`additionalProperties: false`)
+needed no change, and the existing schema-conformance test still passes
+unmodified. Four new tests prove the real wiring end-to-end through
+`EvaluationManager.evaluate()` (not against the calibration module in
+isolation): a clean set of Judge verdicts leaves a passing verdict
+untouched, real disagreement between two Judges turns the verdict
+`indeterminate`, a Judge whose identity matches its subject is flagged,
+and a Judge that received a hidden-holdout reference is flagged as
+contamination. 4 new tests (680 total, 677 pass + 3 skip), `npm run
+validate` clean, no new dependency, no schema change. `calibrateJudge()`,
+`detectDrift()`, and `judgeAuthorityPermitted()` were deliberately not
+wired this round — they need concepts `EvaluationInput` does not carry yet
+(an oracle-label corpus, calibration history over time, a consequence
+class), which would mean redesigning the interface rather than wiring an
+existing module, a larger change than this increment's scope. No campaign
+runner or coordinator produces real `judge_verdicts` yet either, since no
+real Judge/reasoning-provider adapter exists to generate one outside a
+test.
+
 ## Implementation Sequence
 
 Implement the vertical slice in this order:
