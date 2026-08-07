@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/business-analysis-assessment.schema.json",
+  "title": "Business Analysis Quality Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "workflow_ref", "workspace_id", "outcome", "verdict", "findings", "questions", "rule_results", "evidence", "uncertainty", "resolved_versions"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "workflow_ref": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "outcome": {
+      "description": "Runtime completion outcome; this is separate from the business-analysis quality verdict.",
+      "enum": ["completed", "indeterminate", "blocked"]
+    },
+    "verdict": {
+      "description": "Business analysis quality decision defined by SPEC-204.",
+      "enum": ["pass", "pass_with_recommendations", "changes_required", "blocked", "rejected"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "severity", "message", "evidence", "next_action"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "category": {
+            "enum": ["scope_and_actors", "path_coverage", "decision_traceability", "state_distinction", "assumption_visibility", "traceability"]
+          },
+          "severity": {"enum": ["critical", "high", "medium", "low"]},
+          "message": {"type": "string", "minLength": 1},
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "next_action": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "questions": {"type": "array", "items": {"type": "string"}},
+    "rule_results": {"type": "array", "items": {"type": "string"}},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "uncertainty": {"type": "object", "additionalProperties": false, "required": ["level", "reasons"], "properties": {"level": {"enum": ["none", "low", "medium", "high"]}, "reasons": {"type": "array", "items": {"type": "string"}}}},
+    "resolved_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "skill", "rule_set", "knowledge_snapshot", "policy", "input_schema", "output_schema"],
+      "properties": {
+        "agent": {"$ref": "#/$defs/versionReference"},
+        "skill": {"$ref": "#/$defs/versionReference"},
+        "prompt": {"$ref": "#/$defs/versionReference"},
+        "rule_set": {"$ref": "#/$defs/versionReference"},
+        "knowledge_snapshot": {"$ref": "#/$defs/semanticVersion"},
+        "policy": {"$ref": "#/$defs/versionReference"},
+        "input_schema": {"$ref": "#/$defs/versionReference"},
+        "output_schema": {"$ref": "#/$defs/versionReference"}
+      }
+    }
+  },
+  "$defs": {
+    "semanticVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
+    "versionReference": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"}
+  }
+}
