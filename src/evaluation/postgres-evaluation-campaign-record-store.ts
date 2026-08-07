@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { stableStringify } from "../shared/stable-stringify.js";
 import type {
   EvaluationCampaignEvent,
   EvaluationCampaignRecord,
@@ -609,22 +610,6 @@ function failed(
   message: string,
 ): EvaluationCampaignRecordStoreResult {
   return immutableCopy({ ok: false as const, failure: { code, message } });
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(stableValue(value));
-}
-
-function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, stableValue(entry)]),
-    );
-  }
-  return value;
 }
 
 function immutableCopy<Value>(value: Value): Value {

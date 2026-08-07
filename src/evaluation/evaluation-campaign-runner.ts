@@ -24,6 +24,7 @@ import {
   type SuiteReference,
   type TrialResult,
 } from "./evaluation-manager.js";
+import { stableStringify } from "../shared/stable-stringify.js";
 import type { JsonObject, WorkspaceContext } from "../requirement-review/public.js";
 
 const REQUIRED_OPERATIONS = Object.freeze([
@@ -768,22 +769,6 @@ function isExactVersionPin(value: string): boolean {
     isSemanticVersion(value) ||
     /^[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(value)
   );
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(stableValue(value));
-}
-
-function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, stableValue(entry)]),
-    );
-  }
-  return value;
 }
 
 function immutableCopy<Value>(value: Value): Value {

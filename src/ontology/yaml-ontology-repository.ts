@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { load } from "js-yaml";
 
+import { stableStringify } from "../shared/stable-stringify.js";
 import type {
   OntologyConstraint,
   OntologyEntity,
@@ -268,19 +269,3 @@ function defaultRepositoryRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 }
 
-function stableStringify(value: unknown): string {
-  return JSON.stringify(normalize(value));
-}
-
-function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, normalize(entry)]),
-    );
-  }
-  return value;
-}

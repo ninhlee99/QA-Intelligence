@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { stableStringify } from "../shared/stable-stringify.js";
 import type { JsonObject } from "../requirement-review/public.js";
 import type { OutboxRecord } from "../evaluation/outbox-publisher.js";
 
@@ -231,19 +232,3 @@ export function toOutboxRecord(event: PlatformEvent, attemptCount = 0): OutboxRe
   };
 }
 
-function stableStringify(value: unknown): string {
-  return JSON.stringify(normalize(value));
-}
-
-function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, normalize(entry)]),
-    );
-  }
-  return value;
-}

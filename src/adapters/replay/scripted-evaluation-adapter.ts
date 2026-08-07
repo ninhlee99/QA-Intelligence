@@ -16,6 +16,7 @@ import {
   type PrepareEnvironmentRequest,
   type ReplayRequest,
 } from "../../evaluation/adapter.js";
+import { stableStringify } from "../../shared/stable-stringify.js";
 import type {
   ConsequenceClass,
   JsonObject,
@@ -709,23 +710,6 @@ function mergeEvidence(
   operationEvidence: readonly string[] | undefined,
 ): string[] {
   return [...new Set([...authorizationEvidence, ...(operationEvidence ?? [])])];
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(normalize(value));
-}
-
-function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, normalize(entry)]),
-    );
-  }
-  return value;
 }
 
 function deepFreeze<Value>(value: Value): Value {

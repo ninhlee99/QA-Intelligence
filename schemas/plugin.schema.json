@@ -4,7 +4,7 @@
   "title": "Plugin Descriptor",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "version", "status", "interfaces", "capabilities", "permissions", "configuration_schema", "owner", "integrity"],
+  "required": ["id", "version", "status", "interfaces", "capabilities", "permissions", "configuration_schema", "supported_environments", "compatibility", "owner", "integrity"],
   "properties": {
     "id": {"type": "string"},
     "version": {"type": "string"},
@@ -13,6 +13,8 @@
     "capabilities": {"type": "array", "items": {"type": "string"}},
     "permissions": {"type": "array", "items": {"type": "string"}},
     "configuration_schema": {"type": "string"},
+    "supported_environments": {"type": "array", "items": {"type": "string"}},
+    "compatibility": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string"}, "version": {"type": "string"}}}},
     "owner": {"type": "string"},
     "integrity": {"type": "object", "additionalProperties": false, "required": ["algorithm", "digest"], "properties": {"algorithm": {"type": "string"}, "digest": {"type": "string"}}}
   }
