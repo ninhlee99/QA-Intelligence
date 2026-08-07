@@ -40,6 +40,24 @@ class FixedOntologyRepository implements OntologyRepository {
   }
 }
 
+class FailingOntologyRepository implements OntologyRepository {
+  async currentRelease(): Promise<OntologyResult<OntologyRelease>> {
+    return { ok: false, failure: { code: "unavailable_source", message: "ontology store unreachable" } };
+  }
+  async release(): Promise<OntologyResult<OntologyRelease>> {
+    return this.currentRelease();
+  }
+  async resolveTerm(): Promise<OntologyResult<never>> {
+    return { ok: false, failure: { code: "unknown_term", message: "not used in this test double" } };
+  }
+  async validateExtension() {
+    return { valid: true as const };
+  }
+  async compareReleases() {
+    return { ok: true as const, value: { added_entities: [], removed_entities: [], added_relationships: [], removed_relationships: [], compatible: true } };
+  }
+}
+
 function workspaceContext(overrides: Partial<WorkspaceContext> = {}): WorkspaceContext {
   return {
     schema_version: "1.0.0",
@@ -285,4 +303,43 @@ test("atomic publish: currentProjection reflects only a successfully published b
   assert.equal(after.ok, true, JSON.stringify(after));
   if (!after.ok) return;
   assert.equal(after.value.nodes.length, 1);
+});
+
+test("invalid_source: a KnowledgeRepository query failure is surfaced, not silently treated as an empty graph", async () => {
+  class FailingQueryKnowledgeRepository extends InMemoryKnowledgeRepository {
+    override async query(): Promise<Awaited<ReturnType<InMemoryKnowledgeRepository["query"]>>> {
+      return { ok: false, failure: { code: "unavailable_dependency", message: "knowledge store unreachable", retryable: true } };
+    }
+  }
+  const knowledge = new FailingQueryKnowledgeRepository({ now: () => new Date("2026-08-08T09:30:00.000Z") });
+  const candidates = makeCandidateRepository();
+  const builder = new InMemoryKnowledgeGraphBuilder({
+    clock: { now: () => new Date("2026-08-08T10:00:00.000Z") },
+    knowledgeRepository: knowledge,
+    candidateRepository: candidates,
+    ontologyRepository: new FixedOntologyRepository(),
+  });
+
+  const result = await builder.build({ context: workspaceContext() });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.failure.code, "invalid_source");
+});
+
+test("ontology_incompatibility: an unavailable ontology release blocks the build, never a fabricated projection", async () => {
+  const knowledge = await makeKnowledgeRepository();
+  const candidates = makeCandidateRepository();
+  const builder = new InMemoryKnowledgeGraphBuilder({
+    clock: { now: () => new Date("2026-08-08T10:00:00.000Z") },
+    knowledgeRepository: knowledge,
+    candidateRepository: candidates,
+    ontologyRepository: new FailingOntologyRepository(),
+  });
+
+  const result = await builder.build({ context: workspaceContext() });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.failure.code, "ontology_incompatibility");
 });

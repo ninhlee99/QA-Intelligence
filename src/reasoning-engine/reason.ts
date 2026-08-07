@@ -112,7 +112,16 @@ export async function reason(
     knowledge_snapshot: "current",
   });
   if (!discovery.ok) {
-    const code = discovery.failure.code === "unauthorized" || discovery.failure.code === "forbidden" ? "missing_authority" : "insufficient_evidence";
+    // §6: missing authority (the caller isn't allowed to search at all)
+    // and policy denial (the caller may search, but this specific query
+    // or scope is policy-blocked) are distinct failure modes — "forbidden"
+    // is the latter, "unauthorized" the former.
+    const code =
+      discovery.failure.code === "unauthorized"
+        ? "missing_authority"
+        : discovery.failure.code === "forbidden"
+          ? "policy_denial"
+          : "insufficient_evidence";
     return blocked(code, discovery.failure.message, discovery.failure.retryable, [...discovery.failure.evidence]);
   }
 

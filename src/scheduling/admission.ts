@@ -9,6 +9,8 @@ export type AdmissionDependencies = Readonly<{
   currentInFlight: (workspaceId: string) => number;
   supportedCapabilities: ReadonlySet<string>;
   environmentAvailable: (capabilityRef: AdmissionRequest["required_capability"]) => boolean;
+  /** SPEC-603 §4's "policy" admission check — distinct from authorization (identity/permission) and from the quota/capacity checks below. `true` permits the request. */
+  policyAllowed: (request: AdmissionRequest) => boolean;
   now: () => Date;
 }>;
 
@@ -54,9 +56,23 @@ export async function evaluateAdmission(
     return { outcome: "rejected", reason: "deadline_infeasible" };
   }
 
-  // Quota check: exceeding capacity is a *deferment*, not a rejection —
-  // the request may still be admitted once capacity frees up (SPEC-603 §4).
+  if (!dependencies.policyAllowed(request)) {
+    return { outcome: "rejected", reason: "policy_denied" };
+  }
+
   const quota = dependencies.quotas.get(request.workspace_id) ?? { ...DEFAULT_QUOTA, workspace_id: request.workspace_id };
+  // A request whose own resource estimate can never fit even with the
+  // Workspace fully idle SHALL NOT wait — no amount of deferment makes it
+  // admissible, so it is a permanent `quota_exceeded` rejection, not a
+  // retryable deferment (SPEC-603 §4's "rejection and deferment SHALL be
+  // distinct" cuts both ways: a request must not be deferred forever when
+  // it was never admissible in the first place).
+  if (request.estimated_resources.concurrency_slots > quota.max_concurrent) {
+    return { outcome: "rejected", reason: "quota_exceeded" };
+  }
+
+  // Otherwise, exceeding *current* capacity is a deferment — the request
+  // may still be admitted once in-flight work frees up (SPEC-603 §4).
   const inFlight = dependencies.currentInFlight(request.workspace_id);
   const availableSlots =
     request.priority === "critical_governance"

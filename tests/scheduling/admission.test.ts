@@ -72,6 +72,7 @@ function dependencies(overrides: Partial<AdmissionDependencies> = {}): Admission
     currentInFlight: () => 0,
     supportedCapabilities: new Set(["playwright@1.0.0"]),
     environmentAvailable: () => true,
+    policyAllowed: () => true,
     now: () => new Date("2026-08-08T09:30:00.000Z"),
     ...overrides,
   };
@@ -103,6 +104,28 @@ test("a normal request is deferred once reserved_critical_slots leaves no room",
   const result = await evaluateAdmission(dependencies({ currentInFlight: () => 1 }), request({ priority: "normal" }));
 
   assert.equal(result.outcome, "deferred");
+});
+
+test("quota_exceeded: a request whose own resource estimate can never fit is rejected, not deferred forever", async () => {
+  // max_concurrent 2, but the request itself asks for 3 concurrency_slots
+  // -> no amount of waiting for in-flight work to drain makes this
+  // admissible, so it is a permanent rejection (SPEC-603 §4).
+  const result = await evaluateAdmission(
+    dependencies({ currentInFlight: () => 0 }),
+    request({ estimated_resources: { concurrency_slots: 3 } }),
+  );
+
+  assert.equal(result.outcome, "rejected");
+  if (result.outcome !== "rejected") return;
+  assert.equal(result.reason, "quota_exceeded");
+});
+
+test("policy_denied: a policy check failure is rejected, distinct from authorization or quota", async () => {
+  const result = await evaluateAdmission(dependencies({ policyAllowed: () => false }), request());
+
+  assert.equal(result.outcome, "rejected");
+  if (result.outcome !== "rejected") return;
+  assert.equal(result.reason, "policy_denied");
 });
 
 test("authorization denial is rejected, not deferred", async () => {

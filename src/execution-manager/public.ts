@@ -50,14 +50,12 @@ export type ExecutionAggregate = Readonly<{
   current_attempt_id: string | null;
 }>;
 
+/** A Workspace mismatch on lookup surfaces as `unknown_execution`, not a distinct denial code — matching how every other adapter in this repository avoids confirming a cross-Workspace resource's existence to an unauthorized caller. */
 export type ExecutionManagerFailureCode =
   | "unknown_execution"
   | "conflict"
   | "unsupported_transition"
-  | "workspace_denied"
-  | "engine_unavailable"
-  | "retry_ineligible"
-  | "lease_unavailable";
+  | "engine_unavailable";
 
 export type ExecutionManagerFailure = Readonly<{
   code: ExecutionManagerFailureCode;

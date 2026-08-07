@@ -74,11 +74,19 @@ export type ReasoningEngineResult = Readonly<{
   required_human_action: string | null;
 }>;
 
-/** SPEC-308 §6: distinct failure codes for missing authority, insufficient evidence, conflicting sources, provider failure, invalid output, policy denial, and unsafe request. */
+/**
+ * SPEC-308 §6: distinct failure codes for missing authority, insufficient
+ * evidence, provider failure, invalid output, policy denial, and unsafe
+ * request. §6 also names "conflicting sources" as a distinct failure
+ * mode, but `KnowledgeSearchHit` (SPEC-501) carries no claim/statement
+ * field this engine could compare across hits to detect a real
+ * contradiction — a free-text `warnings` substring match would be a
+ * fabricated signal, not a real one, so that code is omitted until
+ * SPEC-501 exposes something this engine can actually check.
+ */
 export type ReasoningEngineFailureCode =
   | "missing_authority"
   | "insufficient_evidence"
-  | "conflicting_sources"
   | "provider_failure"
   | "invalid_output"
   | "policy_denial"

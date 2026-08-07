@@ -75,14 +75,16 @@ export type GraphQueryFilter = Readonly<{
   max_depth?: number;
 }>;
 
+/**
+ * A dangling/duplicate/conflicting/prohibited relationship (§2/§7) is a
+ * `GraphConstraintViolation` recorded inside a successfully-built
+ * `GraphProjection` — it never fails the build itself (§4 step 4:
+ * "detect... never silently drop"). Only a source read/write failure this
+ * adapter can actually hit belongs in the build-failure list.
+ */
 export type KnowledgeGraphBuilderFailureCode =
   | "invalid_source"
   | "ontology_incompatibility"
-  | "dangling_reference"
-  | "projection_lag"
-  | "partial_batch"
-  | "storage_failure"
-  | "unauthorized_scope"
   | "not_found";
 
 export type KnowledgeGraphBuilderFailure = Readonly<{
