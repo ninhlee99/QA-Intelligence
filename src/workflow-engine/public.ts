@@ -221,10 +221,6 @@ export type CancelRequest = WorkflowEngineRequest<"cancel">;
 export type InspectRequest = WorkflowEngineRequest<"inspect">;
 export type ResumeRequest = WorkflowEngineRequest<"resume">;
 
-export type AnyWorkflowEngineRequest = {
-  readonly [Operation in WorkflowEngineOperation]: WorkflowEngineRequest<Operation>;
-}[WorkflowEngineOperation];
-
 /** SPEC-304 §7: domain rejection, transient/permanent dependency failure, timeout, cancellation, conflict, and orchestration defect SHALL remain distinct. */
 export type WorkflowEngineFailureCode =
   | "invalid_request"
@@ -279,10 +275,6 @@ export type WorkflowEngineResult<Operation extends WorkflowEngineOperation> =
       | Readonly<{ ok: true; value: WorkflowEngineOperationMap[Operation]["value"] }>
       | Readonly<{ ok: false; failure: WorkflowEngineFailure }>
     );
-
-export type AnyWorkflowEngineResult = {
-  readonly [Operation in WorkflowEngineOperation]: WorkflowEngineResult<Operation>;
-}[WorkflowEngineOperation];
 
 export interface WorkflowEngine {
   descriptor(request: DescriptorRequest): Promise<WorkflowEngineResult<"descriptor">>;

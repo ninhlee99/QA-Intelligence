@@ -201,10 +201,6 @@ export type StartRequest = ExecutionEngineRequest<"start">;
 export type CancelRequest = ExecutionEngineRequest<"cancel">;
 export type FinalizeRequest = ExecutionEngineRequest<"finalize">;
 
-export type AnyExecutionEngineRequest = {
-  readonly [Operation in ExecutionEngineOperation]: ExecutionEngineRequest<Operation>;
-}[ExecutionEngineOperation];
-
 /** SPEC-504 §5: distinguishes product/test failure, blocked precondition, cancellation, timeout, infrastructure failure, and plugin error. */
 export type ExecutionEngineFailureCode =
   | "invalid_request"
@@ -263,10 +259,6 @@ export type ExecutionEngineResult<Operation extends ExecutionEngineOperation> =
       | Readonly<{ ok: true; value: ExecutionEngineOperationMap[Operation]["value"] }>
       | Readonly<{ ok: false; failure: ExecutionEngineFailure }>
     );
-
-export type AnyExecutionEngineResult = {
-  readonly [Operation in ExecutionEngineOperation]: ExecutionEngineResult<Operation>;
-}[ExecutionEngineOperation];
 
 /**
  * SPEC-504 §2 "stream or publish progress": `start` accepts a sink the

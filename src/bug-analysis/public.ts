@@ -39,12 +39,6 @@ export type DefectClassification =
   | "expected_behavior_or_duplicate"
   | "unresolved_indeterminate";
 
-const CLOSED_STATES: ReadonlySet<DefectStatus> = new Set(["fixed", "verified", "closed"]);
-
-export function isClosedDefectStatus(status: DefectStatus): boolean {
-  return CLOSED_STATES.has(status);
-}
-
 /** Mirrors schemas/defect.schema.json (SPEC-211 §2 Defect Contract). */
 export type Defect = Readonly<{
   id: string;

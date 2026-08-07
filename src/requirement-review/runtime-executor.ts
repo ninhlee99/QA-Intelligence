@@ -15,6 +15,7 @@ import type {
   AgentRunExecutorInput,
   AgentRunExecutorResult,
 } from "../runtime/executor.js";
+import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 
 export type RequirementResolutionRequest = Readonly<{
@@ -226,22 +227,6 @@ function mapReviewFailure(value: RequirementReviewFailure): AgentRunFailure {
   }
 }
 
-function failure(
-  failureClass: AgentRunFailure["class"],
-  code: AgentRunFailure["code"],
-  message: string,
-  retryable = false,
-  evidence: readonly string[] = [],
-): AgentRunFailure {
-  return {
-    class: failureClass,
-    code,
-    message,
-    retryable,
-    evidence: [...evidence],
-  };
-}
-
 function assessmentJson(value: RequirementAssessment): JsonObject {
   return {
     id: value.id,
@@ -277,8 +262,4 @@ function safeValidate(
   } catch {
     return false;
   }
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
 }

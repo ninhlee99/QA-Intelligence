@@ -164,10 +164,6 @@ export type InvokeRequest = PluginRequest<"invoke">;
 export type CancelRequest = PluginRequest<"cancel">;
 export type DisposeRequest = PluginRequest<"dispose">;
 
-export type AnyPluginRequest = {
-  readonly [Operation in PluginOperation]: PluginRequest<Operation>;
-}[PluginOperation];
-
 /** SPEC-503 §6/§7: keeps plugin, permission, compatibility, and platform failure classes distinct. */
 export type PluginFailureCode =
   | "invalid_request"
@@ -223,10 +219,6 @@ export type PluginResult<Operation extends PluginOperation> =
       | Readonly<{ ok: true; value: PluginOperationMap[Operation]["value"] }>
       | Readonly<{ ok: false; failure: PluginFailure }>
     );
-
-export type AnyPluginResult = {
-  readonly [Operation in PluginOperation]: PluginResult<Operation>;
-}[PluginOperation];
 
 export interface Plugin {
   descriptor(request: DescriptorRequest): Promise<PluginResult<"descriptor">>;

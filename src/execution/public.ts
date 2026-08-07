@@ -36,18 +36,6 @@ export type ExecutionOutcome =
   | "infrastructure_error"
   | "indeterminate";
 
-const TERMINAL_LIFECYCLE_STATES: ReadonlySet<ExecutionLifecycleState> = new Set([
-  "completed",
-  "failed",
-  "cancelled",
-  "timed_out",
-  "blocked",
-]);
-
-export function isTerminalLifecycleState(state: ExecutionLifecycleState): boolean {
-  return TERMINAL_LIFECYCLE_STATES.has(state);
-}
-
 export type ExecutionTiming = Readonly<{
   queued_at?: string;
   started_at?: string;

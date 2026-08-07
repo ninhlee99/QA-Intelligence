@@ -1,5 +1,6 @@
 import { chromium, type Browser } from "playwright";
 
+import { newFullSizePage } from "./full-size-page.js";
 import {
   executionRequestDigest,
   type CancelRequest,
@@ -43,11 +44,51 @@ export interface Clock {
  * ADR-003, this adapter SHALL NOT let a plan author reach past that stage
  * into raw selectors; a plan can only look at accessible role/name/text the
  * Semantic UI pipeline already resolved.
+ *
+ * Phase 2 (docs/proposals/professional-qa-mcp-roadmap.md): `steps` adds
+ * semantic interaction — `type`/`click` target an accessible name/role, the
+ * same vocabulary `CleanedDomNode` and Discovery's `SemanticUiMap` already
+ * use. This does NOT reopen raw CSS/XPath selectors (ADR-022 §4 stays in
+ * force): a step resolves through Playwright's own `getByRole(role, {name})`
+ * accessible locator, and each target is checked against the immediately
+ * preceding DOM capture before acting, so an author still cannot reach past
+ * the Semantic UI pipeline into implementation detail. `secret_ref`
+ * indirection (never a raw value on the wire) is what SPEC-407 §4 calls
+ * "approved injection" — a caller passes a Workspace-scoped reference; the
+ * engine resolves it out-of-band through its `secrets` dependency.
  */
+export type PlaywrightInteractionTarget = Readonly<{
+  accessible_name: string;
+  accessible_role?: string;
+}>;
+
+export type PlaywrightInteractionStep =
+  | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>;
+
+/**
+ * `dialog_triggered` is true if `window.alert`/`confirm`/`prompt` fired at
+ * any point after navigation (auto-dismissed so the run never hangs) —
+ * this is the real, observable signature of executed injected script
+ * (e.g. `<script>alert(1)</script>` reflected via `innerHTML`), which
+ * `DeterministicDomCleaner` cannot see: by the time a script tag reaches
+ * the cleaned tree, the browser has already parsed and (if unescaped)
+ * executed it, leaving no literal `<script>` text behind to match against.
+ */
+export type PlaywrightAssertContext = Readonly<{
+  dialog_triggered: boolean;
+}>;
+
 export type PlaywrightExecutionPlan = Readonly<{
   url: string;
-  assert(cleaned: import("../../dom-cleaner/public.js").CleanedDomNode): boolean;
+  steps?: readonly PlaywrightInteractionStep[];
+  assert(cleaned: import("../../dom-cleaner/public.js").CleanedDomNode, context: PlaywrightAssertContext): boolean;
 }>;
+
+/** SPEC-407 §4 "approved injection": resolves a Workspace-scoped credential reference to its value, out-of-band from any MCP caller. */
+export interface SecretResolver {
+  resolve(secretRef: string, workspace: WorkspaceContext): Promise<string | undefined>;
+}
 
 type Dependencies = Readonly<{
   clock: Clock;
@@ -55,6 +96,8 @@ type Dependencies = Readonly<{
   provider: ExecutionEngineProvider;
   plans: ReadonlyMap<string, PlaywrightExecutionPlan>;
   launchBrowser?: () => Promise<Browser>;
+  /** Required only if a plan's steps include a `type` step with `secret_ref`. */
+  secrets?: SecretResolver;
 }>;
 
 type AttemptRecord = Readonly<{
@@ -91,6 +134,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #provider: ExecutionEngineProvider;
   readonly #plans: ReadonlyMap<string, PlaywrightExecutionPlan>;
   readonly #launchBrowser: () => Promise<Browser>;
+  readonly #secrets: SecretResolver | undefined;
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
   readonly #cancelled = new Set<string>();
@@ -101,6 +145,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#provider = dependencies.provider;
     this.#plans = dependencies.plans;
     this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#secrets = dependencies.secrets;
   }
 
   async descriptor(request: DescriptorRequest): Promise<ExecutionEngineResult<"descriptor">> {
@@ -243,13 +288,40 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
         emit("cancelled");
         result = this.#cancelledResult(request, startedAt);
       } else {
-        const page = await browser.newPage();
+        const page = await newFullSizePage(browser);
+        let dialogTriggered = false;
+        page.on("dialog", (dialog) => {
+          dialogTriggered = true;
+          void dialog.dismiss();
+        });
         await page.goto(plan.url);
+        // See DiscoverUiSurface for why: a single-page app's real content
+        // often renders after `load` fires, and Phase 2's interaction
+        // steps target elements by accessible name — a step run before
+        // the SPA has rendered its real form would simply find nothing.
+        await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
         emit("started");
+
+        const interaction = this.#cancelled.has(attemptKey)
+          ? undefined
+          : await this.#runSteps(page, plan.steps ?? [], request.workspace, emit);
 
         if (this.#cancelled.has(attemptKey)) {
           emit("cancelled");
           result = this.#cancelledResult(request, startedAt);
+        } else if (interaction !== undefined && !interaction.ok) {
+          emit("failed", { reason: "interaction_failed", step: interaction.stepIndex });
+          result = this.#envelope(request, "start", {
+            ok: false,
+            failure: {
+              code: "plugin_failure",
+              retryable: false,
+              responsible_domain: "plugin",
+              message: interaction.message,
+              details: {},
+              diagnostic_evidence_refs: [],
+            },
+          });
         } else {
           const raw = await extractRawDom(page);
           emit("progress", { stage: "dom_captured" });
@@ -288,8 +360,8 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               emit("cancelled");
               result = this.#cancelledResult(request, startedAt);
             } else {
-              const passed = plan.assert(cleaned.value.sanitized_tree);
-              emit("assertion_result", { passed });
+              const passed = plan.assert(cleaned.value.sanitized_tree, { dialog_triggered: dialogTriggered });
+              emit("assertion_result", { passed, dialog_triggered: dialogTriggered });
               emit("completed");
 
               const completedAt = this.#clock.now();
@@ -356,6 +428,84 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       ok: true,
       value: { cleanup_status: "completed", residual_resources: [] },
     });
+  }
+
+  /**
+   * Runs a plan's semantic interaction steps in order, before the final
+   * assertion. Each step re-captures and cleans the DOM first so the
+   * target is checked against the Semantic UI pipeline's current view of
+   * the page (not a stale snapshot or an author-supplied selector) before
+   * acting through Playwright's own accessible locator (ADR-022 §4 stays
+   * in force — no raw CSS/XPath ever enters this path).
+   */
+  async #runSteps(
+    page: import("playwright").Page,
+    steps: readonly PlaywrightInteractionStep[],
+    workspace: WorkspaceContext,
+    emit: (type: ExecutionEngineEventType, data?: JsonObject) => void,
+  ): Promise<{ ok: true } | { ok: false; stepIndex: number; message: string }> {
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = steps[index]!;
+      const raw = await extractRawDom(page);
+      const cleaned = await this.#cleaner.clean({
+        capture_id: `capture:interaction:${index}`,
+        url_classification: "internal",
+        context: workspace,
+        actor_role: "execution-engine",
+        environment: "interaction",
+        captured_at: this.#clock.now().toISOString(),
+        raw_content_ref: page.url(),
+        raw,
+        redaction_policy: { rules: [], redact_text_matching: [] },
+        limits: { max_bytes: 5_000_000, max_depth: 64, max_nodes: 20_000, max_attribute_length: 2_000, max_text_length: 5_000 },
+        capture_authorized: true,
+      });
+      if (!cleaned.ok) {
+        return { ok: false, stepIndex: index, message: `Interaction step ${index} DOM capture failed: ${cleaned.failure.message}` };
+      }
+      if (!nodeExists(cleaned.value.sanitized_tree, step.target)) {
+        return {
+          ok: false,
+          stepIndex: index,
+          message: `Interaction step ${index} target not found in the Semantic UI tree: accessible_name="${step.target.accessible_name}"${step.target.accessible_role ? ` role="${step.target.accessible_role}"` : ""}.`,
+        };
+      }
+
+      const locator = step.target.accessible_role
+        ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], { name: step.target.accessible_name })
+        : page.getByRole("textbox", { name: step.target.accessible_name }).or(page.getByRole("button", { name: step.target.accessible_name }));
+
+      try {
+        if (step.kind === "click") {
+          await locator.click();
+          // A click-triggered handler that mutates the DOM (or fires a
+          // dialog via e.g. an injected <img onerror>) runs asynchronously
+          // relative to Playwright's own click resolution — without this,
+          // the very next step (or the final assertion capture) can race
+          // ahead of that handler and observe stale DOM/no dialog at all.
+          await page.waitForTimeout(200);
+        } else {
+          let text = step.text ?? "";
+          if (step.secret_ref !== undefined) {
+            if (this.#secrets === undefined) {
+              return { ok: false, stepIndex: index, message: `Interaction step ${index} references secret_ref "${step.secret_ref}" but no SecretResolver is configured.` };
+            }
+            const resolved = await this.#secrets.resolve(step.secret_ref, workspace);
+            if (resolved === undefined) {
+              return { ok: false, stepIndex: index, message: `Interaction step ${index} secret_ref "${step.secret_ref}" did not resolve.` };
+            }
+            text = resolved;
+          }
+          await locator.fill(text);
+        }
+      } catch (error) {
+        return { ok: false, stepIndex: index, message: `Interaction step ${index} (${step.kind}) failed: ${(error as Error).message}` };
+      }
+
+      // Never log the typed value — it may be a resolved secret.
+      emit("evidence_created", { stage: "interaction_step", step: index, kind: step.kind });
+    }
+    return { ok: true };
   }
 
   #cancelledResult(request: StartRequest, startedAt: Date): ExecutionEngineResult<"start"> {
@@ -447,4 +597,14 @@ function unscriptedFailure(attempt: ExecutionAttemptIdentity): ExecutionEngineFa
     details: {},
     diagnostic_evidence_refs: [],
   };
+}
+
+function nodeExists(
+  node: import("../../dom-cleaner/public.js").CleanedDomNode,
+  target: PlaywrightInteractionTarget,
+): boolean {
+  const nameMatches = node.accessible_name === target.accessible_name;
+  const roleMatches = target.accessible_role === undefined || node.accessible_role === target.accessible_role;
+  if (nameMatches && roleMatches) return true;
+  return node.children.some((child) => nodeExists(child, target));
 }

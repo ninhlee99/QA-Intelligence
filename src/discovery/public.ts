@@ -72,6 +72,57 @@ export type DiscoveryReport = Readonly<{
   limitations: readonly string[];
 }>;
 
+/**
+ * SPEC-201 §8 Semantic UI Discovery / SPEC-101 §12 Semantic UI Model.
+ * This tracer bullet covers the Page/Field/Action subset only — Region,
+ * Validation, Navigation, Workflow, State, and Permission remain
+ * unimplemented (see docs/proposals/professional-qa-mcp-roadmap.md Phase 1)
+ * and SHALL NOT be fabricated by returning empty/guessed values under
+ * those concepts; they are simply absent from this type until built.
+ */
+export type SemanticUiElementKind = "page" | "field" | "action";
+
+export type SemanticUiElement = Readonly<{
+  id: string;
+  kind: SemanticUiElementKind;
+  /** SPEC-201 §8 "visible purpose" — the accessible name/role a user or assistive tech would perceive, never a raw CSS/XPath selector (ADR-003). */
+  accessible_name?: string;
+  accessible_role?: string;
+  /** SPEC-201 §8 "location and containment" — parent element id, unset for the page root. */
+  parent_id?: string;
+  /** SPEC-201 §8 "permitted actions", from DomCleaner's `interaction_hint`. */
+  interaction_hint?: "clickable" | "editable" | "selectable" | "navigable" | "none";
+  /** SPEC-201 §8 "source observations" — traces back to the DomCleaner's node id and capture, not a live selector a caller could replay unsafely. */
+  source_node_id: string;
+  /** SPEC-201 §8 "confidence" — 1.0 for a directly observed node in this tracer bullet; less than 1.0 is reserved for future inferred elements. */
+  confidence: number;
+}>;
+
+export type SemanticUiMap = Readonly<{
+  schema_version: "1.0.0";
+  workspace_id: string;
+  /** The exact URL discovered, retained for provenance — never re-fetched implicitly by a later stage without a fresh authorization. */
+  source_url: string;
+  capture_id: string;
+  captured_at: string;
+  elements: readonly SemanticUiElement[];
+  /** SPEC-201 §10: explicit limitations, e.g. truncation from DomCleaner limits — never silently dropped. */
+  limitations: readonly string[];
+}>;
+
+export type SemanticUiDiscoveryFailure = Readonly<{
+  class: "configuration" | "authorization" | "infrastructure" | "engine";
+  code: string;
+  message: string;
+  retryable: boolean;
+  evidence: readonly string[];
+}>;
+
+export type SemanticUiDiscoveryResult = StableResult<
+  SemanticUiMap,
+  SemanticUiDiscoveryFailure
+>;
+
 export type DiscoveryFailure = Readonly<{
   class: "configuration" | "authorization" | "knowledge";
   code: string;

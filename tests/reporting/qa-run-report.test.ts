@@ -1,0 +1,119 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  renderQaRunReportHtml,
+  summarizeQaRunTestCases,
+  type QaRunReport,
+  type QaRunTestCaseResult,
+} from "../../src/reporting/qa-run-report.js";
+
+function testCase(overrides: Partial<QaRunTestCaseResult> = {}): QaRunTestCaseResult {
+  return {
+    test_case_id: "test-case-1",
+    purpose: "Validate sign in.",
+    variant: "positive",
+    outcome: "passed",
+    evidence: ["capture:abc"],
+    ...overrides,
+  };
+}
+
+function report(testCases: readonly QaRunTestCaseResult[]): QaRunReport {
+  return {
+    schema_version: "1.0.0",
+    workspace_id: "workspace-001",
+    target_url: "https://example.com/login",
+    generated_at: "2026-08-07T09:00:00.000Z",
+    requirement_ref: "REQ-001@1.0.0",
+    discovery_capture_id: "capture:discovery:001",
+    discovery_element_count: 4,
+    test_cases: testCases,
+    generation_findings: [],
+    summary: summarizeQaRunTestCases(testCases),
+  };
+}
+
+test("summarizeQaRunTestCases counts each outcome bucket correctly, treating cancelled as a failure and everything else as not_executed", () => {
+  const summary = summarizeQaRunTestCases([
+    testCase({ outcome: "passed" }),
+    testCase({ outcome: "passed" }),
+    testCase({ outcome: "failed" }),
+    testCase({ outcome: "cancelled" }),
+    testCase({ outcome: "not_executed", skip_reason: "no generated assertion" }),
+  ]);
+
+  assert.deepEqual(summary, { generated: 5, executed: 4, passed: 2, failed: 2, not_executed: 1 });
+});
+
+test("summarizeQaRunTestCases on an empty result set reports all-zero counts, not a fabricated pass", () => {
+  assert.deepEqual(summarizeQaRunTestCases([]), { generated: 0, executed: 0, passed: 0, failed: 0, not_executed: 0 });
+});
+
+test("renderQaRunReportHtml produces a self-contained document carrying the report's summary counts, target, and every test case row", () => {
+  const value = report([
+    testCase({ test_case_id: "tc-1", variant: "positive", outcome: "passed" }),
+    testCase({ test_case_id: "tc-2", variant: "negative", outcome: "failed", evidence: ["capture:def"] }),
+    testCase({ test_case_id: "tc-3", variant: "boundary", outcome: "not_executed", skip_reason: "no generated assertion", evidence: [] }),
+  ]);
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.startsWith("<!doctype html>"));
+  assert.ok(html.includes("QA run report"));
+  assert.ok(html.includes("https://example.com/login"));
+  assert.ok(html.includes("REQ-001@1.0.0"));
+  assert.ok(html.includes("capture:discovery:001"));
+  assert.ok(html.includes("tc-1"));
+  assert.ok(html.includes("tc-2"));
+  assert.ok(html.includes("tc-3"));
+  assert.ok(html.includes("no generated assertion"));
+  // summary bar: 3 generated, 2 executed, 1 passed, 1 failed, 1 not executed.
+  assert.ok(html.includes('<span class="n">3</span>generated'));
+  assert.ok(html.includes('<span class="n">2</span>executed'));
+  assert.ok(html.includes('<span class="n">1</span>passed'));
+  assert.ok(html.includes('<span class="n">1</span>failed'));
+  assert.ok(html.includes('<span class="n">1</span>not executed'));
+});
+
+test("renderQaRunReportHtml escapes HTML-significant characters in test case content instead of injecting raw markup", () => {
+  const value = report([
+    testCase({
+      test_case_id: "tc-xss",
+      purpose: 'Validate <script>alert(1)</script> & "quotes"',
+      evidence: ["<img src=x onerror=alert(1)>"],
+    }),
+  ]);
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(!html.includes("<script>alert(1)</script>"), "raw script tag SHALL NOT appear unescaped in the report");
+  assert.ok(html.includes("&lt;script&gt;"));
+  assert.ok(!html.includes("<img src=x onerror=alert(1)>"), "raw evidence markup SHALL NOT appear unescaped");
+  assert.ok(html.includes("&lt;img"));
+});
+
+test("renderQaRunReportHtml renders unbindable acceptance-criteria findings as their own section, never silently dropped", () => {
+  const value: QaRunReport = {
+    ...report([testCase()]),
+    generation_findings: [
+      {
+        id: "finding-1",
+        category: "unbindable_criterion",
+        message: 'Criterion "AC-2" mentions no discovered field or action.',
+        evidence: [],
+      },
+    ],
+  };
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.includes("Unbindable acceptance criteria"));
+  assert.ok(html.includes("unbindable_criterion"));
+  assert.ok(html.includes("AC-2"));
+});
+
+test("renderQaRunReportHtml omits the findings section entirely when there are no generation findings", () => {
+  const html = renderQaRunReportHtml(report([testCase()]));
+  assert.ok(!html.includes("Unbindable acceptance criteria"));
+});

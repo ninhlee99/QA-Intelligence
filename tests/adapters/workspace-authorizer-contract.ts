@@ -12,8 +12,6 @@ import type {
   WorkspaceContext,
 } from "../../src/requirement-review/public.js";
 
-export const FIXED_NOW = new Date("2026-08-03T08:00:00.000Z");
-
 export const WORKSPACE: WorkspaceState = {
   workspace_id: "workspace-evaluation-001",
   status: "active",

@@ -7,10 +7,6 @@ import type {
   KnowledgeSearchResult,
 } from "../requirement-review/public.js";
 
-export interface Clock {
-  now(): Date;
-}
-
 /**
  * SPEC-108 §4.1 Working Memory / AP-064 (Context and Cost Efficiency):
  * reuses an already-retrieved Knowledge Store result within the lifetime of
