@@ -32,6 +32,9 @@ export type DiscoverAfterLoginRequest = Readonly<{
   password: string;
   submit_action_name: string;
   target_url: string;
+  /** HTTP Basic Auth (a browser-native credential prompt, distinct from the in-page login form above) required in front of both login_url and target_url — supply both or neither. */
+  basic_auth_username?: string;
+  basic_auth_password?: string;
 }>;
 
 type Dependencies = Readonly<{
@@ -93,7 +96,11 @@ export class DiscoverAfterLogin {
     }
 
     try {
-      const page = await newFullSizePage(browser);
+      const httpCredentials =
+        request.basic_auth_username !== undefined && request.basic_auth_password !== undefined
+          ? { username: request.basic_auth_username, password: request.basic_auth_password }
+          : undefined;
+      const page = await newFullSizePage(browser, httpCredentials);
       try {
         await page.goto(request.login_url);
         const loginMap = await this.#inner.captureSemanticUiMap(page, {

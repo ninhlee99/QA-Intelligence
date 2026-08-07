@@ -438,7 +438,7 @@ async function main(): Promise<void> {
       {
         name: "discover_ui_surface_after_login",
         description:
-          "Discovers a Semantic UI Map for a screen reachable only after logging in (session/cookie-gated, not just basic-auth) — discover_ui_surface alone cannot see it because every call launches a fresh, unauthenticated browser. This tool runs one browser for the whole sequence: navigates to login_url, discovers ITS Semantic UI Map, resolves username_field_name/password_field_name/submit_action_name against that discovered map (never a raw selector), fills and submits, then navigates to target_url and discovers that screen on the exact same session. Field/action names must match what discover_ui_surface would report for the login page — call it on login_url first if unsure.",
+          "Discovers a Semantic UI Map for a screen reachable only after logging in (session/cookie-gated) — discover_ui_surface alone cannot see it because every call launches a fresh, unauthenticated browser. This tool runs one browser for the whole sequence: navigates to login_url, discovers ITS Semantic UI Map, resolves username_field_name/password_field_name/submit_action_name against that discovered map (never a raw selector), fills and submits, then navigates to target_url and discovers that screen on the exact same session. Field/action names must match what discover_ui_surface would report for the login page — call it on login_url first if unsure. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt in front of both login_url and target_url, distinct from the in-page login form), supply basic_auth_username + basic_auth_password together to answer it first.",
         inputSchema: {
           type: "object",
           properties: {
@@ -449,6 +449,8 @@ async function main(): Promise<void> {
             password: { type: "string" },
             submit_action_name: { type: "string", description: "Discovered action accessible_name, e.g. \"Sign in\"" },
             target_url: { type: "string", description: "The screen to discover after login, e.g. https://your-app.example/dashboard" },
+            basic_auth_username: { type: "string", description: "Optional. Supply with basic_auth_password when the site is also behind HTTP Basic Auth." },
+            basic_auth_password: { type: "string", description: "Optional. Supply with basic_auth_username when the site is also behind HTTP Basic Auth." },
           },
           required: ["login_url", "username_field_name", "username", "password_field_name", "password", "submit_action_name", "target_url"],
         },
@@ -467,6 +469,8 @@ async function main(): Promise<void> {
           password: (args["password"] as string | undefined) ?? "",
           submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
           target_url: (args["target_url"] as string | undefined) ?? "",
+          basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
+          basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
         }),
       },
       {
@@ -539,7 +543,7 @@ async function main(): Promise<void> {
       {
         name: "run_auto_qa",
         description:
-          "One call that runs the whole pipeline: discovers a page's Semantic UI Map, generates TestCases (positive/negative/boundary/adversarial per bindable, expected_text-bearing acceptance criterion — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine, and returns a QA run report — both as JSON (report_html field) and, when output_path is given, written to that path as a self-contained HTML file you can open directly. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. acceptance_criteria is required (this tool never invents what a page should do) — each item needs at least id, statement, and expected_text; statement should mention a field/action name the target page is expected to have.",
+          "One call that runs the whole pipeline: discovers a page's Semantic UI Map, generates TestCases (positive/negative/boundary/adversarial per bindable, expected_text-bearing acceptance criterion — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine, and returns a QA run report — both as JSON (report_html field) and, when output_path is given, written to that path as a self-contained HTML file you can open directly. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt distinct from the in-page login form), also supply basic_auth_username + basic_auth_password together. acceptance_criteria is required (this tool never invents what a page should do) — each item needs at least id, statement, and expected_text; statement should mention a field/action name the target page is expected to have.",
         inputSchema: {
           type: "object",
           properties: {
@@ -564,6 +568,8 @@ async function main(): Promise<void> {
             password_field_name: { type: "string", description: "Discovered field accessible_name on the login page, e.g. \"Password\"." },
             password: { type: "string" },
             submit_action_name: { type: "string", description: "Discovered action accessible_name on the login page, e.g. \"Sign in\"." },
+            basic_auth_username: { type: "string", description: "Optional. Supply with basic_auth_password when the site is also behind HTTP Basic Auth." },
+            basic_auth_password: { type: "string", description: "Optional. Supply with basic_auth_username when the site is also behind HTTP Basic Auth." },
             output_path: { type: "string", description: "When given, the self-contained HTML report is also written to this local file path (parent directories are created as needed). Must resolve inside the server's configured output directory — a path that escapes it (e.g. via ../) is rejected." },
           },
           required: ["url", "acceptance_criteria"],
@@ -586,6 +592,8 @@ async function main(): Promise<void> {
           password_field_name: (args["password_field_name"] as string | undefined) ?? "",
           password: (args["password"] as string | undefined) ?? "",
           submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
+          basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
+          basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
           output_path: (args["output_path"] as string | undefined) ?? "",
         }),
       },

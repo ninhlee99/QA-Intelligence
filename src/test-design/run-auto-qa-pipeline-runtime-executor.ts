@@ -20,7 +20,7 @@ import type {
   AgentRunExecutorInput,
   AgentRunExecutorResult,
 } from "../runtime/executor.js";
-import { failure, unique } from "../runtime/executor-support.js";
+import { failure, readBasicAuthFields, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 import type { GenerateTestCases } from "./generate-test-cases.js";
 
@@ -72,6 +72,10 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     }
 
     const loginFields = readLoginFields(input.start_request.input);
+    const basicAuth = readBasicAuthFields(input.start_request.input);
+    if (basicAuth === "partial") {
+      return { ok: false, failure: failure("orchestration", "invalid_request", "basic_auth_username and basic_auth_password must be supplied together or not at all.") };
+    }
     const discover: QaPipelineDiscover = loginFields
       ? (operationId, context) =>
           this.#dependencies.discoverAfterLogin.discover({
@@ -84,6 +88,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
             password: loginFields.password,
             submit_action_name: loginFields.submit_action_name,
             target_url: url,
+            ...(basicAuth !== undefined ? { basic_auth_username: basicAuth.username, basic_auth_password: basicAuth.password } : {}),
           })
       : (operationId, context) => this.#dependencies.discoverUiSurface.discover({ operation_id: operationId, context, url });
 

@@ -6,7 +6,7 @@ import type {
   AgentRunExecutorInput,
   AgentRunExecutorResult,
 } from "../runtime/executor.js";
-import { failure, unique } from "../runtime/executor-support.js";
+import { failure, readBasicAuthFields, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 
 export type DiscoverAfterLoginRuntimeExecutorDependencies = Readonly<{
@@ -45,6 +45,11 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       requiredStrings[key] = value;
     }
 
+    const basicAuth = readBasicAuthFields(input.start_request.input);
+    if (basicAuth === "partial") {
+      return { ok: false, failure: failure("orchestration", "invalid_request", "basic_auth_username and basic_auth_password must be supplied together or not at all.") };
+    }
+
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
       context: input.execution.workspace_context,
@@ -55,6 +60,7 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       password: requiredStrings["password"]!,
       submit_action_name: requiredStrings["submit_action_name"]!,
       target_url: requiredStrings["target_url"]!,
+      ...(basicAuth !== undefined ? { basic_auth_username: basicAuth.username, basic_auth_password: basicAuth.password } : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 
