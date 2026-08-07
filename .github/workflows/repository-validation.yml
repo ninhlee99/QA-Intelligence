@@ -35,6 +35,9 @@ jobs:
       - name: Install locked Node.js dependencies
         run: npm ci
 
+      - name: Install Playwright browser (Chromium)
+        run: npx playwright install --with-deps chromium
+
       - name: Validate governed repository and JSON Schemas
         run: npm run validate
 
