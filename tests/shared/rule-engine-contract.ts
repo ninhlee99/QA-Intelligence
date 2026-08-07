@@ -5,6 +5,7 @@ import type {
   DeterministicRuleEngine,
   RuleEvaluationRequest,
 } from "../../src/requirement-review/public.js";
+import { resolveRulePrecedence, type RuleCandidate } from "../../src/shared/rule-precedence.js";
 
 /**
  * SPEC-502 §4 Guarantees and §6 Conformance apply identically to every
@@ -32,6 +33,20 @@ export type RuleEngineContractFixture = Readonly<{
    * decision (SPEC-502 §4).
    */
   emptyFactsRequest(): RuleEvaluationRequest;
+  /**
+   * SPEC-104 §9 (Precedence and Conflicts) / SPEC-502 §6: optional because
+   * most existing domain engines are still single-rule-set field-checkers
+   * with no real competing-rule scenario to supply. A domain that models
+   * multiple rule candidates (governance vs. Workspace-extension variants
+   * of the same rule, for example) provides two candidates that resolve to
+   * a clear winner via `resolveRulePrecedence`, plus the Workspace those
+   * candidates are evaluated for.
+   */
+  precedenceFixture?(): Readonly<{
+    candidates: readonly RuleCandidate<unknown>[];
+    effectiveAt: string;
+    workspaceId: string;
+  }>;
 }>;
 
 const VALID_OUTCOMES = new Set([
@@ -129,5 +144,56 @@ export function runRuleEngineContract(
       "satisfied",
       "an unrelated prior evaluation must not change this evaluation's outcome",
     );
+  });
+
+  if (fixture.precedenceFixture === undefined) return;
+  const precedence = fixture.precedenceFixture;
+
+  test(`[${engineName}] precedence: a genuine equal-precedence tie is a conflict, not a silent pick (SPEC-104 §9)`, () => {
+    const { candidates, effectiveAt, workspaceId } = precedence();
+    assert.ok(candidates.length >= 2, "precedenceFixture must supply at least two candidates");
+
+    const tiedCandidates = candidates.map((candidate) => ({
+      ...candidate,
+      authority_class: "product" as const,
+      specificity: 0,
+      workspace_scope: "global",
+      version: "1.0.0",
+      priority: 0,
+    }));
+    const result = resolveRulePrecedence(tiedCandidates, effectiveAt, workspaceId);
+
+    assert.equal(result.outcome, "conflict");
+  });
+
+  test(`[${engineName}] precedence resolution is deterministic across repeated calls (SPEC-502 §4/§6)`, () => {
+    const { candidates, effectiveAt, workspaceId } = precedence();
+
+    const first = resolveRulePrecedence(candidates, effectiveAt, workspaceId);
+    const second = resolveRulePrecedence(candidates, effectiveAt, workspaceId);
+
+    assert.deepEqual(first, second);
+  });
+
+  test(`[${engineName}] historical effective-time: a candidate outside its effective period is excluded (SPEC-104 §9)`, () => {
+    const { candidates, effectiveAt, workspaceId } = precedence();
+    const expiredCandidates = candidates.map((candidate) => ({ ...candidate, effective_until: effectiveAt }));
+
+    const result = resolveRulePrecedence(expiredCandidates, effectiveAt, workspaceId);
+
+    assert.equal(result.outcome, "no_applicable_rule");
+  });
+
+  test(`[${engineName}] isolation: a Workspace-scoped candidate for another Workspace is never selected (SPEC-104 §12)`, () => {
+    const { candidates, effectiveAt, workspaceId } = precedence();
+    const otherWorkspaceCandidates = candidates.map((candidate) =>
+      candidate.workspace_scope === "global" ? candidate : { ...candidate, workspace_scope: `not-${workspaceId}` },
+    );
+
+    const result = resolveRulePrecedence(otherWorkspaceCandidates, effectiveAt, `other-${workspaceId}`);
+
+    if (result.outcome === "resolved") {
+      assert.notEqual(result.winner.workspace_scope, workspaceId);
+    }
   });
 }

@@ -179,4 +179,37 @@ runRuleEngineContract("risk-quality", {
     requested_decisions: [],
     trace_level: "summary",
   }),
+  // SPEC-104 §9: a governance-level control rule vs. a Workspace-extension
+  // variant of the same "risk must have controls" rule — a real
+  // precedence scenario the shared contract suite resolves through
+  // `resolveRulePrecedence`, independent of RiskQualityRuleEngine's own
+  // single-rule-set evaluation logic.
+  precedenceFixture: () => ({
+    effectiveAt: "2026-08-05T08:00:00.000Z",
+    workspaceId: "workspace-alpha",
+    candidates: [
+      {
+        id: "risk-has-controls",
+        version: "1.0.0",
+        authority_class: "governance",
+        specificity: 0,
+        workspace_scope: "global",
+        effective_from: "2026-01-01T00:00:00.000Z",
+        effective_until: null,
+        priority: 0,
+        outcome: "critical",
+      },
+      {
+        id: "risk-has-controls-workspace-alpha",
+        version: "1.0.0",
+        authority_class: "workspace_extension",
+        specificity: 1,
+        workspace_scope: "workspace-alpha",
+        effective_from: "2026-01-01T00:00:00.000Z",
+        effective_until: null,
+        priority: 0,
+        outcome: "high",
+      },
+    ],
+  }),
 });
