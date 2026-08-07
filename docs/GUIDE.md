@@ -46,16 +46,28 @@ npm test               # builds then runs dist/tests/**/*.test.js
 npm run validate       # repository governance + schemas + typecheck + test + audit
 ```
 
-## 3. Usage — local `stdio` MCP server (per host)
+## 3. Usage — two ways to install (per host)
 
-All three hosts point at the same compiled entrypoint:
-`dist/src/mcp/dev-entrypoint.js`. Run `npm run build` first — the packages
-launch compiled JS, not the TypeScript source.
+Two independent install methods. Pick one per host, or run both against
+the same checkout:
+
+- **Method A — local `stdio`** (`dev-entrypoint.ts`): host spawns
+  `node dist/src/mcp/dev-entrypoint.js` itself as a child process. No
+  network involved, fixture auth only. This is what `hosts/*` ships as
+  `.example`/plugin config today.
+- **Method B — remote URL** (`remote-dev-entrypoint.ts`): you start the
+  server yourself (§5) as a long-running HTTP process, then point the host
+  at its URL with a bearer token. Real signed OIDC tokens, but still
+  dev-only membership (§5, §6).
+
+Run `npm run build` first either way — both entrypoints launch compiled
+JS, not TypeScript source.
 
 ### 3.1 Claude Code
 
-Config lives at `hosts/claude-code/.claude-plugin/plugin.json` and is
-already relative to that directory:
+**Method A (stdio)** — config lives at
+`hosts/claude-code/.claude-plugin/plugin.json`, already relative to that
+directory:
 
 ```json
 {
@@ -73,17 +85,57 @@ Install as a Claude Code plugin from the repo (path form), then in a
 Claude Code session confirm the server connected and the tool is visible
 (e.g. `/mcp` or your host's server-list command) before calling it.
 
+**Method B (URL)** — start the remote server first (§5), then add to
+`.mcp.json` or `~/.claude.json`, or run `claude mcp add`:
+
+```json
+{
+  "mcpServers": {
+    "qa-intelligence-remote": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer <token printed by remote-dev-entrypoint.js on startup>"
+      }
+    }
+  }
+}
+```
+
+CLI equivalent:
+
+```sh
+claude mcp add --transport http qa-intelligence-remote http://127.0.0.1:8787/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+`"type": "http"` is required for remote entries (stdio entries omit
+`"type"` and use `"command"` instead).
+
 ### 3.2 Codex
 
-`hosts/codex/.codex-plugin/plugin.json` uses the same relative path under
-a `mcp.servers` key instead of `mcpServers` — install per Codex's plugin
-mechanism, same compiled entrypoint.
+**Method A (stdio)** — `hosts/codex/.codex-plugin/plugin.json` uses the
+same relative path under a `mcp.servers` key instead of `mcpServers` —
+install per Codex's plugin mechanism, same compiled entrypoint.
+
+**Method B (URL)** — start the remote server first (§5), then in
+`~/.codex/config.toml`, add a `url` key instead of `command` (Codex infers
+transport from whichever key is present):
+
+```toml
+[mcp_servers.qa-intelligence-remote]
+url = "http://127.0.0.1:8787/mcp"
+bearer_token_env_var = "QA_INTELLIGENCE_DEMO_TOKEN"
+```
+
+Export the printed token into that env var before starting Codex:
+`export QA_INTELLIGENCE_DEMO_TOKEN=<token printed by remote-dev-entrypoint.js>`.
 
 ### 3.3 Cursor
 
-Copy `hosts/cursor/mcp.json.example` into your Cursor MCP settings and
-replace the placeholder with an **absolute** path (Cursor config is not
-relative to the repo):
+**Method A (stdio)** — copy `hosts/cursor/mcp.json.example` into your
+Cursor MCP settings and replace the placeholder with an **absolute** path
+(Cursor config is not relative to the repo):
 
 ```json
 {
@@ -92,6 +144,22 @@ relative to the repo):
       "command": "node",
       "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
       "env": { "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev" }
+    }
+  }
+}
+```
+
+**Method B (URL)** — copy `hosts/cursor/mcp-remote.json.example` instead,
+after starting the remote server (§5):
+
+```json
+{
+  "mcpServers": {
+    "qa-intelligence-remote": {
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer <paste the demo token printed by remote-dev-entrypoint.js on startup>"
+      }
     }
   }
 }
@@ -157,7 +225,7 @@ in the same running server process can read the prior call's outcome —
 this only holds within one running `stdio` process (one Workspace), not
 across restarts.
 
-## 5. Usage — remote Streamable HTTP MCP server (shared/team profile, dev only)
+## 5. Starting the remote server (required before Method B in §3)
 
 For exercising the real signed-OIDC identity path instead of the fixture
 verifier:
@@ -169,10 +237,10 @@ node dist/src/mcp/remote-dev-entrypoint.js
 
 - Listens on `http://127.0.0.1:8787/mcp` by default.
 - Override with `QA_INTELLIGENCE_DEV_REMOTE_PORT` / `QA_INTELLIGENCE_DEV_REMOTE_HOST`.
-- On startup it prints a real, signed demo bearer token to **stderr**.
-- Copy `hosts/cursor/mcp-remote.json.example` into your Cursor MCP
-  settings, paste the printed token into its `Authorization` header, and
-  connect.
+- On startup it prints a real, signed demo bearer token to **stderr**. Keep
+  this process running — it's what Method B in §3 connects to.
+- Use the printed token in whichever host config from §3.1–§3.3 Method B
+  you're setting up.
 
 This is still non-production: the membership store is a single-actor
 in-process fixture, and production enablement is blocked on GOV-012
