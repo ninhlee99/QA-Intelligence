@@ -246,6 +246,26 @@ This is still non-production: the membership store is a single-actor
 in-process fixture, and production enablement is blocked on GOV-012
 G1–G4 regardless of transport.
 
+### 5.1 Dev token vs. a real production token
+
+The `headers.Authorization: Bearer <token>` field in Method B (§3) is the
+correct shape for production too — that part doesn't change. What changes
+is where the token comes from:
+
+| | Dev (what runs today) | Production (not built) |
+|---|---|---|
+| Token issuer | `remote-dev-entrypoint.ts` itself — mints its own ephemeral RSA keypair and serves its own local JWKS | A real IdP, per ADR-014 (still unbuilt) |
+| How you get it | Printed to stderr when you start `remote-dev-entrypoint.js` | Standard OAuth flow (client credentials / auth code) against that IdP |
+| Membership check | Single-actor in-process fixture (`OidcWorkspaceContextIssuer` in dev mode) | Real governed membership store (ADR-014, unbuilt) |
+| Config field | `headers.Authorization: Bearer <dev token>` | Same field, `headers.Authorization: Bearer <real access_token>` |
+
+Do not point a real host at a production URL using the dev-printed token —
+it only verifies against the dev entrypoint's own self-signed JWKS, which
+only exists while that one process is running. There is no production
+remote MCP endpoint or IdP integration in this repo yet; when ADR-014's
+identity work and GOV-012 G1–G4 land, only the token source and `url`
+change, not the config shape shown in §3.
+
 ## 6. What's deliberately not covered here
 
 - **API**: `api/README.md` — "Not started." No REST/GraphQL surface exists.
