@@ -1,17 +1,14 @@
 /**
- * MCP-facing adapter for `RunAutoQaPipeline` — the executor a caller's
- * single `run_auto_qa` tool call reaches. Owns the two boundaries the pure
- * pipeline core deliberately does not: choosing which Discovery Skill to
- * bind (`DiscoverUiSurface` for a plain `url`, `DiscoverAfterLogin` when the
- * caller also supplies `login_url` + credentials) and, when the caller asks
- * for one, writing the rendered HTML report to a local file via `node:fs`
- * — the only file-write path this MCP server exposes to a tool caller, and
- * only ever to a path the caller's own input names (never a
- * server-invented location), so it carries no more filesystem authority
- * than the caller already had.
+ * MCP-facing adapter for `RunAutoQaPipeline`. Owns the two boundaries the
+ * pure pipeline core does not: picking `DiscoverUiSurface` vs.
+ * `DiscoverAfterLogin` by whether login fields are present, and writing the
+ * rendered HTML report to disk when the caller asks for one. The write is
+ * confined to `outputBaseDir` (see `resolveOutputPath`) — a caller cannot
+ * point `output_path` outside it, e.g. via `../` traversal or an absolute
+ * path elsewhere on the host.
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
@@ -36,6 +33,8 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   launchBrowser?: () => Promise<import("playwright").Browser>;
+  /** Directory `output_path` is confined to. Defaults to the process's current working directory. */
+  outputBaseDir?: string;
 }>;
 
 export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
@@ -59,7 +58,18 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     if (acceptanceCriteria === undefined || acceptanceCriteria.length === 0) {
       return { ok: false, failure: failure("orchestration", "invalid_request", "run_auto_qa requires a non-empty acceptance_criteria array — this executor never invents what a page should do (SPEC-207 §6).") };
     }
-    const outputPath = readOptionalString(input.start_request.input["output_path"]);
+    const requestedOutputPath = readOptionalString(input.start_request.input["output_path"]);
+    let outputPath: string | undefined;
+    if (requestedOutputPath !== undefined) {
+      const resolved = resolveOutputPath(requestedOutputPath, this.#dependencies.outputBaseDir ?? process.cwd());
+      if (resolved === undefined) {
+        return {
+          ok: false,
+          failure: failure("orchestration", "invalid_request", `output_path "${requestedOutputPath}" must resolve inside the configured output directory.`),
+        };
+      }
+      outputPath = resolved;
+    }
 
     const loginFields = readLoginFields(input.start_request.input);
     const discover: QaPipelineDiscover = loginFields
@@ -200,6 +210,15 @@ function validateConfiguration(
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+/** Resolves `requestedPath` against `baseDir`, rejecting anything (`../`, an absolute path elsewhere) that lands outside it. */
+function resolveOutputPath(requestedPath: string, baseDir: string): string | undefined {
+  const resolvedBase = resolve(baseDir);
+  const resolvedTarget = isAbsolute(requestedPath) ? resolve(requestedPath) : resolve(resolvedBase, requestedPath);
+  const relativeToBase = relative(resolvedBase, resolvedTarget);
+  if (relativeToBase.startsWith("..") || isAbsolute(relativeToBase)) return undefined;
+  return resolvedTarget;
 }
 
 /** Only a well-formed array of plain objects counts — anything else fails closed via the caller in `execute` rather than silently producing zero criteria. */

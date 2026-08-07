@@ -1,21 +1,10 @@
 /**
- * `QaRunReport` is distinct from `Report` (`public.ts`, SPEC-212's
- * governance/metrics-dashboard contract — owner/numerator/denominator/
- * update_cadence per metric, meant for a recurring workspace-quality
- * dashboard). This type describes the output of ONE
- * discover -> generate -> execute pipeline run instead: which test cases
- * were generated, which ran, and what each one's outcome and evidence was.
- * Forcing that one-shot result into `Report`'s recurring-metric shape would
- * fabricate fields (an execution run has no "update_cadence") — SPEC-212 §5
- * requires every `ReportMetric` to carry real governance metadata, not
- * placeholders invented to satisfy the schema.
+ * Distinct from `Report` (`public.ts`, SPEC-212's recurring metrics
+ * dashboard) — this describes the output of ONE discover -> generate ->
+ * execute pipeline run, which has no "update_cadence" or owner to report.
  *
- * `renderQaRunReportHtml` is a pure function: given a `QaRunReport` value it
- * returns a self-contained HTML string (inline CSS, no external assets, no
- * template-engine dependency — this repository has none). It performs no
- * I/O; writing the string to a file is the caller's concern (see
- * `RunAutoQaPipelineRuntimeExecutor`, the MCP-facing adapter that owns the
- * actual `fs.writeFile` boundary).
+ * `renderQaRunReportHtml` is pure (no I/O); writing its output to a file is
+ * `RunAutoQaPipelineRuntimeExecutor`'s concern.
  */
 import type { TestCaseGenerationFinding } from "../test-design/public.js";
 

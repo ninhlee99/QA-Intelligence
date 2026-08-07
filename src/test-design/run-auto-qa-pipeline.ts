@@ -1,25 +1,11 @@
 /**
- * Composes the four Skills a caller previously had to invoke as separate
- * MCP calls — Discovery (`DiscoverUiSurface`/`DiscoverAfterLogin`), Test
- * Design (`GenerateTestCases`), Execution (`testCaseToExecutionPlan` +
- * `PlaywrightExecutionEngine`), and Reporting (`QaRunReport`) — behind one
- * `run()` call, so "here is a URL and what it should do" produces a
- * generated-and-executed report without the caller composing
- * discover_ui_surface -> generate_test_cases -> execute_generated_test_case
- * itself (docs/proposals/professional-qa-mcp-roadmap.md's stated Phase 3
- * goal, extended to close the execute+report loop this roadmap left open).
- *
- * Each inner Skill still runs its own authorization independently — this
- * module adds no authority of its own, exactly like
- * `GenerateTestCasesRuntimeExecutor` it extends the same pattern from. A
- * test case with no generated assertion (SPEC-207 §6: the generator never
- * fabricates one) or whose execution plan cannot be built is reported as
- * `not_executed`, never silently skipped or given a fabricated outcome
- * (SPEC-210 §4). A non-`passed`/`failed` `ExecutionOutcome` (`blocked`,
- * `skipped`, `flaky`, `infrastructure_error`, `indeterminate`) is likewise
- * never rounded up to `passed` or down to `failed` — it is reported as
- * `not_executed` with the outcome preserved in `skip_reason`, so a real
- * infrastructure failure never reads as a test failure or a pass.
+ * Composes Discovery -> Test Design -> Execution -> Reporting behind one
+ * `run()` call. Each inner Skill still runs its own authorization
+ * independently; this module adds no authority of its own. A test case with
+ * no generated assertion, an unbuildable execution plan, or a non-`passed`/
+ * `failed` `ExecutionOutcome` is reported as `not_executed` with the real
+ * reason preserved in `skip_reason` — never rounded up to a fabricated pass
+ * or down to a fail (SPEC-207 §6, SPEC-210 §4).
  */
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
@@ -32,7 +18,7 @@ export interface Clock {
   now(): Date;
 }
 
-/** Matches `DiscoverUiSurface.discover`/`DiscoverAfterLogin.discover`'s own signature — accepted as a plain function so either can be injected (already bound to its own `url` vs. `login_url`+`target_url` request) without this module depending on both concrete classes. */
+/** Accepted as a plain function (matching both Skills' `discover` signature) so either can be injected without depending on both concrete classes. */
 export type QaPipelineDiscover = (operationId: string, context: WorkspaceContext) => Promise<SemanticUiDiscoveryResult>;
 
 export interface QaPipelineGenerator {
@@ -54,7 +40,7 @@ export type RunAutoQaPipelineRequest = Readonly<{
   context: WorkspaceContext;
   requirement_ref: string;
   requirement_title: string;
-  /** The page Discovery observes and Test Design binds criteria against — used only for the report's `target_url` field; the actual navigation target is whatever `discover` (already bound to the right request) resolves. */
+  /** Report's `target_url` field only — actual navigation target is whatever `discover` (already bound to its own request) resolves. */
   url: string;
   acceptance_criteria: readonly JsonObject[];
 }>;
@@ -209,15 +195,7 @@ export class RunAutoQaPipeline {
   }
 }
 
-/**
- * `ExecutionOutcome` has more states than `QaRunTestCaseOutcome` — only
- * `passed`/`failed`/`cancelled` map straight across. Every other state
- * (`blocked`, `skipped`, `flaky`, `infrastructure_error`, `indeterminate`)
- * is infrastructure/process noise, not a real pass or fail verdict on the
- * test case's assertion, so it is reported as `not_executed` with the real
- * outcome preserved in `skip_reason` rather than rounded to a verdict the
- * execution engine never actually reached.
- */
+/** Non-`passed`/`failed`/`cancelled` outcomes are infrastructure noise, not a verdict — reported as `not_executed` with the real outcome kept in `skip_reason`. */
 function mapExecutionOutcome(
   outcome: string,
   engineSkipReason: string | undefined,

@@ -564,7 +564,7 @@ async function main(): Promise<void> {
             password_field_name: { type: "string", description: "Discovered field accessible_name on the login page, e.g. \"Password\"." },
             password: { type: "string" },
             submit_action_name: { type: "string", description: "Discovered action accessible_name on the login page, e.g. \"Sign in\"." },
-            output_path: { type: "string", description: "When given, the self-contained HTML report is also written to this local file path (parent directories are created as needed)." },
+            output_path: { type: "string", description: "When given, the self-contained HTML report is also written to this local file path (parent directories are created as needed). Must resolve inside the server's configured output directory — a path that escapes it (e.g. via ../) is rejected." },
           },
           required: ["url", "acceptance_criteria"],
         },

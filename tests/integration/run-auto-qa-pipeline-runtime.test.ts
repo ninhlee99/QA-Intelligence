@@ -223,6 +223,10 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
   const discoverUiSurface = new DiscoverUiSurface({ clock, authorizer });
   const discoverAfterLogin = new DiscoverAfterLogin({ clock, authorizer });
   const generator = new GenerateTestCases({ authorizer, ids: new GenIds() });
+  const workspaceContext = context(perms);
+
+  const tempDir = await mkdtemp(join(tmpdir(), "qa-intelligence-auto-qa-"));
+  const outputPath = join(tempDir, "nested", "report.html");
 
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
     new Map([
@@ -236,15 +240,12 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
           generator,
           expected_agent: AGENT,
           expected_skill: SKILL,
+          outputBaseDir: tempDir,
         }),
       ],
     ]),
   );
   const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
-  const workspaceContext = context(perms);
-
-  const tempDir = await mkdtemp(join(tmpdir(), "qa-intelligence-auto-qa-"));
-  const outputPath = join(tempDir, "nested", "report.html");
   try {
     const started = await runtime.start({
       schema_version: "1.0.0",
@@ -260,7 +261,7 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
         acceptance_criteria: [
           { id: "AC-1", statement: 'The "Sign in" action authenticates a user who entered valid Username and Password.', expected_text: "Welcome" },
         ],
-        output_path: outputPath,
+        output_path: "nested/report.html",
       },
       allowed_skills: [SKILL],
       allowed_tools: [{ id: "playwright-execution-engine", version: "0.1.0" }, { id: "playwright-dom-pipeline", version: "0.1.0" }],
@@ -292,6 +293,80 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
     const written = await readFile(outputPath, "utf8");
     assert.ok(written.includes("<!doctype html>"));
     assert.ok(written.includes("QA run report"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("run_auto_qa rejects an output_path that escapes the configured output directory", async () => {
+  const perms = permissions();
+  const authorizer = makeAuthorizer(perms);
+  const discoverUiSurface = new DiscoverUiSurface({ clock, authorizer });
+  const discoverAfterLogin = new DiscoverAfterLogin({ clock, authorizer });
+  const generator = new GenerateTestCases({ authorizer, ids: new GenIds() });
+  const workspaceContext = context(perms);
+
+  const tempDir = await mkdtemp(join(tmpdir(), "qa-intelligence-auto-qa-"));
+
+  const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+    new Map([
+      [
+        AGENT.id,
+        new RunAutoQaPipelineRuntimeExecutor({
+          clock,
+          authorizer,
+          discoverUiSurface,
+          discoverAfterLogin,
+          generator,
+          expected_agent: AGENT,
+          expected_skill: SKILL,
+          outputBaseDir: tempDir,
+        }),
+      ],
+    ]),
+  );
+  const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+
+  try {
+    const started = await runtime.start({
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-start",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      workspace_context: workspaceContext,
+      agent: AGENT,
+      purpose: "Attempt to write the HTML report outside the configured output directory.",
+      consequence_class: "reversible",
+      input: {
+        url: LOGIN_PAGE,
+        acceptance_criteria: [
+          { id: "AC-1", statement: 'The "Sign in" action authenticates a user who entered valid Username and Password.', expected_text: "Welcome" },
+        ],
+        output_path: "../escaped-report.html",
+      },
+      allowed_skills: [SKILL],
+      allowed_tools: [{ id: "playwright-execution-engine", version: "0.1.0" }, { id: "playwright-dom-pipeline", version: "0.1.0" }],
+      policy_version: workspaceContext.policy_version,
+      budgets: { max_steps: 20, max_duration_seconds: 300, max_tool_calls: 30, max_retries: 1 },
+      deadline: "2026-08-07T09:10:00.000Z",
+      idempotency_key: "auto-qa-traversal-start-001",
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    if (!started.ok) return;
+
+    const executed = await runtime.execute(started.value, {
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-execute",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      policy_version: workspaceContext.policy_version,
+      workspace_context: workspaceContext,
+      expected_revision: 3,
+      idempotency_key: "auto-qa-traversal-execute-001",
+    });
+    assert.equal(executed.ok, true, JSON.stringify(executed));
+    if (!executed.ok) return;
+    assert.equal(executed.value.outcome, "failed", JSON.stringify(executed.value, null, 2));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
