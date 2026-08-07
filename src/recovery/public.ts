@@ -65,8 +65,6 @@ export type RecoverOperationRequest = Readonly<{
 
 export type RecoveryFailureCode =
   | "unknown_operation"
-  | "containment_failed"
-  | "state_unrecoverable"
   | "verification_failed"
   | "stale_worker_rejected";
 

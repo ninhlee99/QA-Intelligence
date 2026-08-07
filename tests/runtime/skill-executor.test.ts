@@ -21,7 +21,7 @@ import type {
   WorkspaceAuthorizer,
   WorkspaceContext,
 } from "../../src/requirement-review/public.js";
-import type { Skill } from "../../src/skills/public.js";
+import type { Skill, SkillResultFailureClass } from "../../src/skills/public.js";
 
 class FixedReviewClock implements ReviewClock {
   now(): Date {
@@ -202,23 +202,72 @@ test("a validation failure (missing required permission) maps to authorization_d
   assert.equal(result.failure.code, "authorization_denied");
 });
 
-test("a Skill-reported failure maps its failure class correctly (input -> subject/invalid_request)", async () => {
-  const executor = makeExecutor();
-  // A requirement with an empty acceptance_criteria list still matches
-  // (has a requirement fact) but produces a real "changes_required"
-  // verdict from AssessRequirementQuality — that's still an `ok: true`
-  // Skill result (a completed assessment, just not a "pass"), so instead
-  // exercise the input-failure path via requirementSkillInvocation's own
-  // invalid-input shape at the Skill layer directly through the executor:
-  // an unauthorized workspace with a requirement present but validation
-  // failing on a *different* declared reason than permission.
-  const result = await executor.execute(
-    executorInput({
-      start_request: startRequest({ input: { requirement: completeRequirement(), extra_unused_field: true } }),
-    }),
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-});
+/** Always matches and validates; `invoke` fails with a caller-supplied SkillResultFailureClass — isolates the executor's own failure-class mapping from AssessRequirementQuality's real validation logic. */
+class AlwaysFailingSkill implements Skill {
+  readonly #failureClass: SkillResultFailureClass;
+  constructor(failureClass: SkillResultFailureClass) {
+    this.#failureClass = failureClass;
+  }
+  async describe() {
+    return undefined;
+  }
+  async match() {
+    return {
+      matched: true,
+      confidence: 1,
+      positive_evidence: [],
+      negative_evidence: [],
+      alternatives: [],
+      conflicts: [],
+      requires_human_selection: false,
+    };
+  }
+  async validate() {
+    return { valid: true as const };
+  }
+  async invoke() {
+    return {
+      ok: false as const,
+      failure: {
+        class: this.#failureClass,
+        code: `scripted-${this.#failureClass}`,
+        message: `scripted ${this.#failureClass} failure`,
+        retryable: false,
+        evidence: [],
+      },
+    };
+  }
+}
+
+const SKILL_FAILURE_CLASS_MAPPING: ReadonlyArray<
+  readonly [SkillResultFailureClass, string, string]
+> = [
+  ["precondition", "subject", "invalid_definition"],
+  ["authorization", "policy", "authorization_denied"],
+  ["input", "subject", "invalid_request"],
+  ["dependency", "infrastructure", "infrastructure_failure"],
+  ["provider", "provider", "provider_failure"],
+  ["tool", "tool", "tool_failure"],
+  ["budget_exhausted", "policy", "budget_exhausted"],
+  ["cancelled", "orchestration", "cancelled"],
+];
+
+for (const [skillFailureClass, expectedRunFailureClass, expectedRunFailureCode] of SKILL_FAILURE_CLASS_MAPPING) {
+  test(`a Skill-reported "${skillFailureClass}" failure maps to AgentRunFailure class "${expectedRunFailureClass}" / code "${expectedRunFailureCode}"`, async () => {
+    const skillKey = `${RequirementQualitySkill.SKILL_ID}@${RequirementQualitySkill.SKILL_VERSION}`;
+    const executor = new SkillAgentRunExecutor(
+      new Map([[skillKey, new AlwaysFailingSkill(skillFailureClass)]]),
+      { now: () => new Date("2026-08-08T09:30:00.000Z") },
+    );
+
+    const result = await executor.execute(executorInput());
+
+    assert.equal(result.ok, false, JSON.stringify(result));
+    if (result.ok) return;
+    assert.equal(result.failure.class, expectedRunFailureClass);
+    assert.equal(result.failure.code, expectedRunFailureCode);
+  });
+}
 
 test("cancellation: an already-aborted signal short-circuits before invocation with code cancelled", async () => {
   const controller = new AbortController();

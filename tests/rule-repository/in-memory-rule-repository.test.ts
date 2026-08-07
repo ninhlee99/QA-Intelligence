@@ -147,6 +147,26 @@ test("recordLifecycleTransition follows draft -> in_review -> accepted", async (
   assert.equal(accepted.value.status, "accepted");
 });
 
+test("the injected Clock actually flows into a recorded lifecycle event's occurred_at", async () => {
+  const repository = new InMemoryRuleRepository({ now: () => new Date("2026-08-07T12:34:56.000Z") });
+  await repository.saveDraft({ context: workspaceContext(), draft: draft(), idempotency_key: "idem-1" });
+
+  await repository.recordLifecycleTransition({
+    context: workspaceContext(),
+    id: "risk-has-controls",
+    expected_revision: 1,
+    to_status: "in_review",
+    actor_id: "actor-rule-001",
+    reason: "submit for review",
+    policy_version: "policy@1.0.0",
+  });
+
+  const events = repository.eventsFor("risk-has-controls@1.0.0");
+  assert.equal(events.length, 2);
+  assert.equal(events[1]?.occurred_at, "2026-08-07T12:34:56.000Z");
+  assert.equal(events[1]?.to_status, "in_review");
+});
+
 test("recordLifecycleTransition rejects an illegal jump from draft to accepted", async () => {
   const repository = makeRepository();
   await repository.saveDraft({ context: workspaceContext(), draft: draft(), idempotency_key: "idem-1" });

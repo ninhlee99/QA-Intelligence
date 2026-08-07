@@ -59,7 +59,7 @@ test("restore proven: a request for an unknown operation is unknown_operation, n
   assert.equal(result.failure.code, "unknown_operation");
 });
 
-test("isolation intact: a workspace_id mismatch between the request and the recovered operation fails verification_failed", async () => {
+test("isolation intact: a Workspace-scoped lookup rejects a mismatched workspace_id as unknown_operation before verification ever runs", async () => {
   const dependencies = makeDependencies();
   dependencies.operationStore.create({
     operation_id: "op-1",

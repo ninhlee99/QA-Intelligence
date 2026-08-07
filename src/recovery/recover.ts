@@ -92,7 +92,12 @@ export async function recoverOperation(
   // left alone; resuming finished work is exactly what §6 prohibits.
   const alreadyFinalized = operation.state === "finalized";
 
-  // Step 7: Verify Semantics and Isolation.
+  // Step 7: Verify Semantics and Isolation. `operationStore.get` is already
+  // Workspace-scoped, so a mismatched Workspace is caught one layer
+  // earlier as `unknown_operation` (§4) and this branch is unreachable
+  // through the in-memory store today — kept as defense-in-depth for a
+  // future store implementation that might not enforce Workspace scope at
+  // the lookup boundary, not because this test suite can exercise it.
   if (operation.workspace_id !== request.workspace_id) {
     return recoveryFailure("verification_failed", "Recovered operation's Workspace does not match the recovery request's Workspace.", false);
   }

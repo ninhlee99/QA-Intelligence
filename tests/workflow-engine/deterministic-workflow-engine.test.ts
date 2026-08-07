@@ -185,6 +185,34 @@ test("duplicate delivery: repeating the same signal under the same idempotency k
   assert.equal(inspected.value.runtime_state.history.length, 2);
 });
 
+test("idempotency_conflict: reusing the same idempotency key with a different request is rejected, not silently replayed", async () => {
+  const engine = makeEngine();
+  const started = await startInstance(engine);
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+
+  const first: SignalRequest = {
+    operation: "signal",
+    ...envelopeFields("op-signal-conflict"),
+    payload: { instance: started.value.instance, trigger: "propose", data: {} },
+  };
+  const firstResult = await engine.signal(first);
+  assert.equal(firstResult.ok, true, JSON.stringify(firstResult));
+
+  // Same idempotency key ("op-signal-conflict"), but a different trigger —
+  // the request digest changes, so this must not replay the first result.
+  const conflicting: SignalRequest = {
+    operation: "signal",
+    ...envelopeFields("op-signal-conflict"),
+    payload: { instance: started.value.instance, trigger: "validate", data: {} },
+  };
+  const conflictingResult = await engine.signal(conflicting);
+
+  assert.equal(conflictingResult.ok, false);
+  if (conflictingResult.ok) return;
+  assert.equal(conflictingResult.failure.code, "idempotency_conflict");
+});
+
 test("guard rule blocks a transition when the rule engine reports not_satisfied", async () => {
   const denyingRuleEngine: DeterministicRuleEngine = {
     evaluate: (request: RuleEvaluationRequest): Promise<RuleEvaluationResult> =>

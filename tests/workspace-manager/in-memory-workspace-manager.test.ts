@@ -167,6 +167,41 @@ test("membership add/update/remove round-trip", async () => {
   assert.equal(members.value.length, 0);
 });
 
+test("updateMembership against a non-member actor fails with not_found", async () => {
+  const manager = await provisionedManager();
+  await manager.transitionLifecycle({ id: "workspace-alpha", expected_revision: 1, to_status: "active", actor_id: "actor-owner-001", reason: "activate" });
+
+  const result = await manager.updateMembership({
+    workspace_id: "workspace-alpha",
+    expected_revision: 2,
+    actor_id: "actor-never-added",
+    roles: ["reviewer"],
+    granted_by: "actor-owner-001",
+    reason: "update a non-member",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.failure.code, "not_found");
+});
+
+test("removeMembership against a non-member actor fails with not_found", async () => {
+  const manager = await provisionedManager();
+  await manager.transitionLifecycle({ id: "workspace-alpha", expected_revision: 1, to_status: "active", actor_id: "actor-owner-001", reason: "activate" });
+
+  const result = await manager.removeMembership({
+    workspace_id: "workspace-alpha",
+    expected_revision: 2,
+    actor_id: "actor-never-added",
+    removed_by: "actor-owner-001",
+    reason: "remove a non-member",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.failure.code, "not_found");
+});
+
 test("bindPolicy is revision-checked and audited", async () => {
   const manager = await provisionedManager();
   const bound = await manager.bindPolicy({
