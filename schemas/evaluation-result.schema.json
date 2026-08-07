@@ -4,25 +4,27 @@
   "title": "Evaluation Result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["run_id", "workspace_id", "subject", "suite", "resolved_versions", "trial_results", "critical_invariants", "metrics", "verdict", "recommendation", "evidence", "started_at", "completed_at"],
+  "required": ["schema_version", "run_id", "workspace_id", "subject", "suite", "resolved_versions", "trial_results", "critical_invariants", "metrics", "verdict", "recommendation", "evidence", "started_at", "completed_at"],
   "properties": {
+    "schema_version": {"const": "1.0.0"},
     "run_id": {"type": "string"},
     "workspace_id": {"type": "string"},
-    "subject": {"type": "object", "required": ["type", "id", "version"], "properties": {"type": {"enum": ["agent", "skill"]}, "id": {"type": "string"}, "version": {"type": "string"}}},
-    "suite": {"type": "object", "required": ["id", "version"], "properties": {"id": {"type": "string"}, "version": {"type": "string"}}},
-    "resolved_versions": {"type": "object", "minProperties": 1},
+    "subject": {"type": "object", "additionalProperties": false, "required": ["type", "id", "version"], "properties": {"type": {"enum": ["agent", "skill"]}, "id": {"type": "string", "minLength": 1}, "version": {"$ref": "#/$defs/semanticVersion"}}},
+    "suite": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string", "minLength": 1}, "version": {"$ref": "#/$defs/semanticVersion"}}},
+    "resolved_versions": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/exactVersionPin"}},
     "trial_results": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["case_id", "trial_id", "outcome", "failure_class", "evidence"],
         "properties": {
-          "case_id": {"type": "string"},
-          "trial_id": {"type": "string"},
+          "case_id": {"type": "string", "minLength": 1},
+          "trial_id": {"type": "string", "minLength": 1},
           "outcome": {"enum": ["passed", "failed", "blocked", "indeterminate"]},
           "failure_class": {"enum": ["none", "subject", "evaluator", "infrastructure", "invalid_test", "policy_denial", "indeterminate"]},
-          "evidence": {"type": "array", "items": {"type": "string"}}
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
         }
       }
     },
@@ -31,18 +33,28 @@
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["id", "passed"],
         "properties": {
-          "id": {"type": "string"},
+          "id": {"type": "string", "minLength": 1},
           "passed": {"type": "boolean"}
         }
       }
     },
-    "metrics": {"type": "object"},
+    "metrics": {"type": "object", "additionalProperties": false, "required": ["total_trials", "passed_trials", "failed_trials", "blocked_trials", "indeterminate_trials", "critical_invariants_total", "critical_invariants_passed", "evidence_reference_count", "invalid_test_reasons"], "properties": {"total_trials": {"type": "integer", "minimum": 0}, "passed_trials": {"type": "integer", "minimum": 0}, "failed_trials": {"type": "integer", "minimum": 0}, "blocked_trials": {"type": "integer", "minimum": 0}, "indeterminate_trials": {"type": "integer", "minimum": 0}, "critical_invariants_total": {"type": "integer", "minimum": 0}, "critical_invariants_passed": {"type": "integer", "minimum": 0}, "evidence_reference_count": {"type": "integer", "minimum": 0}, "invalid_test_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}}}},
     "verdict": {"enum": ["passed", "failed", "blocked", "indeterminate"]},
     "recommendation": {"enum": ["recommend_release", "recommend_conditional_release", "reject_release", "indeterminate"]},
-    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
     "started_at": {"type": "string", "format": "date-time"},
     "completed_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {"if": {"properties": {"verdict": {"const": "passed"}}, "required": ["verdict"]}, "then": {"properties": {"recommendation": {"enum": ["recommend_release", "recommend_conditional_release"]}}}},
+    {"if": {"properties": {"verdict": {"const": "failed"}}, "required": ["verdict"]}, "then": {"properties": {"recommendation": {"const": "reject_release"}}}},
+    {"if": {"properties": {"verdict": {"enum": ["blocked", "indeterminate"]}}, "required": ["verdict"]}, "then": {"properties": {"recommendation": {"const": "indeterminate"}}}}
+  ],
+  "$defs": {
+    "semanticVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
+    "exactVersionPin": {"type": "string", "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?|[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$"}
   }
 }

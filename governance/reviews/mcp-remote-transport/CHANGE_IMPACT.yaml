@@ -1,0 +1,38 @@
+id: IMPACT-MCP-REMOTE-TRANSPORT-001
+version: 1.0.0
+date: 2026-08-06
+status: accepted
+authority: Repository Owner explicit instruction to write the ADR before implementation; new scope ADR-019 §6 already anticipated and deferred
+change:
+  title: Add a remote Streamable HTTP MCP transport with OIDC Authorization Code + PKCE for the shared/team profile, reusing the existing production identity seams instead of building a second authorization path
+  supersedes: []
+  preserves:
+    - ADR-016's authoritative execution path (Host -> Host Integration Package -> QA Intelligence MCP Interface -> Agent Runtime/Evaluation Engine)
+    - ADR-016 §6's rule that MCP is an untrusted transport adapter relative to domain authority
+    - ADR-019's transport-agnostic McpServer/jsonrpc/protocol core — extended, not replaced
+    - ADR-011's small, auditable dependency baseline (no new HTTP framework or OAuth client library)
+    - ADR-014's OIDC seams (JwksWorkspaceIntegrityProofVerifier, OidcWorkspaceContextIssuer) as the single authorization implementation for both local and remote transports
+  corrects:
+    - no prior decision existed on how remote transport's interactive OIDC login terminates or how per-request authorization reuses the existing seam; this closes that gap before code is written
+affected_artifacts:
+  decisions: [ADR-020]
+  specifications: [SPEC-306, SPEC-406, SPEC-506, SPEC-508, SPEC-511]
+  implementation:
+    - new StreamableHttpTransport module alongside src/mcp/stdio-transport.ts (not yet written)
+    - new src/mcp/remote/oauth-callback-server.ts PKCE callback service (not yet written)
+    - new bearer-token resolveWorkspaceContext() implementation for AgentRuntimeToolRegistry's remote profile (not yet written)
+risks_and_controls:
+  - risk: a bearer token is replayed after Workspace suspension or membership revocation
+    control: OidcWorkspaceContextIssuer.issue() denies on suspended Workspace per request (SPEC-406 §4); no session cache sits between the transport and that check
+  - risk: the callback service becomes a second, drifting authorization implementation over time
+    control: ADR-020 §4 decision rule — it terminates at issue() with no independent allow/deny logic; conformance tests assert this structurally (ADR-020 §9)
+  - risk: plaintext deployment leaks bearer tokens over an unencrypted network
+    control: non-loopback bind refused by default (ADR-020 §3.4); TLS termination required in front of the listener for any real deployment
+  - risk: adding HTTP transport reopens the "adopt the official SDK" question and drifts toward its full surface
+    control: ADR-020 §3.1 scopes the HTTP surface to a single POST endpoint (no SSE, no session resumption); §5 re-evaluates and re-rejects the SDK for this specific scope
+  - risk: rate-limiting/quota gap allows resource exhaustion before a durable limiter exists
+    control: in-process token bucket for development; production enablement already blocked on GOV-012 G4, which must cover this before remote is turned on (ADR-020 §7)
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: blocked_pending_GOV_012_evidence

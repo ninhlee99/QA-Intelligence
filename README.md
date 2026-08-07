@@ -16,10 +16,18 @@ Read in this order:
 
 Foundation, ADRs, GOV-001 through GOV-012, and all 66 specifications form the accepted documentation and implementation baseline. Family-specific review evidence is retained under `governance/reviews/full-spec-baseline/`.
 
+ADR-016 defines MCP as the host-neutral distribution interface. Codex, Claude Code, and Cursor integrations remain thin Host Integration Packages; the QA Intelligence Core Platform, Agent Runtime, Evaluation Engine, Knowledge Store, and Rule Engine retain authority.
+
+ADR-017 defines the default deployment as local-first: one user-owned parent
+runtime and one SQLite database per Workspace. PostgreSQL and remote MCP are
+optional shared/team profiles, not prerequisites for personal use.
+
 The machine-readable ontology, schemas, rules, indexes, playbooks, examples, and AI engineering instructions are accepted support artifacts and validate automatically. They remain subordinate to their governing specifications and do not grant implementation or release authority by themselves.
 
 The Agent/Skill creation and evaluation baseline is defined by `SPEC-106`, `SPEC-107`, `SPEC-213`, `SPEC-309`, `SPEC-310`, contracts `SPEC-508`–`SPEC-511`, and `governance/AGENT_SKILL_QUALITY_GATES.md`. These artifacts preserve the original product boundary: Agents execute governed QA capabilities; Skills are reusable procedures; Plugins remain technology adapters; accepted knowledge remains in the Knowledge Store.
 
-The advisory Requirement Review Agent and Assess Requirement Quality Skill are ready to begin as the first tracer-bullet implementation. This does not mean an implementation already conforms or may be released: GOV-012 G1–G4 evidence is required before enablement beyond development, and G5–G6 plus runtime evidence are required before release.
+The advisory Requirement Review Agent and Assess Requirement Quality Skill now have a deterministic development slice: public contracts, requirement assessment, Workspace authorization, Knowledge Search, reasoning replay, schema validation, evaluation, an in-memory Agent Runtime, runtime-owned Requirement Review execution, and a provider-neutral scripted Evaluation Adapter. The runtime path retains exact input, Agent, Skill, and Tool authority and owns the immutable final result. The separate direct composition remains an evaluation-oriented development harness; production adapters must pass the same accepted Runtime and Evaluation Adapter contract surfaces.
+
+This implementation is not enabled or release-ready. GOV-012 G1–G4 still require complete implementation and independent evidence before enablement beyond development; G5–G6 plus operational runtime evidence remain required before release.
 
 See `ROADMAP.md` for the implementation sequence.

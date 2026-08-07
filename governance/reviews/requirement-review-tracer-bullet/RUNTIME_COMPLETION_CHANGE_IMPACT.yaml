@@ -1,0 +1,72 @@
+id: IMPACT-RRA-RUNTIME-COMPLETION-001
+version: 1.0.0
+date: 2026-08-03
+status: implemented_and_verified
+governing_process: GOV-007
+change:
+  title: Add governed execution and final-result retrieval to SPEC-508
+  classification: additive_behavioral_contract_change
+  reason: SPEC-508 requires completion and final results but version 1.0.0 exposes no operation that can execute retained input or retrieve the authoritative result
+preserved_product_intent:
+  comprehensive_QA_QC_and_Senior_Test_Engineer_identity: unchanged
+  agent_skill_boundary: unchanged
+  workspace_and_least_privilege: strengthened
+  accepted_knowledge_authority: unchanged
+decision:
+  add_operations:
+    - execute(run_reference, execution_with_context) -> final_result
+    - result(run_reference, access_context) -> final_result
+  reject_operation: complete(run_reference, caller_supplied_result)
+  rationale: the Agent Runtime remains the sole lifecycle writer and result authority; callers cannot fabricate output validation, evidence completeness, cleanup, or completion
+  lifecycle: ready_to_running_to_validating_to_completed_or_terminal_failure
+directly_affected:
+  specifications: [SPEC-508]
+  reviewed_downstream: [SPEC-309, SPEC-410, SPEC-606]
+  schemas:
+    - schemas/agent-run-execute.schema.json
+    - schemas/agent-run-result.schema.json
+  implementation:
+    - src/runtime/public.ts
+    - src/runtime/in-memory-agent-runtime.ts
+    - src/requirement-review/runtime-executor.ts
+  tests:
+    - tests/runtime/in-memory-agent-runtime.test.ts
+    - tests/integration/requirement-review-runtime.test.ts
+compatibility:
+  contract_version: 1.1.0
+  breaking_change: false
+  existing_production_consumers: none
+  in_flight_runs: none
+  historical_result_interpretation: unchanged
+  migration: none_required_for_development_only_in_memory_state
+security_and_authority:
+  execute_permission: agent:execute
+  result_permission: agent:read
+  exact_resources: Workspace, Agent run, retained Agent version, retained input references, and retained allowed Skill and Tool versions
+  caller_supplied_final_result: prohibited
+  authorization: required on every execute, duplicate execute, and result retrieval
+required_validation:
+  - execute idempotency and stale-revision tests
+  - concurrent execute, cancellation-during-execution, and late-observation tests
+  - exact operation and resource authorization coverage
+  - lifecycle and immutable terminal-result tests
+  - invalid-output, incomplete-evidence, cleanup, timeout, and failure-attribution tests
+  - cross-Workspace execution and result denial
+  - Requirement Review Skill runtime integration test
+  - terminal-result schema validation for completed, failed, blocked, cancelled, and timed-out outcomes
+  - schema, repository, typecheck, full test, and dependency validation
+approval:
+  product_direction: covered by prior Repository Owner instruction to preserve the original QA/QC vision
+  architecture_and_governance: approved by Codex change-impact review
+  implementation_authority: development slice only
+verification:
+  full_repository_validation: pass
+  node_runtime: 24.18.1
+  tests_passed: 112
+  tests_failed: 0
+  independent_review: pass
+  remaining_P0: 0
+  remaining_P1: 0
+release_effect:
+  enablement_beyond_development: remains_blocked
+  production_release: remains_blocked

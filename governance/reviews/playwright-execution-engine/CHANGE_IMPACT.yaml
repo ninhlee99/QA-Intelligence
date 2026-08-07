@@ -1,0 +1,35 @@
+id: IMPACT-PLAYWRIGHT-EXECUTION-ENGINE-001
+version: 1.0.0
+date: 2026-08-06
+status: accepted
+authority: Repository Owner explicit instruction; new runtime dependency for SPEC-407's already-accepted default execution technology
+change:
+  title: Adopt Playwright as a real ExecutionEngine adapter for SPEC-407/SPEC-504
+  supersedes: []
+  preserves:
+    - SPEC-407 §8's existing accepted decision naming Playwright as the default execution engine
+    - ADR-009's Execution Engine Abstraction (Core Platform never calls Playwright directly, only through the ExecutionEngine interface)
+    - ADR-003's Semantic UI requirement (locate/interact goes through SPEC-301/302/303, never raw selectors)
+    - the existing DeterministicExecutionEngine and its shared runExecutionEngineContract suite, unmodified
+    - ADR-011's small, auditable dependency baseline (one new direct dependency, playwright-core bundled)
+  corrects:
+    - no prior decision existed on how to close the SPEC-407 real-adapter gap now that its stated blocker (SPEC-301/302/303/408) is closed; this closes that gap before code is written
+affected_artifacts:
+  decisions: [ADR-022]
+  specifications: [SPEC-407, SPEC-504, SPEC-301, SPEC-302, SPEC-303]
+  implementation:
+    - new src/adapters/playwright/ Execution Engine adapter (not yet written)
+    - new package.json dependency playwright
+risks_and_controls:
+  - risk: a Playwright adapter reintroduces raw CSS/XPath selectors "for convenience," silently violating ADR-003
+    control: ADR-022 §4 decision rule requires all locate/interact to go through the existing Semantic UI pipeline; no second raw-selector path is permitted
+  - risk: the real adapter diverges from the deterministic adapter's contract, undermining SPEC-504 §7's "identical lifecycle tests" requirement
+    control: ADR-022 §4 requires the Playwright adapter pass the exact same runExecutionEngineContract suite, no relaxation
+  - risk: browser binaries missing in CI/dev silently hang or crash instead of failing closed
+    control: ADR-022 §4 requires an uninstalled/unreachable browser to fail closed with a distinct diagnosable code
+  - risk: dependency creep — other modules start importing playwright directly
+    control: ADR-022 §4 restricts playwright imports to src/adapters/playwright/ only, mirroring the ADR-021 js-yaml precedent
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: blocked_pending_GOV_012_evidence

@@ -1,7 +1,7 @@
 ---
 id: SPEC-213
 title: Agent and Skill Quality Assessment
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Quality Engineering
@@ -23,7 +23,8 @@ related_adrs:
   - ADR-009
   - ADR-010
   - ADR-015
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -52,6 +53,19 @@ The capability SHALL support:
 - human review for indeterminate or high-consequence outcomes
 
 It SHALL NOT approve its own release, convert observations directly into knowledge, infer authority from a score, or treat model fluency as task correctness.
+
+### 3.1 AI/Agent Adversarial and Coverage Dimensions
+
+Applicable suites SHALL cover the AI/Agent testing coverage dimensions
+defined by SPEC-107 §5, which is the single source of truth for that list
+(task correctness, grounding, Tool-use safety, prompt injection,
+exfiltration, sensitive-data handling, drift, fallback, cost, and latency,
+among others). This section SHALL NOT independently enumerate that list.
+
+Adversarial-AI-input testing carries the same depth and priority as
+Workspace-isolation coverage required elsewhere in this specification; it
+SHALL NOT be treated as a lighter-weight or optional dimension relative to
+isolation testing.
 
 ## 4. Assessment Workflow
 

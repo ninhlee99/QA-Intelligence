@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/agent-run-execute.schema.json",
+  "title": "Agent Run Execute Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation_id", "workspace_id", "actor_id", "policy_version", "workspace_context", "expected_revision", "idempotency_key"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "operation_id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "actor_id": {"type": "string", "minLength": 1},
+    "policy_version": {"$ref": "#/$defs/exactVersionPin"},
+    "workspace_context": {"$ref": "#/$defs/workspaceContext"},
+    "expected_revision": {"type": "integer", "minimum": 0},
+    "idempotency_key": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "workspaceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "workspace_id", "actor_id", "actor_type", "roles", "permissions", "policy_version", "request_id", "correlation_id", "audience", "environment", "issued_at", "expires_at", "issuer", "integrity_proof"],
+      "properties": {
+        "schema_version": {"const": "1.0.0"},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "actor_id": {"type": "string", "minLength": 1},
+        "actor_type": {"type": "string", "minLength": 1},
+        "roles": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "permissions": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "policy_version": {"$ref": "#/$defs/exactVersionPin"},
+        "request_id": {"type": "string", "minLength": 1},
+        "correlation_id": {"type": "string", "minLength": 1},
+        "audience": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "environment": {"type": "string", "minLength": 1},
+        "issued_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "issuer": {"type": "string", "minLength": 1},
+        "integrity_proof": {"type": "string", "minLength": 1},
+        "administrative_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["purpose", "target_workspace_ids", "approval_ref"],
+          "properties": {
+            "purpose": {"type": "string", "minLength": 1},
+            "target_workspace_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "approval_ref": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "exactVersionPin": {"type": "string", "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?|[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$"}
+  }
+}

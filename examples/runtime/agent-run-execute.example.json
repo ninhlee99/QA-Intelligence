@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "operation_id": "operation-execute-001",
+  "workspace_id": "workspace-001",
+  "actor_id": "actor-001",
+  "policy_version": "policy@1.0.0",
+  "workspace_context": {
+    "schema_version": "1.0.0",
+    "workspace_id": "workspace-001",
+    "actor_id": "actor-001",
+    "actor_type": "human",
+    "roles": ["agent-operator"],
+    "permissions": ["agent:execute"],
+    "policy_version": "policy@1.0.0",
+    "request_id": "request-execute-001",
+    "correlation_id": "correlation-001",
+    "audience": ["qa-intelligence"],
+    "environment": "test",
+    "issued_at": "2026-08-03T00:00:00.000Z",
+    "expires_at": "2026-08-03T01:00:00.000Z",
+    "issuer": "identity-test",
+    "integrity_proof": "fixture-proof"
+  },
+  "expected_revision": 3,
+  "idempotency_key": "execute-001"
+}

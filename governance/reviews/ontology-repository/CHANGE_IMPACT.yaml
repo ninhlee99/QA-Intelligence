@@ -1,0 +1,31 @@
+id: IMPACT-ONTOLOGY-REPOSITORY-001
+version: 1.0.0
+date: 2026-08-06
+status: accepted
+authority: Repository Owner explicit instruction; new runtime dependency for SPEC-408's already-accepted YAML ontology serialization
+change:
+  title: Adopt js-yaml as the Ontology Repository's YAML parsing dependency and implement the SPEC-408 component
+  supersedes: []
+  preserves:
+    - SPEC-408 §9's canonical serialization decision (YAML under ontology/, indexed by meta/ONTOLOGY_INDEX.yaml) unchanged
+    - ADR-011's small, auditable dependency baseline (one new pure-JS, no-native-binding package, same bar pg/jose already cleared)
+    - the existing Python/PyYAML governance validation path (tests/validate_repository.py) unchanged
+  corrects:
+    - no prior decision existed on how a TypeScript component reads the already-accepted ontology/*.yaml files; this closes that gap before code is written
+affected_artifacts:
+  decisions: [ADR-021]
+  specifications: [SPEC-101, SPEC-408, SPEC-501]
+  implementation:
+    - new src/ontology/ Ontology Repository component (not yet written)
+    - new package.json dependency js-yaml (+ @types/js-yaml dev dependency)
+risks_and_controls:
+  - risk: js-yaml's load() could construct unsafe types from untrusted YAML
+    control: ADR-021 §4 restricts usage to the safe-by-default load() function only, never loadAll or a custom schema; ontology/*.yaml is already-trusted, governance-reviewed content, not untrusted input
+  - risk: dependency creep — other modules start importing js-yaml directly
+    control: ADR-021 §4 decision rule restricts js-yaml imports to src/ontology/ only, mirroring the one-seam-one-technology pattern already used for pg/jose
+  - risk: a hand-rolled parser would have been safer against dependency supply-chain risk
+    control: ADR-021 §3/§5 — js-yaml is the ecosystem-standard, widely-audited parser; the alternative (hand-rolling full YAML) was rejected as higher risk given YAML's real grammar complexity, unlike ADR-019's bounded JSON-RPC case
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: not_applicable_read_only_governance_data

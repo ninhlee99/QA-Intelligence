@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "operation_id": "operation-execute-invalid",
+  "workspace_id": "workspace-001",
+  "actor_id": "actor-001",
+  "policy_version": "policy-1.0.0",
+  "expected_revision": -1,
+  "idempotency_key": ""
+}

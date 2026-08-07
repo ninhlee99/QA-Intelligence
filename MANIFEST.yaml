@@ -1,7 +1,7 @@
 id: QA-INTELLIGENCE
-version: 1.0.0
+version: 1.1.0
 status: accepted-specification-baseline
-last_updated: 2026-08-03
+last_updated: 2026-08-06
 entry_points:
   vision: specs/foundation/SPEC-001-vision.md
   repository_governance: specs/foundation/SPEC-007-repository-governance.md
@@ -34,16 +34,16 @@ layers:
 counts:
   foundation_specs: 7
   governance_documents: 12
-  architecture_decisions: 15
-  knowledge_specs: 7
+  architecture_decisions: 23
+  knowledge_specs: 8
   product_specs: 13
   architecture_specs: 10
   component_specs: 11
   interface_specs: 11
   runtime_specs: 7
 implementation:
-  status: ready_to_start_requirement_review_tracer_bullet
-  reason: the full specification baseline, contracts, schemas, fixtures, adapter plan, and implementation-entry governance are accepted; implementation conformance evidence remains to be produced
+  status: requirement_review_development_slice_in_progress
+  reason: deterministic assessment, authorization, knowledge, reasoning replay, schema validation, evaluation, in-memory runtime, and scripted Evaluation Adapter modules now exist; runtime execution composition, production adapters, and complete GOV-012 conformance evidence remain pending
 readiness:
   foundation: accepted
   governance: accepted
@@ -56,5 +56,5 @@ readiness:
   runtime_specs: accepted
   machine_readable_artifacts: accepted
   formal_review: approved
-  implementation_conformance: pending
+  implementation_conformance: partial_development_evidence_only
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence

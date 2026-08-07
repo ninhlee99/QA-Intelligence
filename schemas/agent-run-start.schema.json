@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/agent-run-start.schema.json",
+  "title": "Agent Run Start Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation_id", "workspace_id", "actor_id", "workspace_context", "agent", "purpose", "consequence_class", "input", "policy_version", "budgets", "deadline", "idempotency_key"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "operation_id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "actor_id": {"type": "string", "minLength": 1},
+    "workspace_context": {"$ref": "#/$defs/workspaceContext"},
+    "agent": {"$ref": "#/$defs/versionRef"},
+    "purpose": {"type": "string", "minLength": 1},
+    "consequence_class": {"enum": ["advisory", "reversible", "controlled_side_effect", "high_consequence"]},
+    "input": {"type": "object"},
+    "allowed_skills": {"type": "array", "items": {"$ref": "#/$defs/versionRef"}},
+    "allowed_tools": {"type": "array", "items": {"$ref": "#/$defs/versionRef"}},
+    "policy_version": {"$ref": "#/$defs/exactVersionPin"},
+    "budgets": {"$ref": "#/$defs/budgets"},
+    "deadline": {"type": "string", "format": "date-time"},
+    "evidence_requirements": {"type": "array", "items": {"type": "string"}},
+    "idempotency_key": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "workspaceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "workspace_id", "actor_id", "actor_type", "roles", "permissions", "policy_version", "request_id", "correlation_id", "audience", "environment", "issued_at", "expires_at", "issuer", "integrity_proof"],
+      "properties": {
+        "schema_version": {"const": "1.0.0"},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "actor_id": {"type": "string", "minLength": 1},
+        "actor_type": {"type": "string", "minLength": 1},
+        "roles": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "permissions": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "policy_version": {"$ref": "#/$defs/exactVersionPin"},
+        "request_id": {"type": "string", "minLength": 1},
+        "correlation_id": {"type": "string", "minLength": 1},
+        "audience": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "environment": {"type": "string", "minLength": 1},
+        "issued_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "issuer": {"type": "string", "minLength": 1},
+        "integrity_proof": {"type": "string", "minLength": 1},
+        "administrative_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["purpose", "target_workspace_ids", "approval_ref"],
+          "properties": {
+            "purpose": {"type": "string", "minLength": 1},
+            "target_workspace_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "approval_ref": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "versionRef": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string", "minLength": 1}, "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"}}},
+    "exactVersionPin": {"type": "string", "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?|[A-Za-z0-9][A-Za-z0-9._:/-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$"},
+    "budgets": {"type": "object", "additionalProperties": false, "required": ["max_steps", "max_duration_seconds", "max_tool_calls", "max_retries"], "properties": {"max_steps": {"type": "integer", "minimum": 1}, "max_duration_seconds": {"type": "integer", "minimum": 1}, "max_tool_calls": {"type": "integer", "minimum": 0}, "max_retries": {"type": "integer", "minimum": 0}, "max_tokens": {"type": "integer", "minimum": 0}, "max_cost": {"type": "number", "minimum": 0}, "max_tool_cost": {"type": "number", "minimum": 0}, "max_repeated_action_fingerprints": {"type": "integer", "minimum": 1}, "max_no_progress_iterations": {"type": "integer", "minimum": 1}}}
+  }
+}

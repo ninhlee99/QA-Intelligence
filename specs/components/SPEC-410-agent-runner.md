@@ -16,7 +16,7 @@ related_adrs:
   - ADR-008
   - ADR-010
   - ADR-011
-  - ADR-012
+  - ADR-017
   - ADR-013
   - ADR-014
   - ADR-015
@@ -55,6 +55,10 @@ Metrics include active runs, step and Tool latency, budget consumption, denials,
 ## 5. Interfaces and Persistence
 
 The component provides SPEC-508 and consumes SPEC-509, SPEC-510, SPEC-501, SPEC-502, SPEC-505, SPEC-506, and SPEC-507 without importing provider SDKs into its domain layer. Run aggregates, checkpoints, attempts, approvals, budget ledger, and effect ledger are durably persisted with optimistic concurrency and transactional event handoff. Conversation or model context is reconstructed and SHALL never be the sole durable state.
+
+For the local profile, the parent Agent Runner is the only lifecycle writer and
+persists through the Workspace SQLite repository. Sub-agents and test workers
+do not receive database paths or direct persistence authority.
 
 ## 6. Failure and Recovery
 

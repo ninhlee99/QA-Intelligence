@@ -3270,6 +3270,7 @@ An AI agent MUST NOT:
 | ADR-008 | SPEC-306, SPEC-406, SPEC-506, SPEC-601–605 | actor → Workspace context → scoped operation/evidence |
 | ADR-009 | SPEC-210, SPEC-404, SPEC-504, SPEC-601–605 | TestCase → asset → engine → attempt → result |
 | ADR-010 | SPEC-105, SPEC-211, SPEC-308, SPEC-605 | outcome → observation → proposal → governed validation |
+| ADR-018 | SPEC-108, SPEC-309, SPEC-508 | observation → save decision → applicability scope → bounded reuse or governed promotion |
 
 The product evidence chain is Discovery Evidence → Requirement → Business Rule and Risk → Test Strategy → Test Case and Test Data → Automation Asset → Execution and Evidence → Defect or Report → Knowledge Candidate.
 

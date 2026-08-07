@@ -1,0 +1,32 @@
+id: IMPACT-MCP-TRANSPORT-001
+version: 1.0.0
+date: 2026-08-05
+status: accepted
+authority: Repository Owner explicit continue-and-decide instruction; implementation-technology choice within ADR-016's already-approved MCP integration scope
+change:
+  title: Implement a minimal in-house JSON-RPC/stdio MCP transport instead of adopting @modelcontextprotocol/sdk
+  supersedes: []
+  preserves:
+    - ADR-016's authoritative execution path (Host -> Host Integration Package -> QA Intelligence MCP Interface -> Agent Runtime/Evaluation Engine)
+    - standard MCP wire-protocol compatibility with Claude Code, Codex, and Cursor
+    - ADR-011's small, auditable dependency baseline
+    - MCP as an untrusted transport adapter relative to domain authority (ADR-016 §6)
+  corrects:
+    - no prior decision existed on transport implementation technology; this closes that gap before code is written
+affected_artifacts:
+  decisions: [ADR-019]
+  specifications: [SPEC-503, SPEC-508, SPEC-509, SPEC-510]
+  implementation:
+    - new MCP JSON-RPC/stdio transport module (not yet written)
+    - new MCP tool-call to SPEC-508/SPEC-511 translation adapter (not yet written)
+risks_and_controls:
+  - risk: an in-house JSON-RPC implementation has a framing or version-negotiation bug the official SDK would not have
+    control: dedicated conformance tests for framing, version negotiation, and malformed-input handling (ADR-019 §8) before any host package depends on it
+  - risk: scope creep — future need for remote Streamable HTTP/OAuth reimplements what the SDK already provides
+    control: ADR-019 §6 explicitly keeps adopting the SDK later as an open option, not foreclosed by this decision
+  - risk: MCP transport code accidentally gains direct Skill/persistence access, bypassing SPEC-508 authority
+    control: ADR-019 §5 restates ADR-016 §4's seam rule; conformance tests assert the transport has no reference to Skill implementations or persistence
+approval:
+  product_intent_preserved: true
+  architecture_approved: true
+  enablement_beyond_development: blocked_pending_GOV_012_evidence

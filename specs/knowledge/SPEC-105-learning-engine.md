@@ -1,7 +1,7 @@
 ---
 id: SPEC-105
 title: Learning Engine
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Knowledge Governance
@@ -19,7 +19,8 @@ related_adrs:
   - ADR-006
   - ADR-008
   - ADR-010
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -162,6 +163,33 @@ The engine SHOULD detect:
 
 Drift signals SHALL trigger investigation; they SHALL NOT directly rewrite authority.
 
+## 9a. Mistake and Failure-Recurrence Prevention
+
+A specific, mandatory application of pattern detection (§8): the engine
+SHALL treat repeated defects, incorrect verdicts, and human-corrected Agent
+decisions of the same causal class as a distinct candidate-generating
+signal, so that a mistake already made and corrected does not recur
+unaddressed.
+
+- A single occurrence of a mistake is a candidate for the bounded,
+  project-scoped avoidance-fact path defined by SPEC-108 §7.3 (Memory
+  Model), not for this engine's full candidate lifecycle — a one-off,
+  low-consequence mistake does not need synchronous human review to stop
+  recurring within the same Workspace.
+- A recurring mistake — the same causal class observed across multiple runs,
+  or a mistake whose generalized form would apply beyond the originating
+  Workspace (SPEC-108 §4.3) — SHALL be raised as a Learning Engine candidate
+  through the full workflow in §6, with the recurrence count, affected runs,
+  and prior avoidance-fact history included as supporting evidence.
+- A recurring mistake SHALL NOT be treated as resolved until its
+  post-promotion effectiveness (§16) shows the same causal class no longer
+  produces the same failure, distinguishing a genuinely fixed pattern from
+  one that merely stopped being observed.
+
+This section does not create a new lifecycle; it directs an existing input
+category (defects and resolutions, review findings, quality-gate outcomes)
+toward the specific goal of not repeating known, avoidable errors.
+
 ## 10. Validation
 
 Candidate validation SHALL consider:
@@ -288,6 +316,9 @@ The Learning Engine passes when:
 - promotion remains external and governed
 - drift and effectiveness metrics exist
 - simulated harmful, biased, and ambiguous signals fail safely
+- a simulated recurring mistake produces a candidate with recurrence
+  evidence and is distinguished from a one-off mistake handled by SPEC-108's
+  avoidance-fact path
 
 ## 20. Summary
 

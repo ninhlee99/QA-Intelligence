@@ -8,6 +8,7 @@
   "owner": "Demo Product Owner",
   "capability_id": "Authentication",
   "scope": {"workspace_id": "WORKSPACE-DEMO"},
+  "rationale": "Repeated failed attempts indicate a credential-guessing risk that must be bounded.",
   "acceptance_criteria": [{"id": "AC-1", "statement": "The threshold is evaluated by an accepted deterministic rule."}],
   "assumptions": [],
   "traceability": [{"relationship": "governed_by", "target_id": "DEMO-POLICY-001"}]

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/execution-record.schema.json",
+  "title": "Execution Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "workspace_id", "actor_id", "test_case_ref", "automation_asset_ref", "engine_ref",
+    "environment_ref", "state", "outcome"
+  ],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "actor_id": {"type": "string", "minLength": 1},
+    "test_case_ref": {"type": "string", "minLength": 1},
+    "automation_asset_ref": {"type": "string", "minLength": 1},
+    "engine_ref": {"type": "string", "minLength": 1},
+    "plugin_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "environment_ref": {"type": "string", "minLength": 1},
+    "dataset_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "schedule_or_trigger": {"type": "string"},
+    "state": {
+      "enum": ["planned", "queued", "preparing", "running", "collecting_evidence", "completed", "failed", "cancelled", "timed_out", "blocked"]
+    },
+    "outcome": {
+      "enum": ["passed", "failed", "blocked", "skipped", "cancelled", "flaky", "infrastructure_error", "indeterminate", null]
+    },
+    "skip_reason": {"type": "string"},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "queued_at": {"type": "string"},
+        "started_at": {"type": "string"},
+        "completed_at": {"type": "string"},
+        "duration_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "resource_usage": {"type": "object"},
+    "cancellation_ref": {"type": "string"},
+    "retry_of_ref": {"type": "string"},
+    "parent_execution_ref": {"type": "string"}
+  }
+}

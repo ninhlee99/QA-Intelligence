@@ -1,19 +1,21 @@
 ---
 id: SPEC-501
 title: Knowledge Store Interface
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Architecture
   - Knowledge Platform
 depends_on:
   - SPEC-103
+  - SPEC-108
   - SPEC-506
 related_adrs:
   - ADR-001
   - ADR-008
-  - ADR-012
-last_updated: 2026-08-03
+  - ADR-017
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -27,6 +29,8 @@ approval_evidence: governance/reviews/full-spec-baseline/INTERFACE_REVIEW.yaml
 This interface defines provider-independent commands and queries for governed knowledge persistence and retrieval.
 
 This specification is the single source of truth for the public Knowledge Store contract; it SHALL not depend on or expose SPEC-401 implementation details.
+
+Callers seeking bounded, run-scoped reuse of query results, or a corpus-scale selection strategy for large result sets, SHALL consult SPEC-108 (Memory Model), which is the canonical owner of that behavior. This interface remains the single source of truth for the underlying commands and queries themselves.
 
 ## 2. Commands
 

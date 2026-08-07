@@ -1,0 +1,18 @@
+{
+  "id": "RISK-DEMO-001",
+  "version": "1.0.0",
+  "status": "draft",
+  "statement": {
+    "cause": "Rate limiting is not enforced on the login endpoint.",
+    "event": "An attacker submits high-volume credential-stuffing requests.",
+    "consequence": "Legitimate user accounts are locked out or compromised."
+  },
+  "category": "security_and_privacy",
+  "affected": {"workspace_id": "WORKSPACE-DEMO", "capability_id": "Authentication"},
+  "likelihood_rationale": "Public endpoint with no prior rate-limiting control.",
+  "impact_rationale": "Account lockout affects all active users of this Workspace.",
+  "evidence": ["incident-report:INC-042"],
+  "owner": "Security Engineering",
+  "controls": ["control:rate-limit-login@1.0.0"],
+  "residual_risk": "Low, once rate limiting is deployed and monitored."
+}

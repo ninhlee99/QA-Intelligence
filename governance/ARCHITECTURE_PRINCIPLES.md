@@ -1,7 +1,7 @@
 ---
 id: GOV-001
 title: Architecture Principles
-version: 1.1.0
+version: 1.2.0
 status: accepted
 owner:
   - Architecture
@@ -25,7 +25,8 @@ related_adrs:
   - ADR-008
   - ADR-009
   - ADR-010
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 ---
 
 # Architecture Principles
@@ -1704,7 +1705,9 @@ Caching, parallelism, batching, summarization, and reduced-context techniques SH
 * governance
 * security
 
-Correctness and trust take precedence over optimization.
+Correctness and trust take precedence over optimization. AP-060 constrains
+how optimization is done; AP-063 and AP-064 require that it is done. See
+ADR-018.
 
 ### Review Questions
 
@@ -1712,6 +1715,63 @@ Correctness and trust take precedence over optimization.
 * Is cache scope correct?
 * Does parallel execution create race conditions?
 * Does summarization remove required evidence?
+
+---
+
+## AP-063: Proportional Rigor
+
+The number of execution stages, the volume of retained evidence, and the
+strictness of the completion gate SHALL scale with the operation's
+consequence class, as already classified by SPEC-106 and SPEC-308. Rigor
+SHALL NOT be applied uniformly regardless of risk.
+
+Low-consequence, reversible, read-only operations MAY use a reduced-stage
+fast path that still records a stable step ID, the selected Skill/Tool, and
+the outcome, but MAY omit full evidence-completeness and version-pinning
+re-verification. Medium- and high-consequence or irreversible operations
+SHALL continue to pay the full pipeline defined by SPEC-309, SPEC-308, and
+SPEC-508 without reduction.
+
+Proportional rigor is scoped per-operation by consequence class, not
+per-Skill or per-Agent: a mostly-low-risk Skill SHALL NOT use the fast path
+for an occasional high-consequence step it performs.
+
+### Review Questions
+
+* What consequence class does this operation carry, and who assigned it?
+* Does the fast path skip anything that would be required to explain a
+  high-consequence decision, if this step turned out to be one?
+* Can a reduced-stage step still be traced to a stable step ID and outcome?
+* Is the classification re-evaluated per operation, not inherited from the
+  Skill as a whole?
+
+---
+
+## AP-064: Context and Cost Efficiency
+
+Within the correctness and provenance bounds set by AP-060, the system
+SHALL reuse already-assembled reasoning context and already-retrieved
+Knowledge Store results within the lifetime of a single Agent run where the
+underlying durable references have not changed, rather than reconstructing
+context from scratch on every `Plan → Act → Observe → Validate` iteration.
+
+Token, time, and Tool-call budgets SHALL have concrete default values keyed
+by consequence class, defined in SPEC-508, rather than existing as
+unquantified vocabulary. Minimizing cost within the bound set by AP-063 is a
+requirement, not an optional optimization: an implementation that is
+correct but does not attempt reuse or budget adherence does not satisfy this
+principle. See SPEC-108 for the retrieval/reuse layer this principle
+depends on, and ADR-018 for the decision record.
+
+### Review Questions
+
+* Does this step re-fetch or re-assemble something already resolved earlier
+  in the same run, with no change to its underlying source?
+* Does SPEC-508 (or the applicable suite-level policy) give this operation a
+  concrete budget, or only an unquantified "budget SHALL exist" statement?
+* Would reuse here violate scope, provenance, version correctness,
+  isolation, deterministic precedence, governance, or security (AP-060)? If
+  not, is reuse actually happening?
 
 ---
 
@@ -2151,5 +2211,6 @@ The platform SHALL remain:
 * governed
 * testable
 * continuously improvable
+* proportionally fast and cost-efficient
 
 These principles are the architecture review baseline for all future specifications, components, and implementations in QA Intelligence.

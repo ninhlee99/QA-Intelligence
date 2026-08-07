@@ -2,20 +2,20 @@ generated: true
 generated_at: 2026-08-03
 command: npx --yes -p node@24 -c 'node --version && npm run validate'
 runtime: Node.js 24.18.1
-scope: accepted documentation baseline, machine-readable artifacts, and selected Agent/Skill tracer-bullet contracts
+scope: accepted documentation baseline, machine-readable artifacts, deterministic Requirement Review Agent/Skill runtime, in-memory multi-trial orchestration, retained campaign repository, and PostgreSQL record-store transaction development slice
 outcome: pass
 checks:
   yaml_parse:
     outcome: pass
-    files_checked: 34
+    files_checked: 37
     failures: 0
   json_parse:
     outcome: pass
-    files_checked: 56
+    files_checked: 75
     failures: 0
   governed_metadata_and_identity:
     outcome: pass
-    artifacts_checked: 93
+    artifacts_checked: 94
     duplicate_ids: 0
     unresolved_references: 0
     dependency_cycles: 0
@@ -28,7 +28,7 @@ checks:
     readiness_mismatches: 0
   repository_graph:
     outcome: pass
-    critical_edges_checked: 37
+    critical_edges_checked: 38
     unresolved_targets: 0
     duplicate_edges: 0
     cycles: 0
@@ -49,13 +49,39 @@ checks:
   json_schema_draft_2020_12_strict:
     validator: Ajv 8.20.0
     outcome: pass
-    schemas_compiled: 20
-    valid_examples_accepted: 16
-    invalid_examples_rejected: 9
+    schemas_compiled: 26
+    valid_examples_accepted: 22
+    invalid_examples_rejected: 15
     failures: 0
   dependency_security:
     outcome: pass
     npm_audit_vulnerabilities: 0
+  typescript_source:
+    outcome: pass
+    runtime: Node.js 24.18.1
+    strict_typecheck: pass
+    build: pass
+  implementation_tests:
+    outcome: pass
+    tests_passed: 152
+    tests_failed: 0
+    coverage_scope:
+      - requirement assessment ordering and failure attribution
+      - Workspace integrity, least privilege, and isolation
+      - deterministic Knowledge Search and reasoning replay
+      - evaluation suite integrity and premature-release prevention
+      - Evaluation Adapter envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability declaration, observation-only results, and fail-closed cleanup
+      - single-trial Evaluation Campaign orchestration, static identity and version validation, Adapter response-envelope integrity, deterministic assertion classification, evidence verification, provider-failure attribution, and cleanup dominance
+      - multi-trial campaign matrix validation, bounded parallel scheduling, declared-order retention, cross-trial identity and version integrity, critical-invariant aggregation, cleanup consistency, and cancellation stop semantics
+      - retained campaign repository contract, immutable Workspace-scoped snapshots and events, canonical transitions, exact-version readiness, optimistic revisions, idempotent commands, attributable trial boundaries, and fail-closed recovery decisions
+      - PostgreSQL campaign record-store transaction contract, atomic campaign/event/command/outbox writes, idempotent and concurrent-command replay, optimistic update, Workspace-scoped reads, corrupt JSONB rejection, and outbox-failure rollback
+      - Agent Runtime authorization, idempotency, budgets, cancellation, and event replay
+      - Agent Runtime execute/result ownership, retained input/Agent/Skill/Tool authority, evidence requirements, immutable terminal results, and cross-Workspace denial
+      - Requirement Review Agent/Skill execution through the Agent Runtime while preserving the independent QA verdict
+      - requirement-read authorization before resolution, observed usage on budget exhaustion, and deadline timeout finalization
+      - concurrent execute exclusion, cancellation precedence, late-result timeout, exact policy/Skill/Tool binding, complete failure facts, and rejected-approval results
+      - schema validation and development-harness composition
+      - runtime envelope versioning, event payload discrimination, approval/checkpoint identity, and lifecycle invariants
 approval_evidence:
   owner: ../governance/reviews/full-spec-baseline/BASELINE_OWNER_APPROVAL.yaml
   knowledge: ../governance/reviews/full-spec-baseline/KNOWLEDGE_REVIEW.yaml
@@ -69,11 +95,11 @@ approval_evidence:
 readiness:
   documentation_and_machine_readable_baseline: accepted
   original_product_vision: comprehensive_QA_QC_and_experienced_Senior_Test_Engineer_identity_preserved
-  initial_tracer_bullet: ready_to_start_implementation
-  implementation_conformance: pending_source_code_and_shared_adapter_contract_tests
+  initial_tracer_bullet: deterministic_runtime_multi_trial_orchestration_retained_campaign_repository_and_postgresql_store_transaction_tracer_implemented
+  implementation_conformance: partial_development_evidence_only
   enablement_beyond_development: blocked_pending_GOV_012_G1_to_G4_evidence
   production_release: blocked_pending_GOV_012_G5_G6_and_runtime_evidence
 limitations:
-  - this validation proves repository consistency and machine-readable contract quality, not source-code or deployed-runtime conformance
-  - production contract, sandbox, security, load, recovery, monitoring, and provider conformance evidence requires implementation
-authority: validates and records the accepted documentation baseline; does not certify implementation, enable an Agent or Skill, or approve production release
+  - this validation proves repository consistency and the tested deterministic development surface, not deployed-runtime or production-adapter conformance
+  - production identity, PostgreSQL 18 driver/runtime and real durability/RLS/concurrency/outbox-claim conformance, provider, Tool, sandbox, load, process-restart recovery, monitoring, Judge orchestration, MCP host-package conformance, and shared production-adapter evidence remain pending
+authority: validates and technically approves the deterministic development slice only; it does not enable an Agent or Skill or approve production release

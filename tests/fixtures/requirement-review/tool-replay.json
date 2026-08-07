@@ -6,7 +6,7 @@
       "sequence": 1,
       "tool": "knowledge-search@0.1.0",
       "permission": "knowledge:read",
-      "arguments": {"query": "observable acceptance criteria", "limit": 5},
+      "arguments": {"query": "observable acceptance criteria", "limit": 5, "knowledge_snapshot": "0.1.0"},
       "result_refs": ["quality-rule-source-001"],
       "effect": "read_only"
     }

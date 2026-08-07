@@ -25,7 +25,7 @@ related_adrs:
   - ADR-008
   - ADR-010
   - ADR-011
-  - ADR-012
+  - ADR-017
   - ADR-013
   - ADR-014
 supersedes: []

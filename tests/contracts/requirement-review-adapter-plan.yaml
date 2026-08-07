@@ -37,7 +37,8 @@ seams:
   - interface: SPEC-508
     dependency_category: in_process_for_initial_slice
     production_adapter: Agent Runner
-    test_adapter: deterministic clock, identity, provider, Tool and repository adapters injected internally
-    rationale: Agent Runtime remains the deep module and its interface is the test surface
+    test_adapter: deterministic Agent Runtime adapter composed from deterministic clock, identity, provider, Tool, and repository adapters
+    fixtures: tests/fixtures/requirement-review/identity-and-policy.json
+    conformance: duplicate_start, inspect, approval, monotonic_cancel, budget, no_progress, resume, terminal_immutability, event_order, evidence, workspace_denial
+    rationale: Evaluation and product consumers test the Agent Runtime through SPEC-508; internal dependency injection does not replace consumer-side contract conformance
 implementation_rule: adapters SHALL NOT be implemented or declared conformant until their governing interfaces and ADR-011 through ADR-015 are accepted
-

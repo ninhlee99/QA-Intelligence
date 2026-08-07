@@ -1,7 +1,7 @@
 ---
 id: SPEC-209
 title: Test Automation
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Quality Engineering
@@ -14,7 +14,8 @@ related_adrs:
   - ADR-007
   - ADR-008
   - ADR-009
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -86,7 +87,9 @@ It SHALL not invent selectors without discovery evidence, weaken assertions, add
 
 ## 7. Flakiness
 
-Flaky behavior SHALL be retained, classified, owned, and remediated.
+Flaky behavior uses the `flaky` outcome defined by SPEC-210 §4, the single
+source of truth for that definition. Flaky behavior SHALL be retained,
+classified, owned, and remediated.
 
 Quarantine requires scope, reason, risk, owner, and expiration.
 

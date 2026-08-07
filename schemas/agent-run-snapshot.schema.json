@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa-intelligence.local/schemas/agent-run-snapshot.schema.json",
+  "title": "Agent Run Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "workspace_id", "revision", "state", "objective", "consumed_budgets", "pending_approval", "checkpoint", "failure_class", "evidence", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "state": {"enum": ["requested", "resolving", "awaiting_authorization", "ready", "running", "awaiting_approval", "suspended", "validating", "completed", "failed", "cancelled", "timed_out", "blocked"]},
+    "objective": {"type": "string", "minLength": 1},
+    "consumed_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps", "duration_seconds", "tool_calls", "retries"],
+      "properties": {
+        "steps": {"type": "integer", "minimum": 0},
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "retries": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "cost": {"type": "number", "minimum": 0},
+        "tool_cost": {"type": "number", "minimum": 0},
+        "repeated_action_fingerprints": {"type": "integer", "minimum": 0},
+        "no_progress_iterations": {"type": "integer", "minimum": 0}
+      }
+    },
+    "pending_approval": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approval_id", "requested_action", "consequence_class", "required_permissions", "evidence"],
+          "properties": {
+            "approval_id": {"type": "string", "minLength": 1},
+            "requested_action": {"type": "string", "minLength": 1},
+            "consequence_class": {"enum": ["advisory", "reversible", "controlled_side_effect", "high_consequence"]},
+            "required_permissions": {"type": "array", "items": {"type": "string"}},
+            "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+          }
+        }
+      ]
+    },
+    "checkpoint": {"type": ["string", "null"]},
+    "failure_class": {"enum": ["subject", "policy", "provider", "skill", "tool", "infrastructure", "evaluator", "orchestration", null]},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "completed"}}, "required": ["state"]},
+      "then": {"properties": {"failure_class": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "awaiting_approval"}}, "required": ["state"]},
+      "then": {"properties": {"pending_approval": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "suspended"}}, "required": ["state"]},
+      "then": {"properties": {"checkpoint": {"type": "string", "minLength": 1}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["failed", "blocked", "cancelled", "timed_out"]}}, "required": ["state"]},
+      "then": {"properties": {"failure_class": {"enum": ["subject", "policy", "provider", "skill", "tool", "infrastructure", "evaluator", "orchestration"]}}}
+    }
+  ]
+}

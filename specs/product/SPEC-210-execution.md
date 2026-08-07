@@ -1,7 +1,7 @@
 ---
 id: SPEC-210
 title: Test Execution
-version: 1.0.0
+version: 1.1.0
 status: accepted
 owner:
   - Quality Engineering
@@ -14,7 +14,8 @@ related_adrs:
   - ADR-007
   - ADR-008
   - ADR-009
-last_updated: 2026-08-03
+  - ADR-018
+last_updated: 2026-08-05
 approved_by:
   - Repository Owner through explicit instruction
   - Codex Technical and Governance Review
@@ -57,6 +58,10 @@ Every transition SHALL be attributable and idempotent.
 
 ## 4. Result Model
 
+This section is the single source of truth for the execution-outcome
+vocabulary, including `flaky`. SPEC-209 §7 and SPEC-107 reference this
+definition rather than independently defining flaky behavior.
+
 Canonical test outcomes are:
 
 - passed
@@ -64,10 +69,18 @@ Canonical test outcomes are:
 - blocked
 - skipped with governed reason
 - cancelled
+- flaky
 - infrastructure_error
 - indeterminate
 
-Infrastructure errors and flaky retries SHALL NOT be reported as product passes.
+`flaky` is a distinct outcome from `indeterminate` and `infrastructure_error`:
+it SHALL be recorded only when the same case, same version, and same
+environment produce inconsistent `passed`/`failed` outcomes across repeated
+trials with no evidence of an environment, infrastructure, or evaluator
+fault. `indeterminate` covers cases where evidence is insufficient to reach
+any verdict. `infrastructure_error` covers cases where the environment or
+tooling itself failed, independent of the subject under test. Infrastructure
+errors and flaky retries SHALL NOT be reported as product passes.
 
 ## 5. Scheduling and Concurrency
 

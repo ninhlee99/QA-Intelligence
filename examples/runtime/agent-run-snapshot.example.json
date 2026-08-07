@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-001",
+  "workspace_id": "workspace-001",
+  "revision": 3,
+  "state": "ready",
+  "objective": "Review requirement REQ-001",
+  "consumed_budgets": {"steps": 0, "duration_seconds": 0, "tool_calls": 0, "retries": 0},
+  "pending_approval": null,
+  "checkpoint": null,
+  "failure_class": null,
+  "evidence": ["event://event-001"],
+  "updated_at": "2026-08-03T00:00:00.000Z"
+}

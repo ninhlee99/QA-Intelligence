@@ -21,7 +21,7 @@ related_adrs:
   - ADR-009
   - ADR-010
   - ADR-011
-  - ADR-012
+  - ADR-017
   - ADR-013
   - ADR-015
 last_updated: 2026-08-03
@@ -58,6 +58,8 @@ Every trial receives a clean Workspace-scoped sandbox, explicit fixtures, networ
 
 External sandboxes, Judges, execution providers, and telemetry stores connect only through SPEC-511. Each remote adapter SHALL have a local deterministic or replay counterpart. Product verdict semantics remain inside the Evaluation Engine, not adapters.
 
+SPEC-511 is the complete external Interface at this seam. Provider SDK objects, transport status codes, provider-specific lifecycle states, and provider-specific score meanings SHALL be normalized inside an Adapter and SHALL NOT leak into the Evaluation Engine. The Engine may use internal seams for orchestration, aggregation, or persistence, but those internal seams are not part of the Evaluation Adapter Contract.
+
 ## 5. Fault Classification
 
 Failures SHALL be classified as subject, evaluator, infrastructure, invalid test, policy denial, or indeterminate. Retry policy is class-specific. Retrying SHALL not discard failed-attempt evidence or silently select only favorable trials.
@@ -72,7 +74,17 @@ The architecture passes when deterministic cases run offline; repeated trials ex
 
 ## 8. Campaign State and Recovery
 
-Campaigns SHALL use durable states for validating, ready, running, aggregating, awaiting_adjudication, completed, cancelled, blocked, and failed. Every transition is attributable and idempotent. Recovery resumes from retained trial boundaries; it SHALL not rerun a trial with possible unknown side effects without compensation or approval. Cancellation revokes leases, prevents new trials, runs bounded cleanup, and retains evidence.
+SPEC-607 is the single canonical source for campaign lifecycle states and transition semantics. The Evaluation Engine SHALL use exactly these campaign transitions:
+
+```text
+draft → validating → ready → running → analyzing → awaiting_review
+awaiting_review → approved | conditionally_approved | rejected | indeterminate
+any non-terminal → blocked | cancelled | failed
+```
+
+The Engine SHALL NOT introduce aliases or parallel campaign states such as `aggregating`, `awaiting_adjudication`, or `completed`. Aggregation is work performed while the campaign is `analyzing`; adjudication is work performed while it is `awaiting_review`. `approved` remains an evaluation outcome and SHALL NOT be interpreted as release approval.
+
+Every transition is attributable and idempotent. Recovery resumes from retained trial boundaries; it SHALL not rerun a trial with possible unknown side effects without compensation or approval. Cancellation revokes leases, prevents new trials, runs bounded cleanup, and retains evidence. Adapter operation state is subordinate execution detail and SHALL NOT mutate or extend the SPEC-607 campaign lifecycle.
 
 ## 9. Configuration and Observability
 
@@ -84,4 +96,6 @@ Configuration SHALL pin suite, case, subject, Oracle/Judge, adapter, rubric, env
 - production and deterministic/replay adapters pass identical contract tests
 - failure attribution and aggregation invariants are machine-testable
 - historical recommendations retain exact versions and reproducibility limits
+- suite policy SHALL resolve from accepted authority rather than caller-provided thresholds
+- trial results, critical invariants, and evidence SHALL be accepted only after integrity/provenance verification through the Evaluation Adapter or retained evidence store
 - no unresolved architecture decision blocks component implementation

@@ -1,0 +1,303 @@
+id: EVIDENCE-RRA-IMPLEMENTATION-001
+version: 0.3.0
+date: 2026-08-05
+status: development_slice_pass
+scope: deterministic Requirement Review Agent and Assess Requirement Quality Skill development slice
+preserved_product_intent:
+  identity: comprehensive QA/QC Engineer and experienced Senior Test Engineer
+  unchanged: true
+  invariants:
+    - Discovery precedes clarification
+    - deterministic rules precede bounded reasoning
+    - accepted Knowledge remains authoritative and evidence-backed
+    - Workspace authority is verified outside prompts and fails closed
+    - provider, policy, infrastructure, evaluator, and subject failures remain distinct
+    - exact versions, evidence, uncertainty, and next actions remain visible
+    - no execution result directly promotes accepted Knowledge
+implemented_modules:
+  contracts:
+    - src/requirement-review/public.ts
+    - src/runtime/public.ts
+    - src/runtime/executor.ts
+  core:
+    - src/requirement-review/assess-requirement-quality.ts
+    - src/evaluation/evaluation-manager.ts
+    - src/evaluation/campaign-lifecycle.ts
+    - src/evaluation/evaluation-campaign-runner.ts
+    - src/evaluation/evaluation-campaign-coordinator.ts
+  adapters:
+    - src/adapters/deterministic/workspace-authorizer.ts
+    - src/adapters/memory/knowledge-search.ts
+    - src/adapters/memory/requirement-resolver.ts
+    - src/adapters/replay/scripted-reasoning-provider.ts
+    - src/adapters/replay/scripted-evaluation-adapter.ts
+    - src/evaluation/evaluation-campaign-repository.ts
+    - src/evaluation/evaluation-campaign-record-store.ts
+    - src/evaluation/postgres-evaluation-campaign-record-store.ts
+    - src/evaluation/sqlite-evaluation-campaign-record-store.ts
+    - src/evaluation/pg-transaction-manager.ts
+    - src/evaluation/persisted-evaluation-campaign-repository.ts
+    - src/runtime/agent-run-record-store.ts
+    - src/runtime/sqlite-agent-run-record-store.ts
+    - src/runtime/in-memory-agent-runtime.ts
+    - src/requirement-review/runtime-executor.ts
+  memory:
+    - src/memory/working-memory.ts
+    - src/memory/session-memory.ts
+  mcp:
+    - src/mcp/jsonrpc.ts
+    - src/mcp/protocol.ts
+    - src/mcp/mcp-server.ts
+    - src/mcp/stdio-transport.ts
+    - src/mcp/agent-runtime-tool-registry.ts
+    - src/mcp/dev-entrypoint.ts
+  host_integration_packages:
+    - hosts/claude-code/.claude-plugin/plugin.json
+    - hosts/codex/.codex-plugin/plugin.json
+    - hosts/cursor/mcp.json.example
+  evaluation_adapter_interface:
+    - src/evaluation/adapter.ts
+  persistence_migrations:
+    - migrations/postgresql/0001_evaluation_campaign_store.up.sql
+    - migrations/postgresql/0001_evaluation_campaign_store.down.sql
+  validation:
+    - src/schema/schema-validator.ts
+    - schemas/agent-run-start.schema.json
+    - schemas/agent-run-execute.schema.json
+    - schemas/agent-run-snapshot.schema.json
+    - schemas/agent-run-result.schema.json
+    - schemas/agent-run-event.schema.json
+    - schemas/agent-run-event-payload.schema.json
+  development_harness:
+    - src/requirement-review/tracer-bullet.ts
+    - tests/integration/requirement-review-tracer-bullet.test.ts
+  runtime_composition:
+    - src/requirement-review/runtime-executor.ts
+    - tests/integration/requirement-review-runtime.test.ts
+gate_evidence:
+  G1_intent_and_definition:
+    outcome: pass
+    basis: accepted specifications, exact public contracts, schema-validated output, and preserved product invariants
+  G2_authority_and_sandbox:
+    outcome: partial
+    passed:
+      - integrity-bound Workspace context verification
+      - issuer, audience, actor, Workspace, policy, permission, timestamp, and administrative-scope checks
+      - fail-closed runtime start authorization
+      - fail-closed authorization for every runtime read and control operation
+      - exact permission and resource coverage checks on allow decisions
+      - requirement-read authorization before retained Requirement resolution
+      - cross-Workspace denial and evidence sanitization
+    pending:
+      - production OIDC verifier and internal policy adapter
+      - production sandbox, cleanup, and destructive-effect tests
+  G3_contract_and_determinism:
+    outcome: partial
+    passed:
+      - strict TypeScript contracts and deterministic adapters
+      - runtime state, idempotency, cancellation, event replay, budget, and isolation tests for the implemented surface
+      - reasoning replay binds the full authorized request and enforces Tool and usage limits
+      - evaluation rejects incomplete suites, duplicate trials, contradictory outcomes, and unresolved versions
+      - versioned runtime envelopes and discriminated, evidence-bearing event payloads
+      - SPEC-508 runtime-owned execute/result path with exact retained Agent, Skill, Tool, and input-resource authority
+      - output, evidence-requirement, version, budget, cleanup, idempotency, terminal-result, and cross-Workspace runtime controls
+      - observed usage retention on budget exhaustion and terminal timeout after deadline expiry
+      - per-run single-writer reservation, cancellation precedence, and late-observation rejection
+      - exact retained policy and used Skill/Tool version binding
+      - full attempt-fact retention for failed validation and schema-valid results for every implemented terminal path
+      - rejected high-consequence approval retains an authoritative blocked result
+      - Requirement Review Skill execution through the runtime while preserving the separate QA verdict
+      - SPEC-511 provider-neutral Interface with complete operation surface
+      - scripted Evaluation Adapter common-envelope echo, operation-and-resource authorization and denial, canonical digest, idempotency, strict UTC deadline and late-result retention, capability, observation-only result, and fail-closed cleanup tests
+      - single-trial Evaluation Campaign orchestration through SPEC-511 capability discovery, environment preparation, execution, evidence collection, and cleanup
+      - pre-side-effect campaign identity, deadline, assertion-matrix, and exact-version validation
+      - fail-closed Adapter response-envelope and environment-version verification
+      - deterministic assertion Oracle preserves subject failures while provider, evidence, and cleanup failures remain non-subject and cannot recommend release
+      - multi-trial coordinator validates the declared matrix before dispatch and retains results in declaration order
+      - bounded parallel scheduling stops new sequential dispatch after observed cancellation
+      - trial-run identity, Workspace, subject, suite, cleanup, and cross-trial version integrity fail closed before aggregate recommendation
+      - provider-neutral retained campaign repository contract with immutable Workspace-scoped snapshots and attributable events
+      - canonical lifecycle and trial transitions use optimistic revisions, idempotent commands, and exact-version readiness checks
+      - recovery resumes only retained pending work after all checks pass and blocks active unknown work instead of silently rerunning it
+      - PostgreSQL record-store transaction adapter retains the campaign mutation, domain event, idempotent command result, and SPEC-505 outbox intent atomically
+      - concurrent same-command winners resolve to the retained result while stale revisions and conflicting digests remain distinct
+      - corrupt retained JSONB and outbox transaction failures fail closed without returning authoritative campaign state
+      - a real pg-driver PgTransactionManager proves the same shared record-store contract suite, a concurrent-writer race producing exactly one winner and one stale_revision loser, Row-Level Security denying an unscoped query under a non-superuser application role, and state surviving a fresh transaction manager (restart-equivalent) against a live local PostgreSQL 18 server
+      - SPEC-511 Evaluation Adapter conformance now covers cancellation (stable non-retryable failure), replay divergence (achieved_fidelity and divergences reported explicitly, never silently matching), replay_unavailable, and trial isolation (one trial cannot observe or receive another trial's scripted case) against ScriptedEvaluationAdapter
+      - a parallel AgentRunRecordStore seam and SqliteAgentRunRecordStore give Agent Run state (SPEC-410 §5) the same contract-tested optimistic-revision, idempotent-replay, and Workspace-denial guarantees the Evaluation Campaign record-store already had
+      - AP-064 context/cost-efficiency reuse is implemented (WorkingMemoryKnowledgeSearch) and proven against the real AssessRequirementQuality module: two reviews of the same requirement in one run query the Knowledge Store once, and a changed durable reference forces re-resolution
+    pending:
+      - SPEC-511 production Evaluation Adapter and shared production/deterministic conformance execution
+      - PostgreSQL outbox-claim, worker-loss, backup/restore, and production-migration conformance; OIDC/internal authorization for the database connection itself
+      - InMemoryAgentRuntime is not yet composed to write through AgentRunRecordStore — the seam and SQLite adapter exist and pass contract tests, but the runtime still holds authoritative state only in process memory
+      - process-restart, timeout, no-progress, cleanup, and partial-effect execution paths beyond the in-memory recovery-decision baseline
+  G4_evaluation_readiness:
+    outcome: partial
+    passed:
+      - immutable suite policy checks and critical invariants
+      - minimum trial enforcement prevents premature release recommendation
+      - subject and non-subject failure attribution
+      - trusted evidence-verifier boundary prevents caller-fabricated favorable trials
+      - the collected-evidence integrity and provenance verification boundary precedes deterministic assertion facts
+      - critical negative observations dominate the trial and cleanup failure overrides favorable observations
+      - critical invariants aggregate across every executed trial and cannot be averaged away
+      - cross-trial version divergence or absence produces an indeterminate campaign
+    pending:
+      - complete evaluation dataset and repeated trials
+      - holdout, contamination, robustness, security, recovery, and load campaigns
+  G5_regression_and_release_recommendation:
+    outcome: not_started
+  G6_controlled_release_and_monitoring:
+    outcome: not_started
+decision:
+  development_slice: technically_approved
+  enablement_beyond_development: blocked
+  production_release: blocked
+independent_review:
+  outcome: pass
+  remaining_P0: 0
+  remaining_P1: 0
+  validation:
+    tests_passed: 86
+    schemas_compiled: 25
+    valid_examples_accepted: 21
+    invalid_examples_rejected: 14
+    json_files_checked: 72
+    dependency_vulnerabilities: 0
+authority: technical evidence for the development slice only; it does not approve enablement, deployment, or release
+current_increment_validation:
+  tests_passed: 245
+  tests_failed: 0
+  tests_skipped: 1
+  tests_skipped_reason: real-PostgreSQL contract tests skip without QA_INTELLIGENCE_TEST_POSTGRES_URL so `npm test` stays database-free by default
+  schemas_compiled: 26
+  valid_examples_accepted: 22
+  invalid_examples_rejected: 15
+  yaml_files_checked: 39
+  json_files_checked: 75
+  full_repository_validation: pass
+  dependency_vulnerabilities: 0
+current_increment_review:
+  outcome: pass
+  reviewer: independent remediation reviewer
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - operation-and-resource-scoped authorization and consequence classification
+    - fail-closed denial and incomplete authorization coverage
+    - retained cleanup_incomplete outcome with residual details
+    - authorization decision evidence retention
+    - strict RFC 3339 UTC deadline and late-result semantics
+    - truthful development-only governance claims with production blockers preserved
+    - per-run single-writer reservation and post-execution compare-and-set
+    - cancellation precedence and late-result timeout finalization
+    - full observed-attempt fact retention on terminal failures
+    - exact policy and used Skill/Tool version binding
+    - schema-valid completed, failed, blocked, cancelled, and timed-out results
+    - authoritative blocked result after rejected high-consequence approval
+evaluation_campaign_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - Adapter observations never carry or decide a QA verdict
+    - the Evaluation Manager remains the only verdict and recommendation authority
+    - campaign, Workspace, trial, attempt, idempotency, deadline, and contract identities remain bound across operations
+    - mismatched Adapter envelopes stop before their values can influence execution or evaluation
+    - conflicting environment versions stop further execution and trigger cleanup
+    - evidence integrity failure produces invalid-test evidence and no favorable recommendation
+    - provider failure remains infrastructure evidence and still triggers evidence collection and cleanup
+    - cleanup failure or residual resources cannot produce a favorable recommendation
+    - cleanup failure retains complete operation evidence and cannot erase an independently verified subject failure
+    - that increment remained development-only and did not claim multi-trial, Judge, persistence, recovery, or production conformance; the later multi-trial increment is recorded below
+multi_trial_campaign_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - campaign definitions reject duplicate trial and attempt identities before dispatch
+    - concurrency never exceeds the declared bound and completed results retain declaration order
+    - cross-trial dependency versions must be present and identical
+    - a trial runner cannot substitute another campaign, Workspace, subject, suite, case, or trial
+    - a passed trial cannot coexist with incomplete cleanup
+    - any critical failure dominates the aggregate verdict
+    - observed cancellation is terminal and prevents dispatch of new sequential trials
+    - the coordinator stops at awaiting_review and never creates evaluation or release approval
+    - this increment predated retained campaign persistence; the later repository increment is recorded below
+retained_campaign_repository_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - the provider-neutral repository seam is independent of PostgreSQL and the canonical lifecycle is shared without core-to-adapter dependency
+    - campaign records and events are immutable, Workspace-scoped, attributable, and monotonically revised
+    - create, transition, trial-boundary, and recovery commands bind idempotency keys to canonical request input
+    - stale writers cannot change retained campaign or trial state
+    - only canonical campaign and trial transitions are accepted and terminal campaign states cannot reopen
+    - readiness fails while subject, suite, or any governed dependency version is unresolved
+    - state changes require evidence references and exact trial and attempt identities
+    - recovery validates pinned versions, evaluator health, leases, isolation, and cleanup before returning pending work
+    - active trials requiring reconciliation block the campaign and remaining pending trials become not_executed; no automatic rerun is claimed
+    - identical campaign identities remain isolated across Workspaces
+  explicit_non_claims:
+    - the in-memory adapter does not provide durable PostgreSQL or transactional-outbox guarantees
+    - process crash/restart, multi-process concurrency, OIDC authorization, Judge orchestration, and production adapter conformance remain pending
+postgres_campaign_store_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - the store interface hides SQL tables and transaction ordering from repository callers
+    - one transaction scopes the Workspace before reading or writing campaign state
+    - campaign snapshot, append-only event, command result, and outbox intent succeed or fail together
+    - exact command replay returns the originally retained result without duplicate writes
+    - a concurrent same-command winner is re-read after a lost compare-and-set and cannot become a false stale failure
+    - JSONB identity and lifecycle shape are checked before database state becomes authoritative domain state
+    - governed event kinds, sequential event revisions, trial definitions, and snapshot trial identities are verified while decoding JSONB
+    - outbox integrity metadata is computed from the canonical payload inside the adapter and cannot be supplied by the caller
+    - unknown runtime mutation kinds fail as invalid_request before a database transaction begins
+    - PostgreSQL migration defines composite Workspace keys, forced RLS, optimistic revision fields, append-only event and command keys, and publisher indexes
+    - up/down migration syntax and rollback passed a temporary PostgreSQL 14 smoke-test
+  explicit_non_claims:
+    - the local smoke-test is not PostgreSQL 18 production conformance
+    - no production driver, deployed database, real concurrent connection, RLS-role, outbox publisher, backup/restore, worker-loss, or restart evidence is claimed
+real_postgresql_driver_and_memory_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - a real pg-driver PgTransactionManager (not a fake) passes the full shared record-store contract suite against a live local PostgreSQL 18 server
+    - a concurrent-writer race on the same campaign revision produces exactly one succeeded mutation and one stale_revision failure, never a silent overwrite
+    - Row-Level Security denies an unscoped query when the connecting role is not a superuser; PostgreSQL superusers bypass RLS even under FORCE ROW LEVEL SECURITY, so this test specifically exercises a non-superuser application role to have any evidentiary value
+    - retained state is readable through a newly constructed PgTransactionManager with no shared in-process state, standing in for a parent-runtime restart
+    - a new AgentRunRecordStore seam and SqliteAgentRunRecordStore pass the same optimistic-revision, idempotent-replay, not_found, and cross-Workspace-denial contract suite already proven for the Evaluation Campaign record-store
+    - SPEC-511 conformance now includes cancellation, replay (success, divergence, and replay_unavailable), and trial isolation cases against ScriptedEvaluationAdapter, closing gaps the ROADMAP previously listed as outstanding
+    - WorkingMemoryKnowledgeSearch (SPEC-108 §4.1, AP-064) reuses a Knowledge Store result within a run when durable references are unchanged, and re-resolves when any of them change; proven both in isolation and against the real AssessRequirementQuality module
+    - SessionMemory (SPEC-108 §7) declines retention by default and only promotes low-consequence, project-scoped, provenance-bearing, reuse-likely candidates through the fast path; medium/high-consequence and cross-project candidates are explicitly declined rather than silently retained
+  explicit_non_claims:
+    - InMemoryAgentRuntime does not yet write through AgentRunRecordStore; the seam exists and is contract-tested but is not composed into the runtime's authoritative write path
+    - no Postgres adapter exists yet for Agent Run state (SQLite only, consistent with ADR-017's local-first default)
+    - Session Memory's fast-path promotion has no consumer wired into the Requirement Review Skill yet (no real failure-avoidance candidate is generated by assess-requirement-quality.ts); the component is implemented and tested in isolation and via the Working Memory integration test, not yet exercised end-to-end for a save-decision candidate
+    - production OIDC verifier, SPEC-511 production Evaluation Adapter, and PostgreSQL outbox-claim/worker-loss/backup conformance remain unimplemented, as recorded above
+mcp_host_integration_increment_review:
+  outcome: pass
+  reviewer: Codex implementation and specification-conformance review
+  remaining_P0: 0
+  remaining_P1: 0
+  verified:
+    - ADR-019 records the decision to implement a minimal in-house JSON-RPC/stdio MCP transport instead of adopting @modelcontextprotocol/sdk, keeping the wire protocol byte-compatible with standard MCP
+    - the transport layer (jsonrpc.ts, protocol.ts, mcp-server.ts, stdio-transport.ts) has no reference to Skill implementations, the Agent Runtime, or persistence; only agent-runtime-tool-registry.ts translates tools/call into the SPEC-508 start/execute sequence, matching ADR-016 §4's seam rule
+    - a real tools/call request reaches InMemoryAgentRuntime end-to-end over real process stdio (not an in-process call) via src/mcp/dev-entrypoint.ts, exercising the real DeterministicWorkspaceAuthorizer, AssessRequirementQuality, RequirementQualityRuleEngine, and RequirementReviewRuntimeExecutor, and returns outcome: completed with the correct verdict
+    - initialize/tools/list/tools/call, unsupported protocol version rejection, pre-initialize method rejection, malformed-JSON-RPC fail-closed handling, unknown-tool-name handling, and notifications/cancelled abort propagation are each covered by a dedicated test (ADR-019 §8)
+    - hosts/claude-code/.claude-plugin/plugin.json and hosts/codex/.codex-plugin/plugin.json were each executed with the exact command and working directory the respective host uses, confirming the relative path to dist/src/mcp/dev-entrypoint.js resolves correctly
+  explicit_non_claims:
+    - no Claude Code, Codex, or Cursor host application was actually installed and driven through this package in this session; conformance is proven by running the exact command line each plugin manifest declares, and by the dev entrypoint's own stdio-based test suite, not by a live host
+    - the dev entrypoint is explicitly non-production: fixture-based authorization (no OIDC), an in-memory single-requirement Knowledge Store seed, and an empty scripted Reasoning Provider
+    - remote Streamable HTTP transport and OAuth (ADR-016 §6 shared/team profile) are not implemented; stdio only
+    - Session Memory (SPEC-108) is not yet exercised through any MCP tool call; Workspace-scope-through-transport (plan item 2.6) remains untested
+    - SPEC-503 Platform Plugin Contract remains unimplemented; it was confirmed not to be a dependency of this MCP work (ADR-016 §3 distinguishes the two concepts) rather than closed

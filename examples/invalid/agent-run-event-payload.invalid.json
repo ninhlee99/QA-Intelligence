@@ -1,0 +1,6 @@
+{
+  "event_type": "authorization_granted",
+  "operation_id": "operation-001",
+  "policy_version": "policy-1.0.0",
+  "decision": "allow"
+}
