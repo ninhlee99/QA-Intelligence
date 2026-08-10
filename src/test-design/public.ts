@@ -127,6 +127,7 @@ export type {
  */
 export type TestCaseGenerationFindingCategory =
   | "unbindable_criterion"
+  | "ambiguous_criterion"
   | "no_acceptance_criteria"
   | "missing_expected_result";
 
@@ -195,14 +196,28 @@ export type TestCaseGenerationRequest = Readonly<{
  * rejects it). `boundary` submits an oversized value and expects no
  * infrastructure/system-error text to leak (SPEC-210 §4's
  * `infrastructure_error` distinction — a boundary case that crashes the
- * app is itself a finding-worthy bug, not test noise). `adversarial`
- * submits a benign injection/XSS probe string and expects it to come back
- * escaped as inert text, never executed or reflected as raw markup and
- * never accompanied by a leaked stack trace — this checks input
- * handling, not a real exploit attempt (no callback URLs, no destructive
- * payloads).
+ * app is itself a finding-worthy bug, not test noise). `empty` submits a
+ * blank value; `whitespace` submits spaces/tabs only — kept distinct from
+ * `empty` because some validators trim before checking and some don't, so
+ * they can pass/fail independently. `unicode` submits multi-byte/emoji
+ * input to catch encoding/mojibake bugs. `type_confusion` submits a
+ * non-numeric string into a field whose name looks numeric (Age, Amount,
+ * ...) — only generated when that signal is present, never fabricated for
+ * a field with no numeric name. `adversarial` submits a benign
+ * injection/XSS probe string and expects it to come back escaped as inert
+ * text, never executed or reflected as raw markup and never accompanied by
+ * a leaked stack trace — this checks input handling, not a real exploit
+ * attempt (no callback URLs, no destructive payloads).
  */
-export type TestCaseVariant = "positive" | "negative" | "boundary" | "adversarial";
+export type TestCaseVariant =
+  | "positive"
+  | "negative"
+  | "boundary"
+  | "empty"
+  | "whitespace"
+  | "unicode"
+  | "type_confusion"
+  | "adversarial";
 
 export type TestCaseGenerationResult = Readonly<{
   schema_version: "1.0.0";

@@ -183,26 +183,28 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
 
   const output = executed.value.output as {
     test_cases: Array<{ test_case_id: string; variant: string; outcome: string; skip_reason: string | null; evidence: string[] }>;
-    summary: { generated: number; executed: number; passed: number; failed: number; not_executed: number };
+    summary: { generated: number; executed: number; passed: number; failed: number; flaky: number; not_executed: number };
     report_html: string;
     report_path: string | null;
   } | null;
   assert.ok(output, "expected a QaRunReport output");
 
-  // One shared positive case for the criterion, plus 2 editable fields x 3
-  // negative/boundary/adversarial variants each = 1 + 6 = 7.
-  assert.equal(output!.test_cases.length, 7, JSON.stringify(output!.test_cases, null, 2));
-  assert.equal(output!.summary.generated, 7);
-  assert.equal(output!.summary.executed, 7, "every generated case has a generated assertion and SHALL execute, not be skipped");
+  // One shared positive case for the criterion, plus per editable field 5
+  // unconditional variants (negative/boundary/empty/whitespace/unicode) + 0
+  // type_confusion (neither Username nor Password looks numeric) + 4
+  // adversarial probes = 9 per field, 2 fields x 9 = 18, +1 positive = 19.
+  assert.equal(output!.test_cases.length, 19, JSON.stringify(output!.test_cases, null, 2));
+  assert.equal(output!.summary.generated, 19);
+  assert.equal(output!.summary.executed, 19, "every generated case has a generated assertion and SHALL execute, not be skipped");
   assert.equal(output!.summary.not_executed, 0);
 
-  // Negative/boundary/adversarial variants carry their own fixed probe
-  // values (never the real credentials) — the login fixture correctly
+  // Negative/boundary/edge-case/adversarial variants carry their own fixed
+  // probe values (never the real credentials) — the login fixture correctly
   // rejects them, so their forbidden_text assertion ("Welcome" absent)
   // SHALL pass for real, proving the pipeline actually drove a browser
   // rather than fabricating an outcome.
   const nonPositive = output!.test_cases.filter((testCase) => testCase.variant !== "positive");
-  assert.equal(nonPositive.length, 6);
+  assert.equal(nonPositive.length, 18);
   for (const testCase of nonPositive) {
     assert.equal(testCase.outcome, "passed", `${testCase.test_case_id} (${testCase.variant}) should pass: ${JSON.stringify(testCase)}`);
   }
@@ -214,7 +216,7 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.equal(positive.outcome, "failed", JSON.stringify(positive));
 
   assert.ok(output!.report_html.includes("QA run report"));
-  assert.ok(output!.report_html.includes("7"), "rendered HTML should surface the generated count");
+  assert.ok(output!.report_html.includes("19"), "rendered HTML should surface the generated count");
   assert.equal(output!.report_path, null, "no output_path was supplied");
 
   // Decision 1 (Option A): even with no output_path (JSON-only mode), a

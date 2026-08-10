@@ -9,6 +9,7 @@ import type {
   WorkspaceContext,
 } from "../../src/requirement-review/public.js";
 import type {
+  TestCase,
   TestCaseGenerationRequest,
   TestCaseGenerationUiElement,
 } from "../../src/test-design/public.js";
@@ -151,4 +152,107 @@ test("never binds an element with an empty or undefined accessible name", async 
   if (!result.ok) return;
   assert.equal(result.value.test_cases.length, 0);
   assert.equal(result.value.findings[0]!.category, "unbindable_criterion");
+});
+
+test("always generates empty/whitespace/unicode edge-case variants for a bindable, expected_text-bearing criterion", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        { id: "AC-1", statement: "The Nickname field accepts the entered value.", expected_text: "Welcome" },
+      ],
+      ui_map_elements: [
+        { id: "field-nickname", kind: "field", accessible_name: "Nickname", accessible_role: "textbox", interaction_hint: "editable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const generated: readonly TestCase[] = result.value.test_cases;
+  for (const kind of ["empty", "whitespace", "unicode"] as const) {
+    const cases = generated.filter((testCase) => testCase.tags?.includes(kind));
+    assert.equal(cases.length, 1, `expected exactly one ${kind} case`);
+  }
+});
+
+test("generates a type_confusion variant only for a field whose accessible name looks numeric", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        { id: "AC-1", statement: "The Age field and the Nickname field accept the entered values.", expected_text: "Welcome" },
+      ],
+      ui_map_elements: [
+        { id: "field-age", kind: "field", accessible_name: "Age", accessible_role: "textbox", interaction_hint: "editable" },
+        { id: "field-nickname", kind: "field", accessible_name: "Nickname", accessible_role: "textbox", interaction_hint: "editable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const typeConfusionCases = result.value.test_cases.filter((testCase) => testCase.tags?.includes("type_confusion"));
+  assert.equal(typeConfusionCases.length, 1, "type_confusion SHALL be generated only for the numeric-looking Age field, not Nickname");
+  const injectedField = typeConfusionCases[0]!.steps.find((step) => step.action === "type" && (step.input as Record<string, string>)["value"] !== undefined);
+  assert.equal(injectedField?.input?.["accessible_name"], "Age");
+});
+
+test("generates one test case per adversarial probe, each asserting absence of exactly the value it injected", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        { id: "AC-1", statement: "The Comment field accepts the entered value.", expected_text: "Welcome" },
+      ],
+      ui_map_elements: [
+        { id: "field-comment", kind: "field", accessible_name: "Comment", accessible_role: "textbox", interaction_hint: "editable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const generated: readonly TestCase[] = result.value.test_cases;
+  const assertions = result.value.generated_assertions;
+  const adversarialCases = generated.filter((testCase) => testCase.tags?.includes("adversarial"));
+  assert.equal(adversarialCases.length, 4, "expected one case per adversarial probe");
+
+  const injectedValues = new Set<string>();
+  for (const testCase of adversarialCases) {
+    const typeStep = testCase.steps.find((step) => step.action === "type" && (step.input as Record<string, string>)["value"] !== undefined);
+    const injected = (typeStep?.input as Record<string, string> | undefined)?.["value"];
+    assert.ok(injected, `expected ${testCase.id} to have injected a value`);
+    injectedValues.add(injected!);
+
+    const assertion = assertions.find((candidate) => candidate.test_case_id === testCase.id);
+    assert.ok(assertion, `expected a generated assertion for ${testCase.id}`);
+    assert.equal(assertion!.forbidden_text?.[0], injected, "forbidden_text SHALL assert absence of exactly the value that was injected");
+  }
+  assert.equal(injectedValues.size, 4, "each adversarial case SHALL inject a distinct probe value, not the same one repeated");
+});
+
+test("reports ambiguous_criterion instead of silently binding when two same-kind, same-name fields differ in accessible_role", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        { id: "AC-1", statement: "The Date field accepts the entered value.", expected_text: "Welcome" },
+      ],
+      ui_map_elements: [
+        { id: "field-date-textbox", kind: "field", accessible_name: "Date", accessible_role: "textbox", interaction_hint: "editable" },
+        { id: "field-date-combobox", kind: "field", accessible_name: "Date", accessible_role: "combobox", interaction_hint: "editable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.test_cases.length, 0, "no test case SHALL be fabricated against an ambiguous binding");
+  assert.equal(result.value.findings.length, 1);
+  assert.equal(result.value.findings[0]!.category, "ambiguous_criterion");
 });

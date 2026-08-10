@@ -42,13 +42,29 @@ type Dependencies = Readonly<{
   ids: IdFactory;
 }>;
 
+const BOUNDARY_VALUE = "x".repeat(300);
+const SYSTEM_ERROR_MARKERS: readonly string[] = ["stack trace", "exception", "internal server error", "traceback"];
+
+const EDGE_CASE_VALUES: Readonly<Record<"empty" | "whitespace" | "unicode", string>> = {
+  empty: "",
+  whitespace: "   ",
+  unicode: "テスト🎉ñ",
+};
+
+const NUMERIC_FIELD_NAME_PATTERN = /\b(age|amount|quantity|qty|price|count|number|num|total|balance)\b/i;
+
+/** `type_confusion` is only generated when a field's own accessible name signals a numeric expectation — never fabricated for a field with no such signal (SPEC-207 §6). */
+function looksNumeric(accessibleName: string | undefined): boolean {
+  return accessibleName !== undefined && NUMERIC_FIELD_NAME_PATTERN.test(accessibleName);
+}
+
 /**
  * Fixed, benign probe values (SPEC-207 §4 error guessing/boundary
- * analysis). `adversarial` strings are standard input-validation probes —
- * inert unless the application fails to escape output, which is exactly
- * the bug this variant checks for. No payload here is destructive, carries
- * a callback, or attempts code execution beyond a harmless `alert(1)`
- * marker a correctly-escaping page will never run.
+ * analysis) — standard input-validation probes, inert unless the
+ * application fails to escape output, which is exactly the bug each
+ * probe checks for. No payload here is destructive, carries a callback,
+ * or attempts real code execution beyond a harmless `alert(1)` marker a
+ * correctly-escaping page will never run.
  *
  * `<img src=x onerror=alert(1)>` is used rather than `<script>alert(1)</script>`
  * because the DOM spec deliberately never executes a `<script>` tag
@@ -57,10 +73,62 @@ type Dependencies = Readonly<{
  * silently passing every vulnerable page. `onerror` on a broken image *does*
  * fire through `innerHTML`, which is why it is the standard XSS test vector
  * for exactly this class of bug.
+ *
+ * Each probe becomes its own test case (one value injected, that exact
+ * value asserted absent) — never a shared forbidden-list where most
+ * entries were never actually submitted, which would make the assertion
+ * vacuously true for anything but the one value actually injected.
+ * `MAX_ADVERSARIAL_PROBES_PER_FIELD` caps how many of these run per field
+ * so this list can grow without unboundedly multiplying test case count.
  */
-const BOUNDARY_VALUE = "x".repeat(300);
-const ADVERSARIAL_VALUES: readonly string[] = ["<img src=x onerror=alert(1)>", "' OR '1'='1"];
-const SYSTEM_ERROR_MARKERS: readonly string[] = ["stack trace", "exception", "internal server error", "traceback"];
+const ADVERSARIAL_PROBES: readonly Readonly<{ id: string; value: string }>[] = [
+  { id: "xss-onerror-img", value: "<img src=x onerror=alert(1)>" },
+  { id: "sqli-or-1-1", value: "' OR '1'='1" },
+  { id: "path-traversal", value: "../../../../etc/passwd" },
+  { id: "command-injection", value: "; ls -la" },
+];
+const MAX_ADVERSARIAL_PROBES_PER_FIELD = ADVERSARIAL_PROBES.length;
+
+type NonAdversarialPerturbationVariant = Exclude<TestCaseVariant, "positive" | "adversarial">;
+
+type VariantSpec = Readonly<{
+  value: string;
+  assertionText(fieldName: string | undefined, expectedText: string): string;
+  forbidden(expectedText: string): readonly string[];
+}>;
+
+const VARIANT_SPECS: Readonly<Record<NonAdversarialPerturbationVariant, VariantSpec>> = {
+  negative: {
+    value: "wrong-value",
+    assertionText: (field, text) => `Submitting an invalid "${field}" value does NOT produce the text "${text}".`,
+    forbidden: (text) => [text],
+  },
+  boundary: {
+    value: BOUNDARY_VALUE,
+    assertionText: (field) => `Submitting an oversized "${field}" value produces no leaked system-error text.`,
+    forbidden: () => [...SYSTEM_ERROR_MARKERS],
+  },
+  empty: {
+    value: EDGE_CASE_VALUES.empty,
+    assertionText: (field, text) => `Submitting an empty "${field}" value does NOT produce the text "${text}".`,
+    forbidden: (text) => [text],
+  },
+  whitespace: {
+    value: EDGE_CASE_VALUES.whitespace,
+    assertionText: (field, text) => `Submitting a whitespace-only "${field}" value does NOT produce the text "${text}".`,
+    forbidden: (text) => [text],
+  },
+  unicode: {
+    value: EDGE_CASE_VALUES.unicode,
+    assertionText: (field) => `Submitting unicode input into "${field}" produces no leaked system-error text (encoding handled correctly).`,
+    forbidden: () => [...SYSTEM_ERROR_MARKERS],
+  },
+  type_confusion: {
+    value: "not-a-number",
+    assertionText: (field) => `Submitting a non-numeric value into the numeric-looking field "${field}" produces no leaked system-error text.`,
+    forbidden: () => [...SYSTEM_ERROR_MARKERS],
+  },
+};
 
 /** Deep module: one `generate()` call hides authorization, per-criterion binding, variant expansion, and TestCase assembly. */
 export class GenerateTestCases {
@@ -151,6 +219,16 @@ export class GenerateTestCases {
         continue;
       }
 
+      if (hasRoleAmbiguity(matchedFields)) {
+        findings.push({
+          id: this.#dependencies.ids.next("finding"),
+          category: "ambiguous_criterion",
+          message: `Acceptance criterion "${criterionId}" name-matches multiple fields with different accessible roles: "${statement}". A test case was not fabricated against an ambiguous binding.`,
+          evidence: [`${request.requirement_ref}#${criterionId}`, `ui-map:${request.ui_map_source_url}`],
+        });
+        continue;
+      }
+
       const editableFields = matchedFields.filter((field) => field.interaction_hint === "editable");
       const expectedText = readString(criterion, "expected_text");
 
@@ -163,6 +241,7 @@ export class GenerateTestCases {
         fieldValues: undefined,
         expectedText,
         variantField: undefined,
+        forbiddenOverride: undefined,
       });
       testCases.push(positive.testCase);
       if (positive.assertion !== undefined) generatedAssertions.push(positive.assertion);
@@ -177,16 +256,38 @@ export class GenerateTestCases {
       if (expectedText === undefined || editableFields.length === 0) continue;
 
       for (const field of editableFields) {
-        for (const variant of ["negative", "boundary", "adversarial"] as const) {
+        const nonAdversarialVariants: readonly NonAdversarialPerturbationVariant[] = looksNumeric(field.accessible_name)
+          ? ["negative", "boundary", "empty", "whitespace", "unicode", "type_confusion"]
+          : ["negative", "boundary", "empty", "whitespace", "unicode"];
+
+        for (const variant of nonAdversarialVariants) {
+          const spec = VARIANT_SPECS[variant];
           const built = this.#buildCase({
             request,
             criterionId,
             variant,
             matchedFields,
             matchedAction,
-            fieldValues: new Map([[field.id, variantValue(variant)]]),
+            fieldValues: new Map([[field.id, spec.value]]),
             expectedText,
             variantField: field,
+            forbiddenOverride: undefined,
+          });
+          testCases.push(built.testCase);
+          if (built.assertion !== undefined) generatedAssertions.push(built.assertion);
+        }
+
+        for (const probe of ADVERSARIAL_PROBES.slice(0, MAX_ADVERSARIAL_PROBES_PER_FIELD)) {
+          const built = this.#buildCase({
+            request,
+            criterionId,
+            variant: "adversarial",
+            matchedFields,
+            matchedAction,
+            fieldValues: new Map([[field.id, probe.value]]),
+            expectedText,
+            variantField: field,
+            forbiddenOverride: [probe.value, ...SYSTEM_ERROR_MARKERS],
           });
           testCases.push(built.testCase);
           if (built.assertion !== undefined) generatedAssertions.push(built.assertion);
@@ -216,8 +317,10 @@ export class GenerateTestCases {
     fieldValues: ReadonlyMap<string, string> | undefined;
     expectedText: string | undefined;
     variantField: TestCaseGenerationUiElement | undefined;
+    /** Set only for `adversarial` — the specific probe's own value plus system-error markers, never the whole probe list (see `ADVERSARIAL_PROBES`'s doc comment on why). */
+    forbiddenOverride: readonly string[] | undefined;
   }>): Readonly<{ testCase: TestCase; assertion: TestCaseGeneratedAssertion | undefined; finding: TestCaseGenerationFinding | undefined }> {
-    const { request, criterionId, variant, matchedFields, matchedAction, fieldValues, expectedText, variantField } = input;
+    const { request, criterionId, variant, matchedFields, matchedAction, fieldValues, expectedText, variantField, forbiddenOverride } = input;
     const testCaseId = this.#dependencies.ids.next("test-case");
 
     const steps: TestCaseStep[] = [{ action: "navigate", input: { url: request.ui_map_source_url } }];
@@ -259,25 +362,24 @@ export class GenerateTestCases {
           evidence: [`${request.requirement_ref}#${criterionId}`, `test-case:${testCaseId}`],
         };
       }
+    } else if (variant === "adversarial") {
+      // expectedText and forbiddenOverride are guaranteed defined here
+      // (caller only builds this variant with a specific probe's own
+      // forbidden list — see ADVERSARIAL_PROBES's doc comment).
+      assertionText = `Submitting an injection/XSS probe into "${variantField?.accessible_name}" is not reflected unescaped, does not execute (no dialog fires), and produces no leaked system-error text.`;
+      assertion = {
+        test_case_id: testCaseId,
+        forbidden_text: forbiddenOverride as readonly string[],
+        expect_no_dialog: true,
+      };
     } else {
       // expectedText is guaranteed defined here (caller only builds these
       // variants when it is).
-      const forbidden =
-        variant === "negative"
-          ? [expectedText as string]
-          : variant === "boundary"
-            ? [...SYSTEM_ERROR_MARKERS]
-            : [...ADVERSARIAL_VALUES, ...SYSTEM_ERROR_MARKERS];
-      assertionText =
-        variant === "negative"
-          ? `Submitting an invalid "${variantField?.accessible_name}" value does NOT produce the text "${expectedText}".`
-          : variant === "boundary"
-            ? `Submitting an oversized "${variantField?.accessible_name}" value produces no leaked system-error text.`
-            : `Submitting an injection/XSS probe into "${variantField?.accessible_name}" is not reflected unescaped, does not execute (no dialog fires), and produces no leaked system-error text.`;
+      const spec = VARIANT_SPECS[variant];
+      assertionText = spec.assertionText(variantField?.accessible_name, expectedText as string);
       assertion = {
         test_case_id: testCaseId,
-        forbidden_text: forbidden,
-        ...(variant === "adversarial" ? { expect_no_dialog: true } : {}),
+        forbidden_text: spec.forbidden(expectedText as string),
       };
     }
 
@@ -307,12 +409,6 @@ export class GenerateTestCases {
   }
 }
 
-function variantValue(variant: "negative" | "boundary" | "adversarial"): string {
-  if (variant === "boundary") return BOUNDARY_VALUE;
-  if (variant === "adversarial") return ADVERSARIAL_VALUES[0]!;
-  return "wrong-value";
-}
-
 /**
  * Word-boundary match, not raw substring — a field named "Password" must
  * not spuriously bind a statement containing "Passwordless" (or any other
@@ -327,4 +423,18 @@ function statementMentionsName(statement: string, accessibleName: string | undef
   if (accessibleName === undefined || accessibleName.trim().length === 0) return false;
   const escaped = accessibleName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, "i").test(statement);
+}
+
+/**
+ * Two discovered fields sharing an accessible_name but differing in
+ * accessible_role (e.g. one "Date" field is a textbox, another "Date"
+ * field is a combobox) cannot be safely disambiguated by name-matching
+ * alone — silently picking one via `.filter()` order would fabricate a
+ * binding decision this module has no basis for (SPEC-207 §6: never
+ * fabricate). `matchedAction` needs no equivalent check: `actions.find()`
+ * already resolves to a single candidate by construction.
+ */
+function hasRoleAmbiguity(matches: readonly TestCaseGenerationUiElement[]): boolean {
+  const roles = new Set(matches.map((match) => match.accessible_role).filter((role): role is string => role !== undefined));
+  return roles.size > 1;
 }
