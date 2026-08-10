@@ -209,6 +209,83 @@ test("discovers a session-gated screen by logging in first, on the exact same br
   }
 });
 
+test("logs in even when the field/action names are supplied with different case and surrounding whitespace than the discovered accessible names", async () => {
+  const fixture = await startFixtureServer();
+  try {
+    const permissions = ["agent:execute", "agent:read", "discovery:observe", "execution:execute"];
+    const authorizer = new DeterministicWorkspaceAuthorizer({
+      clock,
+      expected_issuer: "https://identity.test.invalid",
+      expected_audience: "qa-intelligence-test",
+      workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+      policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+      integrity_proof_verifier: {
+        verify({ canonical_claims, integrity_proof }): boolean {
+          return integrity_proof === fixtureProof(canonical_claims);
+        },
+      },
+    });
+
+    const skill = new DiscoverAfterLogin({ clock, authorizer });
+    const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+      new Map([[AGENT.id, new DiscoverAfterLoginRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL, engine_ref: "playwright-dom-pipeline@0.1.0" })]]),
+    );
+    const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+    const workspaceContext = context(permissions);
+
+    const started = await runtime.start({
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-start",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      workspace_context: workspaceContext,
+      agent: AGENT,
+      purpose: "Discover the session-gated dashboard using case/whitespace-varied field names.",
+      consequence_class: "reversible",
+      input: {
+        login_url: `${fixture.url}/login`,
+        // Discovered accessible names are "Username"/"Password"/"Sign in" —
+        // deliberately supplied here with different case and surrounding
+        // whitespace to prove the lookup no longer requires an exact match.
+        username_field_name: " USERNAME ",
+        username: "real-user",
+        password_field_name: "password",
+        password: "real-pass",
+        submit_action_name: "SIGN IN",
+        target_url: `${fixture.url}/dashboard`,
+      },
+      allowed_skills: [SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      policy_version: workspaceContext.policy_version,
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+      deadline: "2030-01-01T00:00:00.000Z",
+      idempotency_key: "discover-after-login-case-insensitive-start-001",
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    if (!started.ok) return;
+
+    const executed = await runtime.execute(started.value, {
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-execute",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      policy_version: workspaceContext.policy_version,
+      workspace_context: workspaceContext,
+      expected_revision: 3,
+      idempotency_key: "discover-after-login-case-insensitive-execute-001",
+    });
+    assert.equal(executed.ok, true, JSON.stringify(executed));
+    if (!executed.ok) return;
+    assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
+
+    const output = executed.value.output as { source_url: string; elements: Array<{ accessible_name: string | null; kind: string }> } | null;
+    assert.ok(output, "expected a Semantic UI Map output");
+    assert.equal(output!.source_url, `${fixture.url}/dashboard`);
+  } finally {
+    await fixture.close();
+  }
+});
+
 // A site that sits behind BOTH a browser-native HTTP Basic Auth prompt AND
 // its own in-page session login form — every route 401s without the right
 // `Authorization` header, regardless of cookie state, which is exactly the

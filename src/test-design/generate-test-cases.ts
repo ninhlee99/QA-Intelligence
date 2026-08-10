@@ -138,8 +138,8 @@ export class GenerateTestCases {
         continue;
       }
 
-      const matchedAction = actions.find((element) => nameMentioned(statement, element.accessible_name));
-      const matchedFields = fields.filter((element) => nameMentioned(statement, element.accessible_name));
+      const matchedAction = actions.find((element) => statementMentionsName(statement, element.accessible_name));
+      const matchedFields = fields.filter((element) => statementMentionsName(statement, element.accessible_name));
 
       if (matchedAction === undefined && matchedFields.length === 0) {
         findings.push({
@@ -313,7 +313,18 @@ function variantValue(variant: "negative" | "boundary" | "adversarial"): string 
   return "wrong-value";
 }
 
-function nameMentioned(statement: string, accessibleName: string | undefined): boolean {
+/**
+ * Word-boundary match, not raw substring — a field named "Password" must
+ * not spuriously bind a statement containing "Passwordless" (or any other
+ * superstring). Uses alphanumeric lookaround rather than `\b` because `\b`
+ * only fires at a word/non-word transition: an accessible name ending in a
+ * non-word character (e.g. "Save (draft)") has no such transition at its
+ * own boundary, so `\b` would silently fail to match there.
+ * `accessibleName` is escaped before use in the RegExp since it's
+ * arbitrary UI text, not a pattern.
+ */
+function statementMentionsName(statement: string, accessibleName: string | undefined): boolean {
   if (accessibleName === undefined || accessibleName.trim().length === 0) return false;
-  return statement.toLowerCase().includes(accessibleName.toLowerCase());
+  const escaped = accessibleName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, "i").test(statement);
 }

@@ -14,6 +14,7 @@
 import { chromium, type Browser } from "playwright";
 
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
+import { accessibleNamesMatch } from "../shared/accessible-name.js";
 import { DiscoverUiSurface } from "./discover-ui-surface.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
 import type { SemanticUiDiscoveryResult } from "./public.js";
@@ -111,19 +112,19 @@ export class DiscoverAfterLogin {
         if (!loginMap.ok) return loginMap;
 
         const usernameField = loginMap.value.elements.find(
-          (element) => element.kind === "field" && element.accessible_name === request.username_field_name,
+          (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, request.username_field_name),
         );
         if (usernameField === undefined) {
           return loginFailure(`Login page has no discovered field named "${request.username_field_name}".`);
         }
         const passwordField = loginMap.value.elements.find(
-          (element) => element.kind === "field" && element.accessible_name === request.password_field_name,
+          (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, request.password_field_name),
         );
         if (passwordField === undefined) {
           return loginFailure(`Login page has no discovered field named "${request.password_field_name}".`);
         }
         const submitAction = loginMap.value.elements.find(
-          (element) => element.kind === "action" && element.accessible_name === request.submit_action_name,
+          (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, request.submit_action_name),
         );
         if (submitAction === undefined) {
           return loginFailure(`Login page has no discovered action named "${request.submit_action_name}".`);
