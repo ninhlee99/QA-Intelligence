@@ -116,6 +116,7 @@ import { RequirementRegistryRuntimeExecutor } from "../requirement-review/requir
 import { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
 import { UiWorkflowDiscoveryRuntimeExecutor } from "../discovery/discover-ui-workflow-runtime-executor.js";
 import { InMemoryRegressionSuiteRegistry } from "../test-design/regression-suite-registry.js";
+import { GenerateJourneyRuntimeExecutor } from "../test-design/generate-journey-runtime-executor.js";
 import {
   CompareUiSurfacesRuntimeExecutor,
   DefectExportRuntimeExecutor,
@@ -217,6 +218,8 @@ export const OPENAPI_SMOKE_AGENT = { id: "openapi-to-api-smoke-agent", version: 
 export const OPENAPI_SMOKE_SKILL = { id: "generate-api-smoke-from-openapi", version: "0.1.0" } as const;
 export const DEFECT_EXPORT_AGENT = { id: "export-defects-agent", version: "0.1.0" } as const;
 export const DEFECT_EXPORT_SKILL = { id: "export-defects-for-tracker", version: "0.1.0" } as const;
+export const JOURNEY_GEN_AGENT = { id: "generate-journey-test-cases-agent", version: "0.1.0" } as const;
+export const JOURNEY_GEN_SKILL = { id: "generate-journey-test-cases", version: "0.1.0" } as const;
 export const COMPARE_UI_AGENT = { id: "compare-ui-surfaces-agent", version: "0.1.0" } as const;
 export const COMPARE_UI_SKILL = { id: "compare-ui-surfaces", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
@@ -1213,6 +1216,13 @@ export function buildDevFixture(options: {
     new DefectExportRuntimeExecutor({
       expected_agent: DEFECT_EXPORT_AGENT,
       expected_skill: DEFECT_EXPORT_SKILL,
+    }),
+  );
+  executorMap.set(
+    JOURNEY_GEN_AGENT.id,
+    new GenerateJourneyRuntimeExecutor({
+      expected_agent: JOURNEY_GEN_AGENT,
+      expected_skill: JOURNEY_GEN_SKILL,
     }),
   );
   executorMap.set(
@@ -2337,6 +2347,36 @@ export function buildDevFixture(options: {
         compactMcpInput({
           defects: (args["defects"] as JsonValue | undefined) ?? [],
           format: (args["format"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "generate_journey_test_cases",
+      description:
+        "Build thin E2E journey TestCases from discover_ui_workflow pages[] + edges[] (click link chains + expected_url_includes). Execute via execute_generated_test_case or register_regression_suite.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          start_url: { type: "string" },
+          pages: { type: "array", items: { type: "object" } },
+          edges: { type: "array", items: { type: "object" } },
+          max_hops: { type: "number" },
+          requirement_ref: { type: "string" },
+        },
+        required: ["start_url", "pages", "edges"],
+      },
+      agent: JOURNEY_GEN_AGENT,
+      purpose: "Generate journey TestCases from workflow edges",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [JOURNEY_GEN_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 60, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          start_url: (args["start_url"] as string | undefined) ?? "",
+          pages: (args["pages"] as JsonValue | undefined) ?? [],
+          edges: (args["edges"] as JsonValue | undefined) ?? [],
+          max_hops: (args["max_hops"] as number | undefined) ?? 0,
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
         }),
     },
     {

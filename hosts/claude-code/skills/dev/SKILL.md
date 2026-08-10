@@ -32,7 +32,8 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
 3. **`register_requirement`** with derived AC (scope stays this Workspace).
    Keep the returned `requirement_ref` (`id@version`) for later tools.
 4. **Discover.** `discover_ui_surface` on the local URL. If the change spans
-   multiple routes, `discover_ui_workflow` then spot-check hot pages.
+   multiple routes, `discover_ui_workflow` then `generate_journey_test_cases`
+   from `pages`+`edges`, and spot-check hot pages.
 5. **`run_auto_qa`** against the local URL with derived `acceptance_criteria`
    (+ `requirement_ref`). Add login_* / secret refs if session-gated. Set
    `output_path` (default `docs/qa-reports/dev/<screen>-<date>.html`).

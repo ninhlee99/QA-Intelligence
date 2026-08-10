@@ -110,6 +110,7 @@ const EXPECTED_TOOLS = [
   "generate_api_smoke_from_openapi",
   "export_defects_for_tracker",
   "compare_ui_surfaces",
+  "generate_journey_test_cases",
 ] as const;
 
 test("dev fixture registers the full MCP catalog without duplicates", () => {

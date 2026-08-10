@@ -42,7 +42,8 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 3. **Discover live UI — do not assume structure.**
    - Single screen: `discover_ui_surface` or `discover_ui_surface_after_login`.
    - Multi-page product: `discover_ui_workflow` (`max_pages` 3–5) — read
-     `pages[]` + `edges[]`, then deepen with `discover_ui_surface` on hot pages.
+     `pages[]` + `edges[]`, then `generate_journey_test_cases` for click-chain
+     E2E drafts (URL oracles). Deepen hot pages with `discover_ui_surface`.
 4. **Role / permission spot-check (when two roles matter).**
    Discover once as role A and once as role B (separate sessions/credentials),
    then `compare_ui_surfaces` on the two `elements` arrays. Lead with
