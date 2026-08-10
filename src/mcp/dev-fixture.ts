@@ -9,6 +9,8 @@
  * this module only builds the `tools` array + `AgentRunExecutor` that
  * `AgentRuntimeToolRegistry` / `OidcBearerAuthenticator` already accept).
  */
+import { join } from "node:path";
+
 import type { WorkspaceAuthorizer } from "../requirement-review/public.js";
 import { InMemoryKnowledgeSearch } from "../adapters/memory/knowledge-search.js";
 import { InMemoryRequirementResolver } from "../adapters/memory/requirement-resolver.js";
@@ -115,7 +117,7 @@ import { DraftDefectsRuntimeExecutor } from "../bug-analysis/draft-defects-runti
 import { RequirementRegistryRuntimeExecutor } from "../requirement-review/requirement-registry-runtime-executor.js";
 import { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
 import { UiWorkflowDiscoveryRuntimeExecutor } from "../discovery/discover-ui-workflow-runtime-executor.js";
-import { InMemoryRegressionSuiteRegistry } from "../test-design/regression-suite-registry.js";
+import { FileBackedRegressionSuiteRegistry } from "../test-design/file-backed-regression-suite-registry.js";
 import { GenerateJourneyRuntimeExecutor } from "../test-design/generate-journey-runtime-executor.js";
 import {
   CompareUiSurfacesRuntimeExecutor,
@@ -419,7 +421,10 @@ export function buildDevFixture(options: {
   });
   const uiDiscoverySkill = new DiscoverUiSurface({ clock, authorizer });
   const uiWorkflowSkill = new DiscoverUiWorkflow({ clock, authorizer, discoverUiSurface: uiDiscoverySkill });
-  const regressionSuites = new InMemoryRegressionSuiteRegistry(clock);
+  const regressionSuites = new FileBackedRegressionSuiteRegistry(
+    clock,
+    join(process.cwd(), ".qa-regression-suites"),
+  );
 
   const discoverAfterLoginSkill = new DiscoverAfterLogin({ clock, authorizer });
   const requirementResolver = new InMemoryRequirementResolver(
@@ -2249,7 +2254,7 @@ export function buildDevFixture(options: {
     {
       name: "register_regression_suite",
       description:
-        "Persist a regression pack: cases[{kind:browser,test_case,generated_assertion}|{kind:api,case}]. Re-run via run_regression_suite.",
+        "Persist a regression pack to disk under .qa-regression-suites/<workspace>/ (survives MCP restart): cases[{kind:browser,test_case,generated_assertion}|{kind:api,case}]. Returns suite_id + persisted_path. Re-run via run_regression_suite.",
       inputSchema: {
         type: "object",
         properties: {

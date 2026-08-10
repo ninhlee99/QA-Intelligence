@@ -61,8 +61,8 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
    From `run_auto_qa` / generate outputs, call `register_regression_suite`
    with browser cases `{kind:"browser", test_case, generated_assertion}`
    (and API cases when applicable). Later: `list_regression_suites` →
-   `run_regression_suite`. Prefer durable path if the tool/docs expose one
-   (suite must survive MCP restart for real regression).
+   `run_regression_suite`.    Prefer durable path under `.qa-regression-suites/` (returned as
+   `persisted_path`) so suites survive MCP restart for real regression.
 8. **API path (when HTTP exists).**
    - Have OpenAPI JSON → `generate_api_smoke_from_openapi` → review warnings
      → `execute_api_smoke` with `base_url` + secret refs.

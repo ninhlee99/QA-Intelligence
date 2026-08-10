@@ -33,9 +33,12 @@ import {
   InMemoryRegressionSuiteRegistry,
   type RegressionCase,
 } from "./regression-suite-registry.js";
+import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
+
+export type RegressionSuiteRegistry = InMemoryRegressionSuiteRegistry | FileBackedRegressionSuiteRegistry;
 
 export type RegressionSuiteRuntimeExecutorDependencies = Readonly<{
-  registry: InMemoryRegressionSuiteRegistry;
+  registry: RegressionSuiteRegistry;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   mode: "register" | "list" | "run";
@@ -118,12 +121,26 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       if (!registered.ok) {
         return { ok: false, failure: failure("orchestration", "invalid_request", registered.message) };
       }
-      return success(this.#dependencies, input, {
-        suite_id: registered.suite.id,
-        label: registered.suite.label,
-        case_count: registered.suite.cases.length,
-        registered_at: registered.suite.registered_at,
-      }, [`suite:${registered.suite.id}`]);
+      const outputWithPath: JsonObject =
+        "persisted_path" in registered && typeof registered.persisted_path === "string"
+          ? {
+              suite_id: registered.suite.id,
+              label: registered.suite.label,
+              case_count: registered.suite.cases.length,
+              registered_at: registered.suite.registered_at,
+              persisted_path: registered.persisted_path,
+            }
+          : {
+              suite_id: registered.suite.id,
+              label: registered.suite.label,
+              case_count: registered.suite.cases.length,
+              registered_at: registered.suite.registered_at,
+            };
+      const evidence = [`suite:${registered.suite.id}`];
+      if ("persisted_path" in registered && typeof registered.persisted_path === "string") {
+        evidence.push(`persisted:${registered.persisted_path}`);
+      }
+      return success(this.#dependencies, input, outputWithPath, evidence);
     }
 
     // run

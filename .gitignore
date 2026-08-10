@@ -1,2 +1,5 @@
 dist/
 node_modules/
+
+.qa-regression-suites/
+.qa-screenshots/
