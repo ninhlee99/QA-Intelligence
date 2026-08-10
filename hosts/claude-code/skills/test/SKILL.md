@@ -3,9 +3,9 @@ name: test
 description: >
   Tester-side QA workflow for QA Intelligence. Tester supplies a spec/target
   URL/test info; the agent drives the `qa-intelligence` MCP server against
-  the live target like a Senior QA: discover, reconcile AC, run_auto_qa
-  (scripted variants + a11y naming smoke + draft defects + release gate),
-  optional exploratory charter, then triage. Never invent business intent.
+  the live target like a Senior QA: ingest requirements, discover (page or
+  workflow), reconcile AC, run_auto_qa, optional API/OpenAPI + regression
+  suite, export defects, then triage. Never invent business intent.
   Trigger: "/qa-intelligence:test", "test this page", "QA this URL",
   "run QA against staging/prod", "generate test cases from this spec".
 ---
@@ -20,50 +20,94 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 - MCP `qa-intelligence` connected (`npm run build` if tools 404).
 - Collect before acting:
   1. **Target URL** + environment (staging/prod) — confirm before any write-ish login.
-  2. **Spec / AC** — ticket, doc, or stated expected behavior per field/action (formats matter: dates, currency, error copy). No AC → discovery only; ask for expected behavior.
+  2. **Spec / AC** — ticket, doc, or stated expected behavior. Prefer
+     `register_requirement` so later tools reuse `id@version`. No AC →
+     discovery only; ask for expected behavior.
   3. Login field names + credentials if session-gated (or discover login page first).
-- Do **not** call `execute_browser_test` for real targets — that tool is **DEMO-ONLY** (seeded TC-DEMO-*). Use `run_auto_qa` / `execute_generated_test_case`.
+  4. Optional: register staging via `register_workspace_environment`
+     (`environment:…` + `base_url`) before non-loopback http(s) discovery.
+- Do **not** call `execute_browser_test` for real targets — **DEMO-ONLY**.
+  Use `run_auto_qa` / `execute_generated_test_case` / `run_regression_suite`.
 
 ## Procedure (human-like order)
 
-1. **Orient.** If the tester brought a formal requirement id that may be seeded, optionally `assess_requirement_quality` first to surface AC/traceability gaps — then still reconcile against the live UI.
-2. **Discover live UI — do not assume structure.** `discover_ui_surface` or `discover_ui_surface_after_login`. Read fields/actions/accessible names.
-3. **Reconcile spec ↔ UI.** Bind each AC statement to a real accessible name. Flag unbound AC (spec drift or bug) — never force a fake binding.
-4. **Encode format oracles** in `expected_text` (exact rendered success/error text, date formats, etc.).
-5. **Run the professional pipeline.** Prefer `run_auto_qa` with reconciled `acceptance_criteria` + `output_path`. One call now includes: discover → **a11y naming smoke** → generate variants → execute (flake-aware) → draft defects → residual risks → **release_recommendation**. Read `prior_failure_avoidance_hints` when present (Phase 11 Session Memory from earlier drafts in this MCP process).
-6. **Optional depth (same session):**
-   - `list_failure_avoidance_hints` — before or after a run, list retained avoidable-mistake hints.
-   - `generate_exploratory_charter` — time-boxed manual exploration beyond scripted variants.
-   - `execute_exploratory_session` — Phase 9: actually capture + auto-check oracles; pass `browsers: ["chromium","firefox"]` for multi-browser parity.
-   - `assess_defect_quality` on serious `draft_defects[]` before the tester files a ticket.
-   - Document-quality assessors (Phase 7) when the tester brought governed docs: `assess_risk_quality`, `assess_test_strategy_quality`, `assess_test_case_quality`, `assess_report_quality`, etc. — review paper contracts; do not invent missing fields.
-   - `execute_api_smoke` when the target also exposes HTTP APIs (status/body/header asserts; use `bearer_token_secret_ref` after `register_workspace_secret`). Infra failures are not product fails.
-   - `run_depth_smokes` for WCAG-subset / perf / security heuristics — if `has_critical`, lead with that; not a substitute for naming smoke inside `run_auto_qa`.
-   - Standalone `assess_ui_accessibility_smoke` only if you need a11y without re-running full QA (normally already inside `run_auto_qa`).
-7. **Triage like a Senior QA** (order matters):
-   1. `release_recommendation` + rationale
-   2. Critical/security drafts + critical a11y naming
-   3. Fail/flaky counts + high draft defects
-   4. Unbindable AC / not_executed / residual risks
-   5. Artifact paths (HTML, testcases JSON, defects JSON)
-   6. Scope limit: one surface + supplied AC + naming smoke — not full WCAG/API/perf/portfolio
-8. **Persist.** Save `test_cases`+`generated_assertions`, and `draft_defects` if any. Do not auto-file to Jira.
+1. **Ingest requirement (when tester brought a real AC pack).**
+   `register_requirement` with id/title/statement/acceptance_criteria.
+   `list_requirements` to confirm `id@version`. Optionally
+   `assess_requirement_quality` on the same object for AC/traceability gaps.
+2. **Orient environment + secrets.**
+   `register_workspace_environment` for staging base URL when needed.
+   `register_workspace_secret` once; prefer `password_secret_ref` /
+   `field_secret_refs` / API `*_secret_ref` afterward.
+3. **Discover live UI — do not assume structure.**
+   - Single screen: `discover_ui_surface` or `discover_ui_surface_after_login`.
+   - Multi-page product: `discover_ui_workflow` (`max_pages` 3–5) — read
+     `pages[]` + `edges[]`, then deepen with `discover_ui_surface` on hot pages.
+4. **Role / permission spot-check (when two roles matter).**
+   Discover once as role A and once as role B (separate sessions/credentials),
+   then `compare_ui_surfaces` on the two `elements` arrays. Lead with
+   only-in-admin / only-in-viewer surprises.
+5. **Reconcile spec ↔ UI.** Bind each AC to a real accessible name. Flag
+   unbound AC — never force a fake binding. Prefer
+   `expected_text` plus optional `expected_url_includes` /
+   `expected_title_includes` when navigation matters.
+6. **Run the professional UI pipeline.** Prefer `run_auto_qa` with
+   reconciled `acceptance_criteria` + `output_path` (+ `requirement_ref`
+   when registered). One call: discover → a11y naming smoke → generate
+   variants → execute (flake-aware) → draft defects → residual risks →
+   **release_recommendation**. Read `prior_failure_avoidance_hints` when present.
+7. **Persist a regression pack (do this every serious run).**
+   From `run_auto_qa` / generate outputs, call `register_regression_suite`
+   with browser cases `{kind:"browser", test_case, generated_assertion}`
+   (and API cases when applicable). Later: `list_regression_suites` →
+   `run_regression_suite`. Prefer durable path if the tool/docs expose one
+   (suite must survive MCP restart for real regression).
+8. **API path (when HTTP exists).**
+   - Have OpenAPI JSON → `generate_api_smoke_from_openapi` → review warnings
+     → `execute_api_smoke` with `base_url` + secret refs.
+   - Include at least one **authz negative** (expect 401/403) when the
+     product has protected routes — do not claim API coverage from happy
+     200s alone.
+9. **Optional depth (same session):**
+   - `list_failure_avoidance_hints`
+   - `generate_exploratory_charter` / `execute_exploratory_session`
+     (`browsers: ["chromium","firefox"]` for parity)
+   - `assess_defect_quality` on serious drafts
+   - Document assessors / stubs only when tester brought governed docs
+   - `run_depth_smokes` — if `has_critical`, lead with that; not a WCAG substitute
+10. **Triage like a Senior QA** (order matters):
+    1. `release_recommendation` + rationale
+    2. Critical/security drafts + critical a11y naming
+    3. Role-diff surprises from `compare_ui_surfaces`
+    4. Fail/flaky counts + high draft defects
+    5. Unbindable AC / not_executed / residual risks
+    6. Artifact paths (HTML, testcases JSON, defects JSON, suite id)
+    7. Scope limit: surfaces + AC exercised — not full WCAG/load/pen-test
+11. **Export for tracker (human files).** `export_defects_for_tracker`
+    (`markdown` or `jira_description`) — paste into Jira/Linear. Do **not**
+    invent `confirmed_cause`. Do not claim auto-filed unless Host does it.
+12. **Retest loop after a fix.** Re-run `run_regression_suite` for the
+    saved suite (or subset via fresh register). Only then soften release gate.
 
 ## Triage rules
 
 - `do_not_release` / `security_incident` / severity critical → lead with that; stop cheerleading green counts.
-- Critical a11y naming (`unlabeled_editable_field`) → `changes_required`; treat as blocking for release readiness until labels fixed.
+- Critical a11y naming (`unlabeled_editable_field`) → `changes_required`.
 - `investigate_flakes` → not green; propose one stable replay.
 - Never set/imply `confirmed_cause`.
 - Never count `not_executed` or unbound AC as pass.
+- Authz gaps (role compare / 401-403 missing) → call out as residual risk.
 
 ## Regression replay
 
-Load prior `.testcases.json` → `execute_generated_test_case` per entry (now flake-aware like `run_auto_qa`). For fresh draft defects + gate after UI/spec change, re-run `run_auto_qa` instead of replay-only.
+1. Preferred: `run_regression_suite` with prior `suite_id`.
+2. Fallback: load prior `.testcases.json` → `execute_generated_test_case` per entry.
+3. UI/spec changed materially → re-run `run_auto_qa` then re-register suite.
 
 ## Non-goals
 
 - Inventing AC / business intent
 - Production credentials without explicit approval
-- Claiming full WCAG, API, or performance coverage
+- Claiming full WCAG, load, or pen-test coverage
 - Using `execute_browser_test` against non-demo targets
+- Silent Jira filing / inventing confirmed root cause
