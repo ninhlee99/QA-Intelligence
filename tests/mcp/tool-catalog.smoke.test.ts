@@ -44,6 +44,10 @@ function authorizer() {
     "execution_record:read",
     "credential:register",
     "credential:read",
+    "environment:register",
+    "environment:read",
+    "test_dataset:create",
+    "automation_asset:create",
   ];
   return new DeterministicWorkspaceAuthorizer({
     clock,
@@ -86,6 +90,16 @@ const EXPECTED_TOOLS = [
   "discover_product_context",
   "assess_execution_record_quality",
   "draft_defects_from_qa_run",
+  "register_workspace_environment",
+  "list_workspace_environments",
+  "generate_business_analysis_stub",
+  "generate_risk_stub",
+  "generate_test_strategy",
+  "register_test_dataset",
+  "list_test_datasets",
+  "create_automation_asset",
+  "evaluate_test_case_quality_skill",
+  "raise_mistake_recurrence_candidate",
 ] as const;
 
 test("dev fixture registers the full MCP catalog without duplicates", () => {

@@ -44,6 +44,18 @@ import { DefectQualityRuntimeExecutor } from "../bug-analysis/runtime-executor.j
 import { ExploratoryCharterRuntimeExecutor } from "../test-strategy/generate-exploratory-charter-runtime-executor.js";
 import { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { CredentialRegistryRuntimeExecutor } from "../credentials/runtime-executor.js";
+import { InMemoryWorkspaceEnvironmentRegistry } from "../environments/workspace-environment-registry.js";
+import { EnvironmentRegistryRuntimeExecutor } from "../environments/runtime-executor.js";
+import { InMemoryWorkspaceDatasetRegistry } from "../test-data/workspace-dataset-registry.js";
+import { DatasetRegistryRuntimeExecutor } from "../test-data/dataset-registry-runtime-executor.js";
+import { AutomationAssetStubRuntimeExecutor } from "../automation/create-automation-asset-runtime-executor.js";
+import { generateWorkflowStub } from "../business-analysis/generate-workflow-stub.js";
+import { generateRiskStubs } from "../risk-analysis/generate-risk-stub.js";
+import { generateTestStrategyStub } from "../test-strategy/generate-test-strategy-stub.js";
+import { UiMapStubRuntimeExecutor } from "./ui-map-stub-runtime-executor.js";
+import { EvaluateTestCaseQualitySkillRuntimeExecutor } from "../agent-skill-quality/evaluate-test-case-quality-skill-runtime-executor.js";
+import { RaiseMistakeRecurrenceCandidateRuntimeExecutor } from "../learning-engine/raise-mistake-recurrence-candidate-runtime-executor.js";
+import { InMemoryCandidateRepository } from "../adapters/memory/in-memory-candidate-repository.js";
 import {
   DocumentQualityRuntimeExecutor,
   toDocumentQualityAssessment,
@@ -158,8 +170,30 @@ export const EXECUTION_RECORD_QUALITY_AGENT = { id: "execution-record-quality-ag
 export const EXECUTION_RECORD_QUALITY_SKILL = { id: "assess-execution-record-quality", version: "0.1.0" } as const;
 export const DRAFT_DEFECTS_AGENT = { id: "draft-defects-agent", version: "0.1.0" } as const;
 export const DRAFT_DEFECTS_SKILL = { id: "draft-defects-from-qa-run", version: "0.1.0" } as const;
+export const ENVIRONMENT_REGISTER_AGENT = { id: "environment-registry-agent", version: "0.1.0" } as const;
+export const ENVIRONMENT_REGISTER_SKILL = { id: "register-workspace-environment", version: "0.1.0" } as const;
+export const ENVIRONMENT_LIST_AGENT = { id: "environment-list-agent", version: "0.1.0" } as const;
+export const ENVIRONMENT_LIST_SKILL = { id: "list-workspace-environments", version: "0.1.0" } as const;
+export const WORKFLOW_STUB_AGENT = { id: "generate-workflow-stub-agent", version: "0.1.0" } as const;
+export const WORKFLOW_STUB_SKILL = { id: "generate-business-analysis-stub", version: "0.1.0" } as const;
+export const RISK_STUB_AGENT = { id: "generate-risk-stub-agent", version: "0.1.0" } as const;
+export const RISK_STUB_SKILL = { id: "generate-risk-stub", version: "0.1.0" } as const;
+export const STRATEGY_STUB_AGENT = { id: "generate-test-strategy-stub-agent", version: "0.1.0" } as const;
+export const STRATEGY_STUB_SKILL = { id: "generate-test-strategy", version: "0.1.0" } as const;
+export const DATASET_REGISTER_AGENT = { id: "dataset-registry-agent", version: "0.1.0" } as const;
+export const DATASET_REGISTER_SKILL = { id: "register-test-dataset", version: "0.1.0" } as const;
+export const DATASET_LIST_AGENT = { id: "dataset-list-agent", version: "0.1.0" } as const;
+export const DATASET_LIST_SKILL = { id: "list-test-datasets", version: "0.1.0" } as const;
+export const AUTOMATION_STUB_AGENT = { id: "create-automation-asset-agent", version: "0.1.0" } as const;
+export const AUTOMATION_STUB_SKILL = { id: "create-automation-asset", version: "0.1.0" } as const;
+export const SKILL_QUALITY_EVAL_AGENT = { id: "evaluate-test-case-quality-skill-agent", version: "0.1.0" } as const;
+export const SKILL_QUALITY_EVAL_SKILL = { id: "evaluate-test-case-quality-skill", version: "0.1.0" } as const;
+export const MISTAKE_RECURRENCE_AGENT = { id: "raise-mistake-recurrence-candidate-agent", version: "0.1.0" } as const;
+export const MISTAKE_RECURRENCE_SKILL = { id: "raise-mistake-recurrence-candidate", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
 export const DEMO_PASSWORD_SECRET_REF = "workspace-secret:demo-password";
+export const DEMO_PAGE_ENVIRONMENT_REF = "environment:dev-fixture-page";
+export const DEMO_LOGIN_ENVIRONMENT_REF = "environment:dev-fixture-login";
 
 export function seedRequirement(workspaceId: string): Requirement {
   return {
@@ -294,6 +328,23 @@ export function buildDevFixture(options: {
     kind: "password",
     label: "Demo login password",
   });
+
+  // SPEC-512 §12 — seed fixture environments; non-loopback http(s) must match.
+  const environments = new InMemoryWorkspaceEnvironmentRegistry(clock);
+  environments.register({
+    workspace_id: workspaceId,
+    environment_ref: DEMO_PAGE_ENVIRONMENT_REF,
+    base_url: demoPageUrl,
+    label: "Dev fixture page",
+  });
+  environments.register({
+    workspace_id: workspaceId,
+    environment_ref: DEMO_LOGIN_ENVIRONMENT_REF,
+    base_url: demoLoginPageUrl,
+    label: "Dev fixture login",
+  });
+  const datasets = new InMemoryWorkspaceDatasetRegistry(clock);
+  const candidateRepository = new InMemoryCandidateRepository(clock);
 
   // Tracer bullet (docs/proposals/SPEC-512-mcp-test-execution-tool.md).
   // TC-DEMO-001: navigate + assert only. TC-DEMO-002 (Phase 2,
@@ -628,6 +679,7 @@ export function buildDevFixture(options: {
           expected_agent: UI_DISCOVERY_AGENT,
           expected_skill: UI_DISCOVERY_SKILL,
           engine_ref: UI_DISCOVERY_ENGINE_REF,
+          environments,
         }),
       ],
       [
@@ -912,6 +964,141 @@ export function buildDevFixture(options: {
       expected_skill: DRAFT_DEFECTS_SKILL,
     }),
   );
+  executorMap.set(
+    ENVIRONMENT_REGISTER_AGENT.id,
+    new EnvironmentRegistryRuntimeExecutor({
+      registry: environments,
+      expected_agent: ENVIRONMENT_REGISTER_AGENT,
+      expected_skill: ENVIRONMENT_REGISTER_SKILL,
+      mode: "register",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    ENVIRONMENT_LIST_AGENT.id,
+    new EnvironmentRegistryRuntimeExecutor({
+      registry: environments,
+      expected_agent: ENVIRONMENT_LIST_AGENT,
+      expected_skill: ENVIRONMENT_LIST_SKILL,
+      mode: "list",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    WORKFLOW_STUB_AGENT.id,
+    new UiMapStubRuntimeExecutor({
+      discoverUiSurface: uiDiscoverySkill,
+      expected_agent: WORKFLOW_STUB_AGENT,
+      expected_skill: WORKFLOW_STUB_SKILL,
+      tool_name: "generate_business_analysis_stub",
+      generate: ({ elements, source_url, workspace_id, input }) => {
+        const requirementRef =
+          typeof input["requirement_ref"] === "string" && input["requirement_ref"].trim()
+            ? input["requirement_ref"].trim()
+            : undefined;
+        const workflow = generateWorkflowStub({
+          elements,
+          workspace_id,
+          ...(source_url !== undefined ? { source_url } : {}),
+          ...(requirementRef !== undefined ? { requirement_ref: requirementRef } : {}),
+        });
+        return { workflow: { ...workflow } };
+      },
+    }),
+  );
+  executorMap.set(
+    RISK_STUB_AGENT.id,
+    new UiMapStubRuntimeExecutor({
+      discoverUiSurface: uiDiscoverySkill,
+      expected_agent: RISK_STUB_AGENT,
+      expected_skill: RISK_STUB_SKILL,
+      tool_name: "generate_risk_stub",
+      generate: ({ elements, source_url, workspace_id, input }) => {
+        const requirementRef =
+          typeof input["requirement_ref"] === "string" && input["requirement_ref"].trim()
+            ? input["requirement_ref"].trim()
+            : undefined;
+        const risks = generateRiskStubs({
+          elements,
+          workspace_id,
+          ...(source_url !== undefined ? { source_url } : {}),
+          ...(requirementRef !== undefined ? { requirement_ref: requirementRef } : {}),
+        });
+        return { risks: risks.map((risk) => ({ ...risk })) };
+      },
+    }),
+  );
+  executorMap.set(
+    STRATEGY_STUB_AGENT.id,
+    new UiMapStubRuntimeExecutor({
+      discoverUiSurface: uiDiscoverySkill,
+      expected_agent: STRATEGY_STUB_AGENT,
+      expected_skill: STRATEGY_STUB_SKILL,
+      tool_name: "generate_test_strategy",
+      generate: ({ elements, source_url, workspace_id, input }) => {
+        const objective =
+          typeof input["objective"] === "string" && input["objective"].trim() ? input["objective"].trim() : undefined;
+        const requirementRef =
+          typeof input["requirement_ref"] === "string" && input["requirement_ref"].trim()
+            ? input["requirement_ref"].trim()
+            : undefined;
+        const strategy = generateTestStrategyStub({
+          elements,
+          workspace_id,
+          ...(source_url !== undefined ? { source_url } : {}),
+          ...(objective !== undefined ? { objective } : {}),
+          ...(requirementRef !== undefined ? { requirement_ref: requirementRef } : {}),
+        });
+        return { test_strategy: { ...strategy } };
+      },
+    }),
+  );
+  executorMap.set(
+    DATASET_REGISTER_AGENT.id,
+    new DatasetRegistryRuntimeExecutor({
+      registry: datasets,
+      expected_agent: DATASET_REGISTER_AGENT,
+      expected_skill: DATASET_REGISTER_SKILL,
+      mode: "register",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    DATASET_LIST_AGENT.id,
+    new DatasetRegistryRuntimeExecutor({
+      registry: datasets,
+      expected_agent: DATASET_LIST_AGENT,
+      expected_skill: DATASET_LIST_SKILL,
+      mode: "list",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    AUTOMATION_STUB_AGENT.id,
+    new AutomationAssetStubRuntimeExecutor({
+      expected_agent: AUTOMATION_STUB_AGENT,
+      expected_skill: AUTOMATION_STUB_SKILL,
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    SKILL_QUALITY_EVAL_AGENT.id,
+    new EvaluateTestCaseQualitySkillRuntimeExecutor({
+      clock,
+      evidenceVerifier: { verify: () => true },
+      skill: testCaseQualityReviewer,
+      expected_agent: SKILL_QUALITY_EVAL_AGENT,
+      expected_skill: SKILL_QUALITY_EVAL_SKILL,
+    }),
+  );
+  executorMap.set(
+    MISTAKE_RECURRENCE_AGENT.id,
+    new RaiseMistakeRecurrenceCandidateRuntimeExecutor({
+      candidateRepository,
+      expected_agent: MISTAKE_RECURRENCE_AGENT,
+      expected_skill: MISTAKE_RECURRENCE_SKILL,
+    }),
+  );
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
 
   const runtime = new InMemoryAgentRuntime(clock, ids, authorizer, executor);
@@ -968,14 +1155,15 @@ export function buildDevFixture(options: {
     {
       name: "discover_ui_surface",
       description:
-        "Discover a live page's Semantic UI Map (SPEC-201 §8/SPEC-101 §12: Page/Field/Action) by navigating a URL and running it through the Semantic UI pipeline (DomCleaner). Development tracer bullet: read-only observation, no interaction — Region/Validation/Navigation/Workflow/State/Permission concepts are not yet covered. Requires an explicit URL. Optional browser: chromium (default) | firefox | webkit (Phase 9).",
+        "Discover a live page's Semantic UI Map (SPEC-201 §8/SPEC-101 §12: Page/Field/Action) by navigating a URL and running it through the Semantic UI pipeline (DomCleaner). Prefer environment_ref after register_workspace_environment (SPEC-512 §12). Non-loopback http(s) URLs must match a registered base_url; data: and loopback remain allowed for fixtures. Optional browser: chromium (default) | firefox | webkit (Phase 9).",
       inputSchema: {
         type: "object",
         properties: {
-          url: { type: "string", description: "e.g. https://example.com/login" },
+          url: { type: "string", description: "e.g. https://staging.example.com/login — must be allowlisted unless data:/loopback" },
+          environment_ref: { type: "string", description: "e.g. environment:dev-fixture-login — resolves URL from Workspace registry" },
           browser: { type: "string", description: "chromium | firefox | webkit (default chromium)" },
         },
-        required: ["url"],
+        required: [],
       },
       agent: UI_DISCOVERY_AGENT,
       purpose: "Discover a page's Semantic UI Map via MCP (development tracer bullet)",
@@ -984,10 +1172,12 @@ export function buildDevFixture(options: {
       allowed_skills: [UI_DISCOVERY_SKILL],
       allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
       budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
-      buildInput: (args) => ({
-        url: (args["url"] as string | undefined) ?? "",
-        browser: (args["browser"] as string | undefined) ?? "",
-      }),
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          environment_ref: (args["environment_ref"] as string | undefined) ?? "",
+          browser: (args["browser"] as string | undefined) ?? "",
+        }),
     },
     {
       name: "discover_ui_surface_after_login",
@@ -1606,6 +1796,266 @@ export function buildDevFixture(options: {
           target_url: (args["target_url"] as string | undefined) ?? "",
           environment_ref: (args["environment_ref"] as string | undefined) ?? "",
           test_cases: (args["test_cases"] as JsonValue | undefined) ?? [],
+        }),
+    },
+    {
+      name: "register_workspace_environment",
+      description:
+        "SPEC-512 §12: register an approved target environment (environment:… + base_url). Non-loopback http(s) discovery/execution should use allowlisted URLs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          environment_ref: { type: "string", description: "e.g. environment:staging" },
+          base_url: { type: "string" },
+          label: { type: "string" },
+        },
+        required: ["environment_ref", "base_url"],
+      },
+      agent: ENVIRONMENT_REGISTER_AGENT,
+      purpose: "Register Workspace target environment",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [ENVIRONMENT_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          environment_ref: (args["environment_ref"] as string | undefined) ?? "",
+          base_url: (args["base_url"] as string | undefined) ?? "",
+          label: (args["label"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "list_workspace_environments",
+      description: "List registered Workspace target environments (refs + base_url metadata).",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      agent: ENVIRONMENT_LIST_AGENT,
+      purpose: "List Workspace environments",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [ENVIRONMENT_LIST_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: () => ({}),
+    },
+    {
+      name: "generate_business_analysis_stub",
+      description:
+        "SPEC-204 generate path: draft a Workflow stub from url or ui_map_elements. For assess_business_analysis_quality — never invents accepted BA.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          ui_map_elements: { type: "array", items: { type: "object" } },
+          source_url: { type: "string" },
+          requirement_ref: { type: "string" },
+        },
+        required: [],
+      },
+      agent: WORKFLOW_STUB_AGENT,
+      purpose: "Generate Workflow stub from Semantic UI Map",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [WORKFLOW_STUB_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 5, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          ui_map_elements: (args["ui_map_elements"] as JsonValue | undefined) ?? [],
+          source_url: (args["source_url"] as string | undefined) ?? "",
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "generate_risk_stub",
+      description:
+        "SPEC-205 generate path: draft Risk stubs from url or ui_map_elements. Pass outputs to assess_risk_quality.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          ui_map_elements: { type: "array", items: { type: "object" } },
+          source_url: { type: "string" },
+          requirement_ref: { type: "string" },
+        },
+        required: [],
+      },
+      agent: RISK_STUB_AGENT,
+      purpose: "Generate Risk stubs from Semantic UI Map",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [RISK_STUB_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 5, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          ui_map_elements: (args["ui_map_elements"] as JsonValue | undefined) ?? [],
+          source_url: (args["source_url"] as string | undefined) ?? "",
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "generate_test_strategy",
+      description:
+        "SPEC-206 generate path: draft a Test Strategy document from url or ui_map_elements (complements exploratory charter).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          ui_map_elements: { type: "array", items: { type: "object" } },
+          source_url: { type: "string" },
+          objective: { type: "string" },
+          requirement_ref: { type: "string" },
+        },
+        required: [],
+      },
+      agent: STRATEGY_STUB_AGENT,
+      purpose: "Generate Test Strategy stub from Semantic UI Map",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [STRATEGY_STUB_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 5, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          ui_map_elements: (args["ui_map_elements"] as JsonValue | undefined) ?? [],
+          source_url: (args["source_url"] as string | undefined) ?? "",
+          objective: (args["objective"] as string | undefined) ?? "",
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "register_test_dataset",
+      description:
+        "SPEC-208 create path: register TestDataset governance metadata (synthetic by default). No secret row payloads.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          purpose: { type: "string" },
+          classification: { type: "string" },
+          traced_test_refs: { type: "array", items: { type: "string" } },
+          owner: { type: "string" },
+          id: { type: "string" },
+          environment_scope: { type: "string" },
+        },
+        required: ["purpose"],
+      },
+      agent: DATASET_REGISTER_AGENT,
+      purpose: "Register TestDataset metadata",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [DATASET_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          purpose: (args["purpose"] as string | undefined) ?? "",
+          classification: (args["classification"] as string | undefined) ?? "",
+          traced_test_refs: (args["traced_test_refs"] as JsonValue | undefined) ?? [],
+          owner: (args["owner"] as string | undefined) ?? "",
+          id: (args["id"] as string | undefined) ?? "",
+          environment_scope: (args["environment_scope"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "list_test_datasets",
+      description: "List registered TestDataset metadata for the Workspace.",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      agent: DATASET_LIST_AGENT,
+      purpose: "List TestDatasets",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [DATASET_LIST_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: () => ({}),
+    },
+    {
+      name: "create_automation_asset",
+      description:
+        "SPEC-209 create path: draft an AutomationAsset from implemented_test_case_refs for assess_automation_asset_quality.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          implemented_test_case_refs: { type: "array", items: { type: "string" } },
+          owner: { type: "string" },
+          environment_constraints: { type: "array", items: { type: "string" } },
+          execution_interface: { type: "string" },
+          id: { type: "string" },
+        },
+        required: ["implemented_test_case_refs"],
+      },
+      agent: AUTOMATION_STUB_AGENT,
+      purpose: "Create AutomationAsset stub",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [AUTOMATION_STUB_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          implemented_test_case_refs: (args["implemented_test_case_refs"] as JsonValue | undefined) ?? [],
+          owner: (args["owner"] as string | undefined) ?? "",
+          environment_constraints: (args["environment_constraints"] as JsonValue | undefined) ?? [],
+          execution_interface: (args["execution_interface"] as string | undefined) ?? "",
+          id: (args["id"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "evaluate_test_case_quality_skill",
+      description:
+        "SPEC-213 dogfood: run EvaluationManager over Assess Test Case Quality using real review() trials. Pass cases[{case_id,expect_pass,test_case}].",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cases: { type: "array", items: { type: "object" } },
+          run_id: { type: "string" },
+          suite_id: { type: "string" },
+          critical_invariant_ids: { type: "array", items: { type: "string" } },
+        },
+        required: ["cases"],
+      },
+      agent: SKILL_QUALITY_EVAL_AGENT,
+      purpose: "Dogfood evaluate AssessTestCaseQuality Skill",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [SKILL_QUALITY_EVAL_SKILL],
+      budgets: { max_steps: 32, max_duration_seconds: 180, max_tool_calls: 32, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          cases: (args["cases"] as JsonValue | undefined) ?? [],
+          run_id: (args["run_id"] as string | undefined) ?? "",
+          suite_id: (args["suite_id"] as string | undefined) ?? "",
+          critical_invariant_ids: (args["critical_invariant_ids"] as JsonValue | undefined) ?? [],
+        }),
+    },
+    {
+      name: "raise_mistake_recurrence_candidate",
+      description:
+        "SPEC-105 §9a: create a Knowledge Candidate from a recurring mistake assessment. Never promotes. Rejects non-recurring assessments.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          occurrence: { type: "object" },
+          assessment: { type: "object" },
+          causal_mistake: { type: "string" },
+          prior_avoidance_fact_refs: { type: "array", items: { type: "string" } },
+          owner: { type: "string" },
+          expires_at: { type: "string" },
+          idempotency_key: { type: "string" },
+        },
+        required: ["occurrence", "assessment"],
+      },
+      agent: MISTAKE_RECURRENCE_AGENT,
+      purpose: "Raise mistake-recurrence Learning Engine candidate",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [MISTAKE_RECURRENCE_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          occurrence: (args["occurrence"] as JsonValue | undefined) ?? {},
+          assessment: (args["assessment"] as JsonValue | undefined) ?? {},
+          causal_mistake: (args["causal_mistake"] as string | undefined) ?? "",
+          prior_avoidance_fact_refs: (args["prior_avoidance_fact_refs"] as JsonValue | undefined) ?? [],
+          owner: (args["owner"] as string | undefined) ?? "",
+          expires_at: (args["expires_at"] as string | undefined) ?? "",
+          idempotency_key: (args["idempotency_key"] as string | undefined) ?? "",
         }),
     },
   ];

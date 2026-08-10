@@ -140,11 +140,21 @@ on both stdio and remote transports:
 | `execute_api_smoke` | Phase 8: HTTP API smoke/contract (status/body/header); infra ≠ product fail |
 | `run_depth_smokes` | Phase 10: a11y WCAG-subset + perf threshold + security heuristics (`has_critical`) |
 | `list_failure_avoidance_hints` | Phase 11: Session Memory `avoid:*` hints from prior `run_auto_qa` drafts |
+| `register_workspace_environment` | SPEC-512 §12: register allowlisted target `environment:…` + `base_url` |
+| `list_workspace_environments` | List registered target environments |
+| `generate_business_analysis_stub` | SPEC-204: Workflow stub from UI map / URL |
+| `generate_risk_stub` | SPEC-205: Risk stubs from UI map / URL |
+| `generate_test_strategy` | SPEC-206: Test Strategy stub (complements exploratory charter) |
+| `register_test_dataset` / `list_test_datasets` | SPEC-208: dataset governance metadata (no secret rows) |
+| `create_automation_asset` | SPEC-209: AutomationAsset stub from TestCase refs |
+| `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
+| `raise_mistake_recurrence_candidate` | SPEC-105 §9a: create recurrence candidate (never promotes) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.
 Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.
 
 Prefer `password_secret_ref` / `field_secret_refs` after `register_workspace_secret` (demo seed: `workspace-secret:demo-password`).
+Prefer `environment_ref` after `register_workspace_environment` (demo seeds: `environment:dev-fixture-page` / `environment:dev-fixture-login`). Non-loopback http(s) URLs must match the allowlist; `data:` and loopback remain fixture escapes.
 For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`.
 
 Host Skills: `claude-code/skills/dev` (code-first) and `claude-code/skills/test`

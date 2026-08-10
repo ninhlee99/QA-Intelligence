@@ -9,12 +9,15 @@ import type {
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 import { isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
+import type { InMemoryWorkspaceEnvironmentRegistry } from "../environments/workspace-environment-registry.js";
 
 export type UiSurfaceDiscoveryRuntimeExecutorDependencies = Readonly<{
   skill: DiscoverUiSurface;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   engine_ref: string;
+  /** SPEC-512 §12 — optional allowlist / environment_ref resolution. */
+  environments?: InMemoryWorkspaceEnvironmentRegistry;
 }>;
 
 /** Runtime-owned adapter invoking the UI Surface Discovery Skill through retained input. Mirrors `RequirementReviewRuntimeExecutor`/`BrowserTestRuntimeExecutor`. */
@@ -29,11 +32,38 @@ export class UiSurfaceDiscoveryRuntimeExecutor implements AgentRunExecutor {
     const configurationFailure = validateConfiguration(input, this.#dependencies);
     if (configurationFailure) return { ok: false, failure: configurationFailure };
 
-    const url = input.start_request.input["url"];
-    if (typeof url !== "string" || url.trim().length === 0) {
+    const urlRaw = input.start_request.input["url"];
+    const environmentRefRaw = input.start_request.input["environment_ref"];
+    const urlArg = typeof urlRaw === "string" && urlRaw.trim().length > 0 ? urlRaw.trim() : undefined;
+    const environmentRef =
+      typeof environmentRefRaw === "string" && environmentRefRaw.trim().length > 0
+        ? environmentRefRaw.trim()
+        : undefined;
+
+    let url: string;
+    if (this.#dependencies.environments !== undefined) {
+      const resolved = this.#dependencies.environments.resolveTargetUrl({
+        workspace_id: input.reference.workspace_id,
+        ...(environmentRef !== undefined ? { environment_ref: environmentRef } : {}),
+        ...(urlArg !== undefined ? { url: urlArg } : {}),
+      });
+      if (!resolved.ok) {
+        return {
+          ok: false,
+          failure: failure("orchestration", "invalid_request", resolved.message),
+        };
+      }
+      url = resolved.url;
+    } else if (urlArg !== undefined) {
+      url = urlArg;
+    } else {
       return {
         ok: false,
-        failure: failure("orchestration", "invalid_request", "UI Surface Discovery requires an exact url input."),
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "UI Surface Discovery requires url or environment_ref.",
+        ),
       };
     }
 

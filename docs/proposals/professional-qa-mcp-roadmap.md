@@ -228,7 +228,7 @@ precisely so the system never claims false confidence).
 
 ## Phase 6 — Credential & environment registry
 
-**Status: tracer bullet done (2026-08-10).** Real targets can use named Workspace secrets; MCP callers need not put passwords on the wire after one `register_workspace_secret`.
+**Status: tracer bullet done (2026-08-10).** Real targets can use named Workspace secrets; MCP callers need not put passwords on the wire after one `register_workspace_secret`. Environment allowlist closes SPEC-512 §12 half (2026-08-10 follow-up).
 
 **Delivered:**
 - `src/credentials/workspace-credential-registry.ts` — in-memory registry implementing Playwright `SecretResolver`
@@ -236,8 +236,10 @@ precisely so the system never claims false confidence).
 - `password_secret_ref` / `basic_auth_password_secret_ref` on discover-after-login + `run_auto_qa`
 - `field_secret_refs` on `execute_generated_test_case`
 - Demo seed `workspace-secret:demo-password` pre-registered in `dev-fixture`
+- `src/environments/workspace-environment-registry.ts` — allowlist + `environment_ref` resolve
+- MCP `register_workspace_environment` / `list_workspace_environments`; `discover_ui_surface` accepts `environment_ref` (non-loopback http(s) must match; `data:`/loopback are fixture escapes)
 
-**DoD:** login via `password_secret_ref` only; list never returns values.
+**DoD:** login via `password_secret_ref` only; list never returns values; unregistered external URLs denied.
 
 **Explicitly not in Phase 6:** Vault/KMS, GOV-012, multi-browser.
 
@@ -245,16 +247,20 @@ precisely so the system never claims false confidence).
 
 ## Phase 7 — Wire document assessors → MCP
 
-**Status: tracer bullet done (2026-08-10).** Existing SPEC-204→212 document-quality Skills are callable as MCP tools (same pattern as requirement/defect).
+**Status: tracer bullet done (2026-08-10).** Existing SPEC-204→212 document-quality Skills are callable as MCP tools (same pattern as requirement/defect). Generate stubs added 2026-08-10 follow-up.
 
 **Delivered:**
 - `src/mcp/document-assessor-runtime-executor.ts` — shared MCP adapter
 - MCP tools: `assess_business_analysis_quality`, `assess_risk_quality`, `assess_test_strategy_quality`, `assess_test_case_quality`, `assess_test_dataset_quality`, `assess_automation_asset_quality`, `assess_report_quality`
 - Permissions wired on stdio + remote entrypoints
+- Generate stubs: `generate_business_analysis_stub`, `generate_risk_stub`, `generate_test_strategy` (UI-map grounded drafts)
+- SPEC-208/209 create path: `register_test_dataset` / `list_test_datasets`, `create_automation_asset`
+- SPEC-213 dogfood MCP: `evaluate_test_case_quality_skill`; SPEC-105 §9a MCP: `raise_mistake_recurrence_candidate` (never promotes)
+- Playwright `select` / `wait_for` semantic steps (SPEC-407)
 
 **DoD:** each tool returns governed findings via MCP when given a document object.
 
-**Explicitly not in Phase 7:** generate BA/Risk from UI; Learning promote; Jira.
+**Explicitly not in Phase 7:** Learning promote; Jira; inventing business rules beyond the UI map.
 
 ---
 

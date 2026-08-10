@@ -65,7 +65,12 @@ export function testCaseToExecutionPlan(
   const steps: PlaywrightInteractionStep[] = [];
   for (const step of testCase.steps) {
     if (step.action === "navigate") continue;
-    if (step.action !== "type" && step.action !== "click") {
+    if (
+      step.action !== "type" &&
+      step.action !== "click" &&
+      step.action !== "select" &&
+      step.action !== "wait_for"
+    ) {
       return {
         ok: false,
         failure: { code: "unsupported_step_action", message: `Test case "${testCase.id}" step action "${step.action}" has no execution-engine equivalent.` },
@@ -85,6 +90,30 @@ export function testCaseToExecutionPlan(
 
     if (step.action === "click") {
       steps.push({ kind: "click", target });
+      continue;
+    }
+    if (step.action === "wait_for") {
+      const timeoutRaw = step.input?.["timeout_ms"];
+      const timeout_ms = typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw) ? timeoutRaw : undefined;
+      steps.push({
+        kind: "wait_for",
+        target,
+        ...(timeout_ms !== undefined ? { timeout_ms } : {}),
+      });
+      continue;
+    }
+    if (step.action === "select") {
+      const optionLabel = step.input?.["option_label"];
+      if (typeof optionLabel !== "string" || optionLabel.trim().length === 0) {
+        return {
+          ok: false,
+          failure: {
+            code: "missing_step_target",
+            message: `Test case "${testCase.id}" has a select step with no option_label.`,
+          },
+        };
+      }
+      steps.push({ kind: "select", target, option_label: optionLabel });
       continue;
     }
     // A positive-variant `type` step has no literal value (SPEC-207 §6

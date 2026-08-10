@@ -4,6 +4,7 @@
 
 ### Added
 
+- SPEC gap thin slices: Workspace environment allowlist (`register_workspace_environment` / `list_workspace_environments`), BA/Risk/Strategy generate stubs, TestDataset registry, AutomationAsset create stub, SPEC-213 dogfood MCP, SPEC-105 raise-mistake-recurrence MCP, Playwright `select`/`wait_for` steps
 - MCP catalog completion for remaining assessors/discovery: `discover_product_context`, `assess_execution_record_quality`, `draft_defects_from_qa_run`
 - `compactMcpInput` helper; credential registry authorize (`credential:register` / `credential:read`)
 - Tool catalog smoke test (`tests/mcp/tool-catalog.smoke.test.ts`)

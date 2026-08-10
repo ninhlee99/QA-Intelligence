@@ -67,6 +67,10 @@ const MEMBERSHIP: MembershipRecord = {
     "execution_record:read",
     "credential:register",
     "credential:read",
+    "environment:register",
+    "environment:read",
+    "test_dataset:create",
+    "automation_asset:create",
   ],
   policy_version: POLICY_VERSION,
 };

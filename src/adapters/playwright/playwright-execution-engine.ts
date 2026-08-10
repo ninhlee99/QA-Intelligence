@@ -50,16 +50,17 @@ export interface Clock {
  * Semantic UI pipeline already resolved.
  *
  * Phase 2 (docs/proposals/professional-qa-mcp-roadmap.md): `steps` adds
- * semantic interaction — `type`/`click` target an accessible name/role, the
- * same vocabulary `CleanedDomNode` and Discovery's `SemanticUiMap` already
- * use. This does NOT reopen raw CSS/XPath selectors (ADR-022 §4 stays in
- * force): a step resolves through Playwright's own `getByRole(role, {name})`
- * accessible locator, and each target is checked against the immediately
- * preceding DOM capture before acting, so an author still cannot reach past
- * the Semantic UI pipeline into implementation detail. `secret_ref`
- * indirection (never a raw value on the wire) is what SPEC-407 §4 calls
- * "approved injection" — a caller passes a Workspace-scoped reference; the
- * engine resolves it out-of-band through its `secrets` dependency.
+ * semantic interaction — `type`/`click`/`select`/`wait_for` target an
+ * accessible name/role, the same vocabulary `CleanedDomNode` and Discovery's
+ * `SemanticUiMap` already use. This does NOT reopen raw CSS/XPath selectors
+ * (ADR-022 §4 stays in force): a step resolves through Playwright's own
+ * `getByRole(role, {name})` accessible locator, and each target is checked
+ * against the immediately preceding DOM capture before acting, so an author
+ * still cannot reach past the Semantic UI pipeline into implementation
+ * detail. `secret_ref` indirection (never a raw value on the wire) is what
+ * SPEC-407 §4 calls "approved injection" — a caller passes a Workspace-scoped
+ * reference; the engine resolves it out-of-band through its `secrets`
+ * dependency.
  */
 export type PlaywrightInteractionTarget = Readonly<{
   accessible_name: string;
@@ -68,7 +69,9 @@ export type PlaywrightInteractionTarget = Readonly<{
 
 export type PlaywrightInteractionStep =
   | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget }>
-  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>;
+  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>
+  | Readonly<{ kind: "select"; target: PlaywrightInteractionTarget; option_label: string }>
+  | Readonly<{ kind: "wait_for"; target: PlaywrightInteractionTarget; timeout_ms?: number }>;
 
 /**
  * `dialog_triggered` is true if `window.alert`/`confirm`/`prompt` fired at
@@ -501,7 +504,9 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       if (!cleaned.ok) {
         return { ok: false, stepIndex: index, message: `Interaction step ${index} DOM capture failed: ${cleaned.failure.message}` };
       }
-      if (!nodeExists(cleaned.value.sanitized_tree, step.target)) {
+      // wait_for intentionally skips the pre-existence check — the step's job
+      // is to wait until the target appears in the live page.
+      if (step.kind !== "wait_for" && !nodeExists(cleaned.value.sanitized_tree, step.target)) {
         return {
           ok: false,
           stepIndex: index,
@@ -522,6 +527,19 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
           // the very next step (or the final assertion capture) can race
           // ahead of that handler and observe stale DOM/no dialog at all.
           await page.waitForTimeout(200);
+        } else if (step.kind === "select") {
+          const selectLocator = step.target.accessible_role
+            ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], {
+                name: step.target.accessible_name,
+              })
+            : page.getByRole("combobox", { name: step.target.accessible_name }).or(
+                page.getByLabel(step.target.accessible_name),
+              );
+          await selectLocator.selectOption({ label: step.option_label });
+          await page.waitForTimeout(200);
+        } else if (step.kind === "wait_for") {
+          const timeout = step.timeout_ms ?? 5_000;
+          await locator.first().waitFor({ state: "visible", timeout });
         } else {
           let text = step.text ?? "";
           if (step.secret_ref !== undefined) {
