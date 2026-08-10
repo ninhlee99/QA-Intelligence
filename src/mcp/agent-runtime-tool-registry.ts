@@ -4,6 +4,7 @@ import type { AgentRuntime, AgentRunBudgets, AgentRunResult, AgentRunStartReques
 import type { WorkspaceContext, ConsequenceClass, JsonObject } from "../requirement-review/public.js";
 import { resolveAgentRunBudgets } from "../runtime/default-budgets.js";
 import type { SessionMemory, SessionMemoryEntry } from "../memory/session-memory.js";
+import { evaluateFailureAvoidanceCandidate } from "../memory/failure-avoidance.js";
 import type { McpTool, McpToolCallOutcome, McpToolRegistry } from "./sdk-mcp-server.js";
 
 export type AgentRuntimeToolDefinition = Readonly<{
@@ -140,6 +141,7 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
     }
 
     this.#retainOutcomeInSessionMemory(context.workspace_id, definition, executed.value);
+    this.#retainFailureAvoidanceFromQaRun(context.workspace_id, definition, executed.value);
 
     return {
       ok: executed.value.outcome === "completed",
@@ -173,6 +175,52 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
       reuse_likely: result.outcome === "completed",
       ttl_seconds: this.#dependencies.sessionMemoryTtlSeconds ?? DEFAULT_SESSION_MEMORY_TTL_SECONDS,
     });
+  }
+
+  /**
+   * SPEC-108 §7.3: when `run_auto_qa` completes with draft defects, offer
+   * each causal mistake as a failure-avoidance candidate so a later run in
+   * the same Workspace CAN look it up. Still goes through
+   * `evaluateFailureAvoidanceCandidate` (recurring/global → Learning Engine
+   * path, not silent retain). Does not invent confirmed causes — key is the
+   * draft defect id + classification.
+   */
+  #retainFailureAvoidanceFromQaRun(
+    workspaceId: string,
+    definition: AgentRuntimeToolDefinition,
+    result: AgentRunResult,
+  ): void {
+    if (definition.name !== "run_auto_qa" || result.outcome !== "completed") return;
+    const sessionMemory = this.#dependencies.sessionMemory;
+    if (sessionMemory === undefined) return;
+    const output = result.output;
+    if (typeof output !== "object" || output === null || Array.isArray(output)) return;
+    const drafts = (output as JsonObject)["draft_defects"];
+    if (!Array.isArray(drafts)) return;
+
+    const ttl = this.#dependencies.sessionMemoryTtlSeconds ?? DEFAULT_SESSION_MEMORY_TTL_SECONDS;
+    for (const draft of drafts) {
+      if (typeof draft !== "object" || draft === null || Array.isArray(draft)) continue;
+      const defect = draft as JsonObject;
+      const id = typeof defect["id"] === "string" ? defect["id"] : undefined;
+      const classification = typeof defect["classification"] === "string" ? defect["classification"] : "unknown";
+      const summary = typeof defect["summary"] === "string" ? defect["summary"] : "";
+      const suspected = typeof defect["suspected_cause"] === "string" ? defect["suspected_cause"] : summary;
+      if (id === undefined) continue;
+      evaluateFailureAvoidanceCandidate(sessionMemory, {
+        workspace_id: workspaceId,
+        trigger: classification === "security_incident" ? "defect" : "failed_execution",
+        causal_mistake_key: `avoid:${id}:${classification}`,
+        causal_mistake: suspected || summary || id,
+        source_ref: `defect-draft:${id}`,
+        // Fast-path retain only (SPEC-108 §7.2). Security drafts still carry
+        // classification in the key/value for later lookup; promoting them as
+        // high_consequence would decline here and require Learning Engine.
+        consequence_class: "reversible",
+        recurring: false,
+        ttl_seconds: ttl,
+      });
+    }
   }
 
   /**

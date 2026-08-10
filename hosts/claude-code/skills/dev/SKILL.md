@@ -1,62 +1,42 @@
 ---
 name: dev
 description: >
-  Dev-side QA workflow for QA Intelligence. Reads the target screen's source
-  code in this repo to derive acceptance criteria and test cases, then drives
-  the `qa-intelligence` MCP server (dev-entrypoint, local domain) to discover,
-  generate, execute, and report — no live spec/tester input required.
+  Dev-side QA workflow for QA Intelligence. Reads local screen source to
+  derive acceptance criteria, then drives qa-intelligence MCP
+  (discover → a11y naming smoke → generate → execute → draft defects →
+  release gate) against localhost before handing to a tester.
   Trigger: "/qa-intelligence:dev", "test this screen locally", "run dev QA",
   "test against localhost with qa-intelligence".
 ---
 
-# QA Intelligence — Dev Workflow
+# QA Intelligence — Dev Workflow (Senior QA stance)
 
-Purpose: let a developer validate a screen they just built, using the code
-itself as the source of truth for what "correct" means, before it ever
-reaches a tester.
-
-This is the **code-first** counterpart to `/qa-intelligence:test` (tester
-workflow, UI-first, spec-first). Same MCP tools, same output shapes — the
-difference is only where acceptance criteria come from.
+Validate a screen you just built using **code as AC source**, then exercise
+the live UI through MCP. Same tools/output shapes as `/qa-intelligence:test`.
+Act like a careful QA peer-reviewer for your own change — not a green-CI cheerleader.
 
 ## Preconditions
 
-- The `qa-intelligence` MCP server is connected (`hosts/claude-code/.claude-plugin/plugin.json` → `dev-entrypoint.js`). If tool calls 404/fail, tell the user to run `npm run build` first (see `hosts/README.md`).
-- The target screen is running locally (dev server up) and reachable at a `localhost`/`127.0.0.1` URL. Ask for the URL and port if not given.
+- MCP connected (`npm run build` if tools fail). See `hosts/README.md`.
+- Target running on `localhost` / `127.0.0.1`. Ask URL/port if missing.
+- Do **not** use `execute_browser_test` (DEMO seeded plans only). Use `run_auto_qa`.
 
 ## Procedure
 
-1. **Find the screen's source.** Locate the component/route/page backing the target URL in this repo (router config, page component, form component). Read it — don't guess.
-2. **Derive acceptance criteria from code, not assumption.** For each field/action the component renders, extract:
-   - required vs optional fields, and their validation rules (regex, min/max length, type) straight from the code (schema, validator, form config).
-   - the success-path text/state the code renders after a correct submit (the literal string or i18n key) — this becomes `expected_text`.
-   - each criterion statement must name the field/action's accessible name as the UI will expose it (label text, `aria-label`, button text) — match what Discovery will actually see, not the internal prop name.
-   - if code and any existing spec/comment disagree, note the conflict; do not silently prefer one.
-3. **Run the pipeline** via `run_auto_qa` against the local URL, passing the derived `acceptance_criteria`. Supply `login_url` + the five `username_field_name`/`username`/`password_field_name`/`password`/`submit_action_name` fields together if the screen is session-gated (all six or none). Set `output_path` to write the HTML report to disk (default `docs/qa-reports/dev/<screen>-<date>.html` under this repo unless the user asks otherwise).
-4. **If `run_auto_qa` reports criteria that couldn't bind to a discovered field/action**, treat that as a real finding: either the code exposes a different accessible name than assumed (re-check step 1), or the code has a bug (field missing / mislabeled). Say which.
-5. **Persist the generated test cases for reuse.** Save the `test_cases` + `generated_assertions` arrays from the response as JSON next to the report (e.g. `docs/qa-reports/dev/<screen>-<date>.testcases.json`) — this is the E2E artifact `/qa-intelligence:test` and future dev runs replay via `execute_generated_test_case`.
-6. **Summarize**: pass/fail counts, any unbindable criteria, path to the HTML report, path to the saved test case JSON.
+1. **Find the screen source** (route/page/form). Read it — don't guess.
+2. **Derive AC from code:** required/optional + validation rules; success/error text → `expected_text`; accessible names as the UI exposes them (label/`aria-label`/button text). Note code↔comment conflicts; don't silently pick one.
+3. **`run_auto_qa`** against the local URL with derived `acceptance_criteria`. Add login_* sextet if session-gated. Set `output_path` (default `docs/qa-reports/dev/<screen>-<date>.html`). Pipeline includes **a11y naming smoke** + flake-aware execution + draft defects + release gate.
+4. **If generation_findings (unbindable AC):** either wrong accessible name assumption or missing/mislabeled control — say which after re-checking source.
+5. **Optional:** `generate_exploratory_charter` for manual edge hunting; `assess_defect_quality` on serious drafts before asking a tester to file.
+6. **Persist:** `test_cases`+`generated_assertions` JSON beside the report; save `draft_defects` if any.
+7. **Summarize gate-first:** `release_recommendation` → fails/flakes/a11y critical → unbound AC → residual risks → artifact paths. State scope limit (single surface; naming smoke ≠ WCAG).
 
-## Retesting against a real domain after deploy
+## After deploy
 
-Once the screen is deployed to staging/prod, replay the *same* saved test
-cases against the real domain instead of regenerating from scratch:
-
-- Load the saved `<screen>-<date>.testcases.json`.
-- For each entry, call `execute_generated_test_case` with that exact
-  `test_case` + `generated_assertion` object, supplying `field_values` for
-  real credentials/data if the positive variant needs them.
-- The tool executes against whatever URL the test case's own navigate step
-  points to — if that's still `localhost`, ask the user for the staging URL
-  and confirm whether to regenerate against it (`generate_test_cases` /
-  `run_auto_qa` again with the same `acceptance_criteria` but new `url`)
-  instead of reusing a case pinned to a different origin.
+Replay saved testcases via `execute_generated_test_case` against staging URL (update navigate target / field_values as needed). Regenerate with `run_auto_qa` when UI or AC changed.
 
 ## Non-goals
 
-- Do not invent acceptance criteria that aren't traceable to code or an
-  explicit spec the user pastes in-conversation.
-- Do not fabricate credentials — ask the user for real login values, or use
-  values already present in local fixtures/seed data.
-- Not for testing screens with no local source in this repo — use
-  `/qa-intelligence:test` instead.
+- Inventing AC not in code
+- Claiming production readiness from localhost alone
+- DEMO `execute_browser_test` against real apps

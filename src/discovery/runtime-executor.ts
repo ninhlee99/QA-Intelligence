@@ -8,6 +8,7 @@ import type {
 } from "../runtime/executor.js";
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
+import { isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 
 export type UiSurfaceDiscoveryRuntimeExecutorDependencies = Readonly<{
   skill: DiscoverUiSurface;
@@ -36,10 +37,24 @@ export class UiSurfaceDiscoveryRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
+    let browser: BrowserName | undefined;
+    const browserRaw = input.start_request.input["browser"];
+    if (typeof browserRaw === "string" && browserRaw.trim().length > 0) {
+      const name = browserRaw.trim().toLowerCase();
+      if (!isBrowserName(name)) {
+        return {
+          ok: false,
+          failure: failure("orchestration", "invalid_request", `browser must be chromium|firefox|webkit (got "${browserRaw}").`),
+        };
+      }
+      browser = name;
+    }
+
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
       context: input.execution.workspace_context,
       url,
+      ...(browser !== undefined ? { browser } : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 

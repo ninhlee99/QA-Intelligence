@@ -4,6 +4,12 @@
 
 ### Added
 
+- MCP catalog completion for remaining assessors/discovery: `discover_product_context`, `assess_execution_record_quality`, `draft_defects_from_qa_run`
+- `compactMcpInput` helper; credential registry authorize (`credential:register` / `credential:read`)
+- Tool catalog smoke test (`tests/mcp/tool-catalog.smoke.test.ts`)
+- `npm run release:check` (= full `validate`) for release-like gate
+- MCP Senior QA catalog (dev): discover UI, generate/execute variants, `run_auto_qa` with a11y naming smoke + draft defects + release gate, exploratory charter, defect quality assess (`src/mcp/dev-fixture.ts`, hosts Skills `dev`/`test`)
+- `npm run mcp:dev` / `npm run mcp:remote` entry scripts
 - Foundation specifications SPEC-001–007
 - Governance documents GOV-001–012
 - Architecture decisions ADR-001–015, including the approved technology and tracer-bullet baseline
@@ -20,6 +26,11 @@
 - Agent/Skill evaluation schemas, examples, lifecycle ontology, specialized quality gates, and delivery playbooks
 - Draft implementation ADRs for Node/TypeScript, PostgreSQL/outbox, modular deployment, OIDC authorization, and the Requirement Review tracer bullet
 - Tracer-bullet review records, change-impact evidence, adapter conformance plan, deterministic fixtures, strict Ajv validation, and CI workflow
+
+### Changed
+
+- `execute_generated_test_case` now shares `ExecuteBrowserTest` flake-detection + screenshot path with `run_auto_qa`
+- Host plugin descriptions and `docs/GUIDE.md` updated for the multi-tool MCP catalog (no longer "one tool only")
 
 ### Corrected
 

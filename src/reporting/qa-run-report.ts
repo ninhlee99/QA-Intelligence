@@ -5,8 +5,20 @@
  *
  * `renderQaRunReportHtml` is pure (no I/O); writing its output to a file is
  * `RunAutoQaPipelineRuntimeExecutor`'s concern.
+ *
+ * v1.1 adds Senior-QA surfaces: draft defects (SPEC-211), variant coverage,
+ * residual risk notes, and a release recommendation — all derived
+ * deterministically from the same run, never inventing product intent.
  */
+import type { Defect } from "../bug-analysis/public.js";
+import type { AccessibilitySmokeReport } from "../discovery/assess-ui-accessibility-smoke.js";
 import type { TestCaseGenerationFinding } from "../test-design/public.js";
+import type {
+  ProfessionalQaAnalysis,
+  ReleaseRecommendation,
+  ResidualRiskNote,
+  VariantCoverageRow,
+} from "./qa-professional-analysis.js";
 
 export type QaRunTestCaseOutcome = "passed" | "failed" | "cancelled" | "not_executed" | "flaky";
 
@@ -21,7 +33,7 @@ export type QaRunTestCaseResult = Readonly<{
 }>;
 
 export type QaRunReport = Readonly<{
-  schema_version: "1.0.0";
+  schema_version: "1.1.0";
   workspace_id: string;
   /** The URL Discovery observed — the target screen after login when discover_ui_surface_after_login was used. */
   target_url: string;
@@ -40,6 +52,14 @@ export type QaRunReport = Readonly<{
     flaky: number;
     not_executed: number;
   }>;
+  /** SPEC-211 drafts from failed/flaky outcomes — empty when the run is clean. */
+  draft_defects: readonly Defect[];
+  /** Naming a11y smoke on the same discovery capture (not WCAG). */
+  accessibility_smoke: AccessibilitySmokeReport;
+  variant_coverage: readonly VariantCoverageRow[];
+  residual_risks: readonly ResidualRiskNote[];
+  release_recommendation: ReleaseRecommendation;
+  release_recommendation_rationale: string;
 }>;
 
 export function summarizeQaRunTestCases(
@@ -65,6 +85,26 @@ export function summarizeQaRunTestCases(
   };
 }
 
+/** Attach professional-analysis fields onto a base report shell. */
+export function withProfessionalAnalysis(
+  report: Omit<
+    QaRunReport,
+    | "variant_coverage"
+    | "residual_risks"
+    | "release_recommendation"
+    | "release_recommendation_rationale"
+  >,
+  analysis: ProfessionalQaAnalysis,
+): QaRunReport {
+  return {
+    ...report,
+    variant_coverage: analysis.variant_coverage,
+    residual_risks: analysis.residual_risks,
+    release_recommendation: analysis.release_recommendation,
+    release_recommendation_rationale: analysis.release_recommendation_rationale,
+  };
+}
+
 /** Renders a self-contained HTML report — no external stylesheet/script, safe to open directly from disk. */
 export function renderQaRunReportHtml(report: QaRunReport): string {
   const rows = report.test_cases.map(testCaseRow).join("\n");
@@ -77,6 +117,47 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
           )
           .join("\n")}</ul>`
       : "";
+  const coverage =
+    report.variant_coverage.length > 0
+      ? `<h2>Variant coverage</h2>
+<table>
+  <thead><tr><th>Variant</th><th>Generated</th><th>Passed</th><th>Failed</th><th>Flaky</th><th>Not executed</th></tr></thead>
+  <tbody>
+${report.variant_coverage.map(coverageRow).join("\n")}
+  </tbody>
+</table>`
+      : "";
+  const defects =
+    report.draft_defects.length > 0
+      ? `<h2>Draft defects (SPEC-211)</h2>
+<p class="meta">Suspected causes only — <code>confirmed_cause</code> is never set by this pipeline. Human triage required before filing.</p>
+<table>
+  <thead><tr><th>ID</th><th>Severity</th><th>Priority</th><th>Classification</th><th>Summary</th><th>Evidence</th></tr></thead>
+  <tbody>
+${report.draft_defects.map(defectRow).join("\n")}
+  </tbody>
+</table>`
+      : "";
+  const residual =
+    report.residual_risks.length > 0
+      ? `<h2>Residual risks</h2><ul>${report.residual_risks
+          .map(
+            (risk) =>
+              `<li class="risk-${risk.severity}"><strong>${escapeHtml(risk.severity)}</strong>: ${escapeHtml(risk.message)}</li>`,
+          )
+          .join("\n")}</ul>`
+      : "";
+  const a11y =
+    report.accessibility_smoke.findings.length > 0
+      ? `<h2>Accessibility naming smoke</h2>
+<p class="meta">Not a WCAG audit — missing/duplicate accessible names only.</p>
+<ul>${report.accessibility_smoke.findings
+          .map(
+            (finding) =>
+              `<li class="risk-${finding.severity}"><strong>${escapeHtml(finding.severity)}</strong> [${escapeHtml(finding.category)}]: ${escapeHtml(finding.message)}</li>`,
+          )
+          .join("\n")}</ul>`
+      : `<h2>Accessibility naming smoke</h2><p class="meta">No naming issues on ${report.accessibility_smoke.element_count} discovered element(s). Still not a full WCAG/axe audit.</p>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -90,7 +171,7 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
   th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.9rem; vertical-align: top; }
   th { background: #f5f5f5; }
-  .summary { display: flex; gap: 1.5rem; margin: 1rem 0; }
+  .summary { display: flex; gap: 1.5rem; margin: 1rem 0; flex-wrap: wrap; }
   .stat { padding: 0.75rem 1rem; border-radius: 6px; background: #f5f5f5; min-width: 6rem; }
   .stat .n { font-size: 1.5rem; font-weight: 700; display: block; }
   .outcome-passed { color: #0a7d2c; font-weight: 600; }
@@ -100,6 +181,17 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   .outcome-flaky { color: #b8860b; font-weight: 600; }
   .meta { color: #555; font-size: 0.9rem; }
   code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .gate { padding: 1rem 1.25rem; border-radius: 8px; margin: 1rem 0; border: 1px solid #ddd; }
+  .gate-recommend_release { background: #eaf7ee; border-color: #0a7d2c; }
+  .gate-pass_with_gaps { background: #fff8e6; border-color: #b8860b; }
+  .gate-investigate_flakes { background: #fff8e6; border-color: #b8860b; }
+  .gate-changes_required { background: #fdecea; border-color: #c0392b; }
+  .gate-do_not_release { background: #fdecea; border-color: #7b1e1e; }
+  .gate .label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.85rem; }
+  .risk-critical, .sev-critical { color: #7b1e1e; font-weight: 600; }
+  .risk-high, .sev-high { color: #c0392b; font-weight: 600; }
+  .risk-medium, .sev-medium { color: #b8860b; font-weight: 600; }
+  .risk-low, .sev-low { color: #555; }
 </style>
 </head>
 <body>
@@ -111,6 +203,10 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   Generated at: ${escapeHtml(report.generated_at)}<br>
   Discovery capture: <code>${escapeHtml(report.discovery_capture_id)}</code> (${report.discovery_element_count} elements)
 </p>
+<div class="gate gate-${report.release_recommendation}">
+  <div class="label">Release gate: ${escapeHtml(report.release_recommendation.replace(/_/g, " "))}</div>
+  <p>${escapeHtml(report.release_recommendation_rationale)}</p>
+</div>
 <div class="summary">
   <div class="stat"><span class="n">${report.summary.generated}</span>generated</div>
   <div class="stat"><span class="n">${report.summary.executed}</span>executed</div>
@@ -118,7 +214,10 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   <div class="stat"><span class="n">${report.summary.failed}</span>failed</div>
   <div class="stat"><span class="n">${report.summary.flaky}</span>flaky</div>
   <div class="stat"><span class="n">${report.summary.not_executed}</span>not executed</div>
+  <div class="stat"><span class="n">${report.draft_defects.length}</span>draft defects</div>
+  <div class="stat"><span class="n">${report.accessibility_smoke.findings.length}</span>a11y findings</div>
 </div>
+${coverage}
 <h2>Test cases</h2>
 <table>
   <thead><tr><th>Test case</th><th>Variant</th><th>Purpose</th><th>Outcome</th><th>Evidence</th></tr></thead>
@@ -126,10 +225,35 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
 ${rows}
   </tbody>
 </table>
+${defects}
+${a11y}
+${residual}
 ${findings}
 </body>
 </html>
 `;
+}
+
+function coverageRow(row: VariantCoverageRow): string {
+  return `    <tr>
+      <td>${escapeHtml(row.variant)}</td>
+      <td>${row.generated}</td>
+      <td>${row.passed}</td>
+      <td>${row.failed}</td>
+      <td>${row.flaky}</td>
+      <td>${row.not_executed}</td>
+    </tr>`;
+}
+
+function defectRow(defect: Defect): string {
+  return `    <tr>
+      <td><code>${escapeHtml(defect.id)}</code></td>
+      <td class="sev-${defect.severity}">${escapeHtml(defect.severity)}</td>
+      <td>${escapeHtml(defect.priority)}</td>
+      <td>${escapeHtml(defect.classification)}</td>
+      <td>${escapeHtml(defect.summary)}</td>
+      <td>${defect.evidence.map(evidenceCell).join("<br>")}</td>
+    </tr>`;
 }
 
 function testCaseRow(result: QaRunTestCaseResult): string {

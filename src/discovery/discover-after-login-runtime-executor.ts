@@ -1,4 +1,6 @@
 import type { JsonObject, VersionReference } from "../requirement-review/public.js";
+import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { DiscoverAfterLogin } from "./discover-after-login.js";
 import type { SemanticUiDiscoveryFailure, SemanticUiMap } from "./public.js";
 import type {
@@ -6,7 +8,7 @@ import type {
   AgentRunExecutorInput,
   AgentRunExecutorResult,
 } from "../runtime/executor.js";
-import { failure, readBasicAuthFields, unique } from "../runtime/executor-support.js";
+import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 
 export type DiscoverAfterLoginRuntimeExecutorDependencies = Readonly<{
@@ -14,6 +16,8 @@ export type DiscoverAfterLoginRuntimeExecutorDependencies = Readonly<{
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   engine_ref: string;
+  /** Phase 6: resolves password_secret_ref / basic_auth_password_secret_ref. */
+  credentials?: InMemoryWorkspaceCredentialRegistry;
 }>;
 
 /** Mirrors `UiSurfaceDiscoveryRuntimeExecutor` — see that file for the composition pattern this repeats. */
@@ -28,16 +32,9 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
     const configurationFailure = validateConfiguration(input, this.#dependencies);
     if (configurationFailure) return { ok: false, failure: configurationFailure };
 
+    const requiredKeys = ["login_url", "username_field_name", "username", "password_field_name", "submit_action_name", "target_url"] as const;
     const requiredStrings: Record<string, string> = {};
-    for (const key of [
-      "login_url",
-      "username_field_name",
-      "username",
-      "password_field_name",
-      "password",
-      "submit_action_name",
-      "target_url",
-    ]) {
+    for (const key of requiredKeys) {
       const value = input.start_request.input[key];
       if (typeof value !== "string" || value.trim().length === 0) {
         return { ok: false, failure: failure("orchestration", "invalid_request", `Discovery-after-login requires an exact "${key}" input.`) };
@@ -45,10 +42,37 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       requiredStrings[key] = value;
     }
 
-    const basicAuth = readBasicAuthFields(input.start_request.input);
-    if (basicAuth === "partial") {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "basic_auth_username and basic_auth_password must be supplied together or not at all.") };
+    const passwordResolved = resolvePasswordInput({
+      registry: this.#dependencies.credentials,
+      workspaceId: input.reference.workspace_id,
+      ...(readOptional(input.start_request.input["password"]) !== undefined
+        ? { password: readOptional(input.start_request.input["password"])! }
+        : {}),
+      ...(readOptional(input.start_request.input["password_secret_ref"]) !== undefined
+        ? { password_secret_ref: readOptional(input.start_request.input["password_secret_ref"])! }
+        : {}),
+    });
+    if (!passwordResolved.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", passwordResolved.message) };
     }
+
+    const basicAuthPassword = resolveBasicAuthPassword({
+      registry: this.#dependencies.credentials,
+      workspaceId: input.reference.workspace_id,
+      ...(readOptional(input.start_request.input["basic_auth_username"]) !== undefined
+        ? { username: readOptional(input.start_request.input["basic_auth_username"])! }
+        : {}),
+      ...(readOptional(input.start_request.input["basic_auth_password"]) !== undefined
+        ? { password: readOptional(input.start_request.input["basic_auth_password"])! }
+        : {}),
+      ...(readOptional(input.start_request.input["basic_auth_password_secret_ref"]) !== undefined
+        ? { password_secret_ref: readOptional(input.start_request.input["basic_auth_password_secret_ref"])! }
+        : {}),
+    });
+    if (!basicAuthPassword.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", basicAuthPassword.message) };
+    }
+    const basicAuthUsername = readOptional(input.start_request.input["basic_auth_username"]);
 
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
@@ -57,15 +81,20 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       username_field_name: requiredStrings["username_field_name"]!,
       username: requiredStrings["username"]!,
       password_field_name: requiredStrings["password_field_name"]!,
-      password: requiredStrings["password"]!,
+      password: passwordResolved.value,
       submit_action_name: requiredStrings["submit_action_name"]!,
       target_url: requiredStrings["target_url"]!,
-      ...(basicAuth !== undefined ? { basic_auth_username: basicAuth.username, basic_auth_password: basicAuth.password } : {}),
+      ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
+        ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
+        : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 
     const map = discovered.value;
     const evidence = unique([`capture:${map.capture_id}`, `semantic-ui-map:${map.capture_id}`]);
+    if (passwordResolved.via === "secret_ref" && passwordResolved.secret_ref !== undefined) {
+      evidence.push(`password-via:${passwordResolved.secret_ref}`);
+    }
 
     return {
       ok: true,
@@ -92,6 +121,10 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       },
     };
   }
+}
+
+function readOptional(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function validateConfiguration(

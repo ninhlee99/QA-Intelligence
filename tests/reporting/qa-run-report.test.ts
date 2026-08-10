@@ -7,6 +7,7 @@ import {
   type QaRunReport,
   type QaRunTestCaseResult,
 } from "../../src/reporting/qa-run-report.js";
+import { buildProfessionalQaAnalysis } from "../../src/reporting/qa-professional-analysis.js";
 
 function testCase(overrides: Partial<QaRunTestCaseResult> = {}): QaRunTestCaseResult {
   return {
@@ -19,9 +20,30 @@ function testCase(overrides: Partial<QaRunTestCaseResult> = {}): QaRunTestCaseRe
   };
 }
 
-function report(testCases: readonly QaRunTestCaseResult[]): QaRunReport {
+function emptyA11y() {
   return {
-    schema_version: "1.0.0",
+    schema_version: "1.0.0" as const,
+    element_count: 4,
+    findings: [],
+    summary: { critical: 0, high: 0, medium: 0, low: 0 },
+    limitations: ["smoke only"],
+  };
+}
+
+function report(testCases: readonly QaRunTestCaseResult[], extras: Partial<QaRunReport> = {}): QaRunReport {
+  const summary = summarizeQaRunTestCases(testCases);
+  const generation_findings = extras.generation_findings ?? [];
+  const draft_defects = extras.draft_defects ?? [];
+  const accessibility_smoke = extras.accessibility_smoke ?? emptyA11y();
+  const analysis = buildProfessionalQaAnalysis({
+    test_cases: testCases,
+    generation_findings,
+    draft_defects,
+    summary,
+    accessibility_smoke,
+  });
+  return {
+    schema_version: "1.1.0",
     workspace_id: "workspace-001",
     target_url: "https://example.com/login",
     generated_at: "2026-08-07T09:00:00.000Z",
@@ -29,8 +51,15 @@ function report(testCases: readonly QaRunTestCaseResult[]): QaRunReport {
     discovery_capture_id: "capture:discovery:001",
     discovery_element_count: 4,
     test_cases: testCases,
-    generation_findings: [],
-    summary: summarizeQaRunTestCases(testCases),
+    generation_findings,
+    summary,
+    draft_defects,
+    accessibility_smoke,
+    variant_coverage: analysis.variant_coverage,
+    residual_risks: analysis.residual_risks,
+    release_recommendation: analysis.release_recommendation,
+    release_recommendation_rationale: analysis.release_recommendation_rationale,
+    ...extras,
   };
 }
 
@@ -161,4 +190,52 @@ test("renderQaRunReportHtml surfaces a flaky outcome with its own CSS class and 
 
   assert.ok(html.includes('class="outcome-flaky"'));
   assert.ok(html.includes('<span class="n">1</span>flaky'));
+});
+
+test("renderQaRunReportHtml shows the release gate banner and variant coverage table", () => {
+  const html = renderQaRunReportHtml(
+    report([
+      testCase({ test_case_id: "tc-1", variant: "positive", outcome: "passed" }),
+      testCase({ test_case_id: "tc-2", variant: "negative", outcome: "passed" }),
+    ]),
+  );
+
+  assert.ok(html.includes("Release gate:"));
+  assert.ok(html.includes("recommend release") || html.includes("recommend_release") || html.includes("gate-recommend_release"));
+  assert.ok(html.includes("Variant coverage"));
+  assert.ok(html.includes("<td>positive</td>") || html.includes(">positive<"));
+});
+
+test("renderQaRunReportHtml renders draft defects when present and never claims confirmed_cause", () => {
+  const value = report([testCase({ test_case_id: "tc-fail", outcome: "failed", variant: "adversarial" })], {
+    draft_defects: [
+      {
+        id: "DEF-DRAFT:tc-fail",
+        version: "0.1.0",
+        status: "draft",
+        summary: "[failed] adversarial: xss",
+        observed_behavior: "observed",
+        expected_behavior: "expected",
+        expected_behavior_authority: "REQ-001@1.0.0",
+        workspace_scope: "workspace-001",
+        environment_ref: "environment:op-1",
+        reproduction_conditions: ["Navigate to https://example.com/login"],
+        evidence: ["capture:abc"],
+        severity: "critical",
+        severity_rationale: "adversarial fail",
+        priority: "p0",
+        classification: "security_incident",
+        suspected_cause: "possible XSS",
+        owner: "unassigned",
+      },
+    ],
+  });
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.includes("Draft defects (SPEC-211)"));
+  assert.ok(html.includes("DEF-DRAFT:tc-fail"));
+  assert.ok(html.includes("security_incident"));
+  assert.ok(html.includes("confirmed_cause"));
+  assert.ok(html.includes("never set"));
 });

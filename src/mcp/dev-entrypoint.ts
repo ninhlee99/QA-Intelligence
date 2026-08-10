@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
  * Development-only MCP stdio server (ADR-016 §8, ADR-019). Composes the
- * in-memory Requirement Review Agent Runtime behind the MCP transport so a
- * host (Claude Code, Codex, Cursor) can call `assess_requirement_quality`
- * over stdio.
+ * in-memory Agent Runtime behind the MCP transport so a host (Claude Code,
+ * Codex, Cursor) can call every dev tracer-bullet tool over stdio — the
+ * same tool set as `remote-dev-entrypoint.ts`, minus the real OIDC/JWKS
+ * identity plumbing that only matters over a network transport. The shared
+ * tool definitions and Agent Runtime wiring live in `dev-fixture.ts`; this
+ * file only supplies the fixture-proof authorizer and stdio transport.
  *
  * This is NOT a production entrypoint: authorization uses a deterministic
  * fixture verifier (no OIDC — ADR-014's production identity is still
@@ -20,50 +23,21 @@ import {
   canonicalWorkspaceIntegrityClaims,
   DeterministicWorkspaceAuthorizer,
 } from "../adapters/deterministic/workspace-authorizer.js";
-import { InMemoryKnowledgeSearch } from "../adapters/memory/knowledge-search.js";
-import { InMemoryRequirementResolver } from "../adapters/memory/requirement-resolver.js";
-import { ScriptedReasoningProvider } from "../adapters/replay/scripted-reasoning-provider.js";
-import {
-  AssessRequirementQuality,
-  RequirementQualityRuleEngine,
-} from "../requirement-review/assess-requirement-quality.js";
-import { CompositeRuleEngine } from "../requirement-review/composite-rule-engine.js";
-import { RequirementReviewRuntimeExecutor } from "../requirement-review/runtime-executor.js";
-import { RequirementIntelligenceRuleEngine } from "../requirement-intelligence/requirement-intelligence-rule-engine.js";
-import { InMemoryAgentRuntime, type IdFactory } from "../runtime/in-memory-agent-runtime.js";
 import { SessionMemory } from "../memory/session-memory.js";
-import type { Requirement, WorkspaceContext } from "../requirement-review/public.js";
+import type { WorkspaceContext } from "../requirement-review/public.js";
 
 import { AgentRuntimeToolRegistry, fixedWorkspaceContext } from "./agent-runtime-tool-registry.js";
+import { buildDevFixture } from "./dev-fixture.js";
 import { createSdkMcpServer } from "./sdk-mcp-server.js";
 import { StdioTransport } from "./stdio-transport.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-dev-mcp-001";
-const AGENT = { id: "requirement-review-agent", version: "0.1.0" } as const;
-const SKILL = { id: "assess-requirement-quality", version: "0.1.0" } as const;
 const POLICY_VERSION = "dev-policy@0.1.0";
 const ISSUER = "https://identity.dev.invalid";
 const AUDIENCE = "qa-intelligence-dev";
 
 function fixtureProof(canonicalClaims: string): string {
   return `fixture-sha256:${createHash("sha256").update(canonicalClaims).digest("hex")}`;
-}
-
-function seedRequirement(): Requirement {
-  return {
-    id: "REQ-DEMO-001",
-    version: "1.0.0",
-    status: "draft",
-    title: "Lock repeated failed login attempts",
-    statement: "The demo product SHALL lock authentication after the configured failed-attempt threshold.",
-    source: ["DEMO-POLICY-001"],
-    owner: "Demo Product Owner",
-    capability_id: "Authentication",
-    scope: { workspace_id: WORKSPACE_ID },
-    acceptance_criteria: [{ id: "AC-1", statement: "The threshold is evaluated by an accepted deterministic rule." }],
-    assumptions: [],
-    traceability: [{ relationship: "governed_by", target_id: "DEMO-POLICY-001" }],
-  };
 }
 
 function devWorkspaceContext(): WorkspaceContext {
@@ -73,7 +47,30 @@ function devWorkspaceContext(): WorkspaceContext {
     actor_id: "mcp-dev-host",
     actor_type: "service",
     roles: ["requirement-reviewer", "agent-operator"],
-    permissions: ["agent:execute", "agent:read", "requirement:read", "knowledge:read", "assessment:create"],
+    permissions: [
+      "agent:execute",
+      "agent:read",
+      "requirement:read",
+      "knowledge:read",
+      "assessment:create",
+      "execution:read",
+      "execution:execute",
+      "execution:cancel",
+      "execution:cleanup",
+      "discovery:observe",
+      "test-case:create",
+      "defect:read",
+      "workflow:read",
+      "risk:read",
+      "test_strategy:read",
+      "test_case:read",
+      "test_dataset:read",
+      "automation_asset:read",
+      "report:read",
+      "execution_record:read",
+      "credential:register",
+      "credential:read",
+    ],
     policy_version: POLICY_VERSION,
     request_id: "request-dev-mcp-001",
     correlation_id: "correlation-dev-mcp-001",
@@ -89,7 +86,30 @@ function devWorkspaceContext(): WorkspaceContext {
 
 function main(): void {
   const clock = { now: (): Date => new Date() };
-  const permissions = ["agent:execute", "agent:read", "requirement:read", "knowledge:read", "assessment:create"];
+  const permissions = [
+    "agent:execute",
+    "agent:read",
+    "requirement:read",
+    "knowledge:read",
+    "assessment:create",
+    "execution:read",
+    "execution:execute",
+    "execution:cancel",
+    "execution:cleanup",
+    "discovery:observe",
+    "test-case:create",
+    "defect:read",
+    "workflow:read",
+    "risk:read",
+    "test_strategy:read",
+    "test_case:read",
+    "test_dataset:read",
+    "automation_asset:read",
+    "report:read",
+    "execution_record:read",
+    "credential:register",
+    "credential:read",
+  ];
   const authorizer = new DeterministicWorkspaceAuthorizer({
     clock,
     expected_issuer: ISSUER,
@@ -103,61 +123,14 @@ function main(): void {
     },
   });
 
-  let reviewId = 0;
-  const reviewer = new AssessRequirementQuality({
+  const sessionMemory = new SessionMemory(clock);
+  const { runtime, tools } = buildDevFixture({
+    workspaceId: WORKSPACE_ID,
+    policyVersion: POLICY_VERSION,
     authorizer,
-    knowledge: new InMemoryKnowledgeSearch({
-      workspace_id: WORKSPACE_ID,
-      knowledge_snapshot: "0.1.0",
-      projection_freshness: clock.now().toISOString(),
-      records: [],
-    }),
-    // SPEC-203 (quality: acceptance criteria, source, ambiguous terms) and
-    // SPEC-202 (contract completeness: rationale, traceability-count-by-
-    // status) are independent accepted rule sets that both govern the same
-    // Requirement — merge them so this dev entrypoint doesn't silently run
-    // only one of the two rule sets a Requirement is actually subject to.
-    rules: new CompositeRuleEngine([
-      new RequirementQualityRuleEngine(),
-      new RequirementIntelligenceRuleEngine(),
-    ]),
-    reasoning: new ScriptedReasoningProvider([]),
     clock,
-    ids: { next: (scope): string => `${scope}-${++reviewId}` },
-    configuration: {
-      resolved_versions: {
-        agent: `${AGENT.id}@${AGENT.version}`,
-        skill: `${SKILL.id}@${SKILL.version}`,
-        prompt: "requirement-assessment-prompt@0.1.0",
-        rule_set: "requirement-quality@1.0.0",
-        knowledge_snapshot: "0.1.0",
-        policy: POLICY_VERSION,
-        input_schema: "requirement.schema.json@1.0.0",
-        output_schema: "requirement-assessment.schema.json@1.0.0",
-      },
-      limits: { knowledge_hits: 5, reasoning_tokens: 500, reasoning_cost: 0, reasoning_timeout_ms: 5_000 },
-    },
+    sessionMemory,
   });
-
-  let runSequence = 0;
-  let eventSequence = 0;
-  const ids: IdFactory = {
-    next: (kind: "run" | "event"): string =>
-      kind === "run" ? `run-${++runSequence}` : `event-${++eventSequence}`,
-  };
-
-  const runtime = new InMemoryAgentRuntime(
-    clock,
-    ids,
-    authorizer,
-    new RequirementReviewRuntimeExecutor({
-      reviewer,
-      requirements: new InMemoryRequirementResolver(WORKSPACE_ID, [seedRequirement()], authorizer),
-      validateAssessment: () => true,
-      expected_agent: AGENT,
-      expected_skill: SKILL,
-    }),
-  );
 
   let idempotencySequence = 0;
   const registry = new AgentRuntimeToolRegistry({
@@ -169,36 +142,12 @@ function main(): void {
     // SPEC-108 §4.2/§8: one Session Memory instance for this process's
     // lifetime, shared across every tools/call — a later call in the same
     // Workspace can read a prior call's retained outcome via
-    // registry.readSessionMemory(). Local stdio serves one Workspace per
-    // process (ADR-016 §3's Local Parent Runtime), so this instance never
-    // needs to isolate more than the one WORKSPACE_ID this entrypoint uses.
-    sessionMemory: new SessionMemory(clock),
-    tools: [
-      {
-        name: "assess_requirement_quality",
-        description:
-          "Assess a requirement's quality (traceability, acceptance criteria, ambiguity) via the QA Intelligence Requirement Review Agent. Development seed data only (REQ-DEMO-001).",
-        inputSchema: {
-          type: "object",
-          properties: { requirement_ref: { type: "string", description: "e.g. REQ-DEMO-001@1.0.0" } },
-          required: ["requirement_ref"],
-        },
-        agent: AGENT,
-        purpose: "Review requirement quality via MCP (development)",
-        consequence_class: "advisory",
-        policy_version: POLICY_VERSION,
-        allowed_skills: [SKILL],
-        // No max_tokens: this Skill only calls a Reasoning Provider when
-        // deterministic rules are indeterminate, and RequirementReviewRuntimeExecutor
-        // does not report usage.tokens at all — the SPEC-508 §3.1 default
-        // would otherwise fail every run as budget_exhausted on a
-        // dimension this Skill never measures.
-        budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
-        buildInput: (args) => ({
-          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "REQ-DEMO-001@1.0.0",
-        }),
-      },
-    ],
+    // registry.readSessionMemory() / list_failure_avoidance_hints.
+    // Local stdio serves one Workspace per process (ADR-016 §3's Local
+    // Parent Runtime), so this instance never needs to isolate more than
+    // the one WORKSPACE_ID this entrypoint uses.
+    sessionMemory,
+    tools,
   });
 
   const server = createSdkMcpServer({

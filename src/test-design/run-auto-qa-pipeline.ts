@@ -8,11 +8,14 @@
  * or down to a fail (SPEC-207 §6, SPEC-210 §4).
  */
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
+import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
+import { assessUiAccessibilitySmoke, type AccessibilitySmokeReport } from "../discovery/assess-ui-accessibility-smoke.js";
 import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-browser-test.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
 import type { SemanticUiDiscoveryResult } from "../discovery/public.js";
+import { buildProfessionalQaAnalysis } from "../reporting/qa-professional-analysis.js";
+import { summarizeQaRunTestCases, withProfessionalAnalysis, type QaRunReport, type QaRunTestCaseResult } from "../reporting/qa-run-report.js";
 import { testCaseToExecutionPlan } from "./to-execution-plan.js";
-import { summarizeQaRunTestCases, type QaRunReport, type QaRunTestCaseResult } from "../reporting/qa-run-report.js";
 import type { GenerateTestCasesResult, JsonObject, TestCase, TestCaseGeneratedAssertion } from "./public.js";
 
 export interface Clock {
@@ -119,18 +122,45 @@ export class RunAutoQaPipeline {
       testCaseResults.push(await this.#executeOne(testCase, generated.value.generated_assertions, request));
     }
 
-    const report: QaRunReport = {
-      schema_version: "1.0.0",
+    // Senior QA default: naming a11y smoke on the same discovery capture —
+    // no second browser navigate. Full WCAG remains out of scope.
+    const accessibilitySmoke: AccessibilitySmokeReport = assessUiAccessibilitySmoke({
+      elements: discovered.value.elements,
+      source_url: discovered.value.source_url,
+    });
+
+    const summary = summarizeQaRunTestCases(testCaseResults);
+    const draftDefects = draftDefectsFromQaRun({
       workspace_id: request.workspace_id,
-      target_url: request.url,
-      generated_at: this.#dependencies.clock.now().toISOString(),
       requirement_ref: request.requirement_ref,
-      discovery_capture_id: discovered.value.capture_id,
-      discovery_element_count: discovered.value.elements.length,
+      target_url: request.url,
+      environment_ref: `environment:${request.operation_id}`,
+      test_cases: testCaseResults,
+    });
+    const analysis = buildProfessionalQaAnalysis({
       test_cases: testCaseResults,
       generation_findings: generated.value.findings,
-      summary: summarizeQaRunTestCases(testCaseResults),
-    };
+      draft_defects: draftDefects,
+      summary,
+      accessibility_smoke: accessibilitySmoke,
+    });
+    const report = withProfessionalAnalysis(
+      {
+        schema_version: "1.1.0",
+        workspace_id: request.workspace_id,
+        target_url: request.url,
+        generated_at: this.#dependencies.clock.now().toISOString(),
+        requirement_ref: request.requirement_ref,
+        discovery_capture_id: discovered.value.capture_id,
+        discovery_element_count: discovered.value.elements.length,
+        test_cases: testCaseResults,
+        generation_findings: generated.value.findings,
+        summary,
+        draft_defects: draftDefects,
+        accessibility_smoke: accessibilitySmoke,
+      },
+      analysis,
+    );
 
     return { ok: true, value: report };
   }

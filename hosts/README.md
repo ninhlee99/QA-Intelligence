@@ -107,11 +107,46 @@ Two ways to get the MCP server and the bundled Skills at once:
 Run `npm run build` from the repository root first — the packages launch
 the compiled `dist/src/mcp/dev-entrypoint.js`, not the TypeScript source.
 
-## Exposed tool
+## Exposed tools (development)
 
-`assess_requirement_quality` — runs the Requirement Review Agent /
-Assess Requirement Quality Skill (SPEC-203) through the real Agent
-Runtime (SPEC-508) and Rule Engine, against the seeded `REQ-DEMO-001`
-requirement by default. Pass `requirement_ref` to target a different
-identifier, though only the seeded requirement will resolve until a real
-Knowledge Store adapter replaces the in-memory seed.
+The shared fixture (`src/mcp/dev-fixture.ts`) currently registers these MCP tools
+on both stdio and remote transports:
+
+| Tool | Purpose |
+|------|---------|
+| `assess_requirement_quality` | SPEC-203/202 requirement quality review (seeded `REQ-DEMO-001`) |
+| `discover_product_context` | SPEC-201 Knowledge Store discovery by objective |
+| `discover_ui_surface` | Live-page Semantic UI Map (Page/Field/Action); optional `browser` |
+| `discover_ui_surface_after_login` | Same, after semantic login (+ optional HTTP Basic Auth) |
+| `generate_test_cases` | SPEC-207 variants from AC + UI map |
+| `execute_generated_test_case` | Execute one generated TestCase object |
+| `run_auto_qa` | Discover → a11y naming smoke → generate → execute → HTML/JSON report + draft defects + release gate + prior avoidance hints |
+| `assess_ui_accessibility_smoke` | Naming a11y smoke (missing/duplicate names) — not full WCAG; also embedded in `run_auto_qa` |
+| `generate_exploratory_charter` | Time-boxed exploratory charter from a surface |
+| `execute_exploratory_session` | Phase 9: run session (auto oracles + multi-browser capture compare) |
+| `assess_defect_quality` | SPEC-211 defect-document quality review |
+| `draft_defects_from_qa_run` | SPEC-211 draft defects from failed/flaky outcomes (standalone) |
+| `assess_execution_record_quality` | SPEC-210 ExecutionRecord document quality |
+| `execute_browser_test` | **DEMO ONLY** seeded plans (`TC-DEMO-001` / `TC-DEMO-002`) — not for real targets |
+| `register_workspace_secret` | Phase 6: register Workspace secret (value never listed back) |
+| `list_workspace_secrets` | Phase 6: list secret refs/metadata only |
+| `assess_business_analysis_quality` | Phase 7 / SPEC-204: Workflow document quality |
+| `assess_risk_quality` | Phase 7 / SPEC-205: Risk document quality |
+| `assess_test_strategy_quality` | Phase 7 / SPEC-206: Test Strategy document quality |
+| `assess_test_case_quality` | Phase 7 / SPEC-207: Test Case document quality |
+| `assess_test_dataset_quality` | Phase 7 / SPEC-208: Test Dataset document quality |
+| `assess_automation_asset_quality` | Phase 7 / SPEC-209: Automation Asset document quality |
+| `assess_report_quality` | Phase 7 / SPEC-212: Report document quality |
+| `execute_api_smoke` | Phase 8: HTTP API smoke/contract (status/body/header); infra ≠ product fail |
+| `run_depth_smokes` | Phase 10: a11y WCAG-subset + perf threshold + security heuristics (`has_critical`) |
+| `list_failure_avoidance_hints` | Phase 11: Session Memory `avoid:*` hints from prior `run_auto_qa` drafts |
+
+**Release posture:** `0.1.0-dev` host packages are the supported **development release**.
+Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.
+
+Prefer `password_secret_ref` / `field_secret_refs` after `register_workspace_secret` (demo seed: `workspace-secret:demo-password`).
+For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`.
+
+Host Skills: `claude-code/skills/dev` (code-first) and `claude-code/skills/test`
+(UI/spec-first Senior QA workflow). Run `npm run mcp:dev` or `npm run mcp:remote`
+after clone.

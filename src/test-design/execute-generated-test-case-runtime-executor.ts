@@ -1,23 +1,21 @@
 /**
- * Closes the generate->execute loop for an ad hoc `TestCase` (this
- * roadmap's Phase 3, docs/proposals/professional-qa-mcp-roadmap.md): takes
- * the exact `TestCase` + `TestCaseGeneratedAssertion` JSON a
+ * Closes the generate->execute loop for an ad hoc `TestCase`: takes the
+ * exact `TestCase` + `TestCaseGeneratedAssertion` JSON a
  * `generate_test_cases` call returned, converts it via
- * `testCaseToExecutionPlan` (Phase 2's PlaywrightExecutionEngine), and runs
- * it — optionally filling in real field values (credentials, real data)
- * the generator deliberately left blank for the positive variant
- * (SPEC-207 §6: never invent "correct" test data). This is the seam that
- * lets a caller run a generated case against a real target the Workspace
- * has not pre-registered an environment/credential entry for yet (Phase
- * 3's remaining "real environment/credential registry" item) — every
- * value here comes from the MCP caller's own explicit input, never a
- * server-side secret store, so it carries no more authority than the
- * caller already had.
+ * `testCaseToExecutionPlan`, and runs it through `ExecuteBrowserTest`
+ * (same flake-detection + evidence path as `run_auto_qa`) — optionally
+ * filling real field values the generator left blank for the positive
+ * variant (SPEC-207 §6: never invent "correct" test data).
  */
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { Browser } from "playwright";
 
-import { PlaywrightExecutionEngine } from "../adapters/playwright/playwright-execution-engine.js";
-import type { JsonObject, JsonValue, VersionReference, WorkspaceAuthorizer } from "../requirement-review/public.js";
+import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
+import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import { mergeFieldValuesWithSecrets, readStringMap } from "../credentials/resolve-secret-input.js";
+import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-browser-test.js";
+import type { JsonValue, VersionReference, WorkspaceAuthorizer } from "../requirement-review/public.js";
 import { testCaseToExecutionPlan } from "./to-execution-plan.js";
 import type { TestCase, TestCaseGeneratedAssertion } from "./public.js";
 import type {
@@ -35,6 +33,9 @@ export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   launchBrowser?: () => Promise<Browser>;
+  /** Directory failure screenshots are written under. Defaults to cwd/.qa-screenshots/<operation_id>. */
+  screenshotBaseDir?: string;
+  credentials?: InMemoryWorkspaceCredentialRegistry;
 }>;
 
 export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor {
@@ -57,7 +58,19 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       return { ok: false, failure: failure("orchestration", "invalid_request", "Execution requires an exact generated_assertion object (from the same generate_test_cases call).") };
     }
     const fieldValuesInput = input.start_request.input["field_values"];
-    const fieldValues = readFieldValues(fieldValuesInput);
+    const fieldSecretRefsInput = input.start_request.input["field_secret_refs"];
+    const fieldValuesMap = readStringMap(fieldValuesInput);
+    const fieldSecretRefsMap = readStringMap(fieldSecretRefsInput);
+    const merged = mergeFieldValuesWithSecrets({
+      registry: this.#dependencies.credentials,
+      workspaceId: input.reference.workspace_id,
+      ...(fieldValuesMap !== undefined ? { field_values: fieldValuesMap } : {}),
+      ...(fieldSecretRefsMap !== undefined ? { field_secret_refs: fieldSecretRefsMap } : {}),
+    });
+    if (!merged.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", merged.message) };
+    }
+    const fieldValues = merged.values.size > 0 ? merged.values : undefined;
 
     const testCase = testCaseValue as unknown as TestCase;
     const assertion = assertionValue as unknown as TestCaseGeneratedAssertion;
@@ -67,40 +80,71 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       return { ok: false, failure: failure("orchestration", "invalid_request", converted.failure.message) };
     }
 
+    const screenshotDir = join(
+      this.#dependencies.screenshotBaseDir ?? process.cwd(),
+      ".qa-screenshots",
+      input.execution.operation_id,
+    );
+    let screenshotDirReady = true;
+    try {
+      await mkdir(screenshotDir, { recursive: true });
+    } catch {
+      screenshotDirReady = false;
+    }
+
+    const plans = new Map<string, PlaywrightExecutionPlan>(
+      Array.from({ length: MAX_FLAKE_TRIALS }, (_, i) => {
+        const key = i === 0 ? testCase.id : `${testCase.id}:trial-${i + 1}`;
+        return [key, converted.value] as const;
+      }),
+    );
     const engine = new PlaywrightExecutionEngine({
       clock: this.#dependencies.clock,
       authorizer: this.#dependencies.authorizer,
       provider: { id: "playwright-execution-engine", version: "0.1.0" },
-      plans: new Map([[testCase.id, converted.value]]),
+      plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
+      ...(screenshotDirReady ? { screenshotDir } : {}),
+    });
+    const skill = new ExecuteBrowserTest({
+      engine,
+      clock: this.#dependencies.clock,
+      provider_ref: "playwright-execution-engine@0.1.0",
     });
 
-    const now = this.#dependencies.clock.now();
-    const attempt = { execution_id: input.reference.run_id, attempt_id: testCase.id };
-    const startResult = await engine.start(
-      {
-        operation: "start",
-        operationId: `${input.execution.operation_id}:start`,
-        attempt,
-        workspace: input.execution.workspace_context,
-        idempotency: { key: `start:${testCase.id}`, scope: "start", request_digest: "" },
-        deadline: { at: input.start_request.deadline, time_standard: "UTC" },
-        version: { contract: "1.0.0", operation_schema: "1.0.0" },
-        payload: { environment_lease: `lease:${input.reference.run_id}`, execution_plan_ref: `plan:${testCase.id}`, authorized_input_refs: [] },
-      },
-      () => {},
-    );
-    void now;
+    const run = await skill.run({
+      operation_id: `${input.execution.operation_id}:${testCase.id}`,
+      workspace: input.execution.workspace_context,
+      execution: { execution_id: input.reference.run_id, attempt_id: testCase.id },
+      test_case_ref: testCase.id,
+      environment_ref: `environment:${input.execution.operation_id}`,
+      deadline: input.start_request.deadline,
+    });
 
-    if (!startResult.ok) {
-      return { ok: false, failure: failure("skill", "skill_failure", `${startResult.failure.code}: ${startResult.failure.message}`, startResult.failure.retryable, startResult.failure.diagnostic_evidence_refs) };
+    if (!run.ok) {
+      return {
+        ok: false,
+        failure: failure(
+          run.failure.class === "authorization" ? "policy" : "skill",
+          run.failure.class === "authorization" ? "authorization_denied" : "skill_failure",
+          run.failure.message,
+          run.failure.retryable,
+          run.failure.evidence,
+        ),
+      };
     }
 
-    const evidence = [...startResult.value.evidence, `test-case:${testCase.id}`];
+    const outcome = run.value.outcome ?? "indeterminate";
+    const evidence = [...(run.value.evidence ?? []), `test-case:${testCase.id}`];
     return {
       ok: true,
       value: {
-        output: executionOutcomeJson(testCase.id, startResult.value.outcome),
+        output: {
+          test_case_id: testCase.id,
+          outcome,
+          ...(run.value.skip_reason !== undefined ? { skip_reason: run.value.skip_reason } : {}),
+          evidence: [...evidence],
+        },
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -113,9 +157,17 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
         skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
         tool_usage: ["playwright-execution-engine@0.1.0"],
         citations: evidence,
-        uncertainty: { level: "none", reasons: [] },
+        uncertainty: {
+          level: outcome === "flaky" ? "medium" : "none",
+          reasons: outcome === "flaky" ? ["Outcome disagreed across flake-detection trials."] : [],
+        },
         policy_events: [],
-        usage: { steps: 1, duration_seconds: startResult.value.timing.duration_ms / 1000, tool_calls: 1, retries: 0 },
+        usage: {
+          steps: 1,
+          duration_seconds: run.value.timing?.duration_seconds ?? 0,
+          tool_calls: 1,
+          retries: 0,
+        },
         evidence,
         cleanup_status: "not_required",
         knowledge_candidates: [],
@@ -140,17 +192,4 @@ function validateConfiguration(
     return failure("policy", "authorization_denied", "Execute Generated Test Case is not present in retained Skill authority.");
   }
   return undefined;
-}
-
-function readFieldValues(value: JsonValue | undefined): ReadonlyMap<string, string> | undefined {
-  if (!isJsonObject(value)) return undefined;
-  const map = new Map<string, string>();
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string") map.set(key, entry);
-  }
-  return map.size > 0 ? map : undefined;
-}
-
-function executionOutcomeJson(testCaseId: string, outcome: string): JsonObject {
-  return { test_case_id: testCaseId, outcome };
 }

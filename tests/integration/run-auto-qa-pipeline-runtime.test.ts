@@ -184,6 +184,10 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   const output = executed.value.output as {
     test_cases: Array<{ test_case_id: string; variant: string; outcome: string; skip_reason: string | null; evidence: string[] }>;
     summary: { generated: number; executed: number; passed: number; failed: number; flaky: number; not_executed: number };
+    release_recommendation: string;
+    draft_defects: Array<{ id: string; classification: string; confirmed_cause: string | null }>;
+    residual_risks: unknown[];
+    variant_coverage: unknown[];
     report_html: string;
     report_path: string | null;
   } | null;
@@ -215,7 +219,15 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   const positive = output!.test_cases.find((testCase) => testCase.variant === "positive")!;
   assert.equal(positive.outcome, "failed", JSON.stringify(positive));
 
+  // Phase 4 Senior-QA surfaces: failed positive → draft defect + non-green gate.
+  assert.ok(output!.draft_defects.length >= 1);
+  assert.ok(output!.draft_defects.every((d) => d.confirmed_cause === null));
+  assert.equal(output!.release_recommendation, "changes_required");
+  assert.ok(Array.isArray(output!.variant_coverage) && output!.variant_coverage.length > 0);
+  assert.ok(Array.isArray(output!.residual_risks) && output!.residual_risks.length > 0);
+
   assert.ok(output!.report_html.includes("QA run report"));
+  assert.ok(output!.report_html.includes("Release gate:"));
   assert.ok(output!.report_html.includes("19"), "rendered HTML should surface the generated count");
   assert.equal(output!.report_path, null, "no output_path was supplied");
 
@@ -309,13 +321,23 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
 
     const output = executed.value.output as {
       report_path: string | null;
-      test_cases: Array<{ variant: string; evidence: string[] }>;
+      release_recommendation?: string;
+      draft_defects?: unknown[];
+      test_cases: Array<{ variant: string; evidence: string[]; outcome: string }>;
     } | null;
     assert.equal(output!.report_path, outputPath);
+    assert.ok(typeof output!.release_recommendation === "string");
+    assert.ok(Array.isArray(output!.draft_defects));
+    // Fixture positive case intentionally fails (wrong credentials path) —
+    // the pipeline SHALL draft at least one defect and must not claim recommend_release.
+    assert.ok((output!.draft_defects?.length ?? 0) > 0);
+    assert.notEqual(output!.release_recommendation, "recommend_release");
 
     const written = await readFile(outputPath, "utf8");
     assert.ok(written.includes("<!doctype html>"));
     assert.ok(written.includes("QA run report"));
+    assert.ok(written.includes("Release gate:"));
+    assert.ok(written.includes("Draft defects (SPEC-211)"));
 
     // With output_path supplied, screenshots live in a sibling directory
     // next to the report HTML (dirname(outputPath)/.qa-screenshots/...),

@@ -13,6 +13,11 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
 import type { DiscoverAfterLogin } from "../discovery/discover-after-login.js";
+import { createLaunchBrowser, isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
+import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
+import type { SessionMemory } from "../memory/session-memory.js";
+import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
 import type {
@@ -20,7 +25,7 @@ import type {
   AgentRunExecutorInput,
   AgentRunExecutorResult,
 } from "../runtime/executor.js";
-import { failure, readBasicAuthFields, unique } from "../runtime/executor-support.js";
+import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 import type { GenerateTestCases } from "./generate-test-cases.js";
 
@@ -35,6 +40,10 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   launchBrowser?: () => Promise<import("playwright").Browser>;
   /** Directory `output_path` is confined to. Defaults to the process's current working directory. */
   outputBaseDir?: string;
+  /** Phase 6: resolves password_secret_ref / basic_auth_password_secret_ref. */
+  credentials?: InMemoryWorkspaceCredentialRegistry;
+  /** Phase 11: inject prior failure-avoidance hints into the report output. */
+  sessionMemory?: SessionMemory;
 }>;
 
 export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
@@ -72,11 +81,69 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     }
 
     const loginFields = readLoginFields(input.start_request.input);
-    const basicAuth = readBasicAuthFields(input.start_request.input);
-    if (basicAuth === "partial") {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "basic_auth_username and basic_auth_password must be supplied together or not at all.") };
+    if (loginFields === "partial") {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "Login fields must be supplied together (login_url + username_field_name + username + password_field_name + password_or_password_secret_ref + submit_action_name) or not at all.",
+        ),
+      };
     }
-    const discover: QaPipelineDiscover = loginFields
+
+    let resolvedPassword: string | undefined;
+    if (loginFields !== undefined) {
+      const passwordResolved = resolvePasswordInput({
+        registry: this.#dependencies.credentials,
+        workspaceId: input.reference.workspace_id,
+        ...(loginFields.password !== undefined ? { password: loginFields.password } : {}),
+        ...(loginFields.password_secret_ref !== undefined
+          ? { password_secret_ref: loginFields.password_secret_ref }
+          : {}),
+      });
+      if (!passwordResolved.ok) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", passwordResolved.message) };
+      }
+      resolvedPassword = passwordResolved.value;
+    }
+
+    const basicAuthPassword = resolveBasicAuthPassword({
+      registry: this.#dependencies.credentials,
+      workspaceId: input.reference.workspace_id,
+      ...(readOptionalString(input.start_request.input["basic_auth_username"]) !== undefined
+        ? { username: readOptionalString(input.start_request.input["basic_auth_username"])! }
+        : {}),
+      ...(readOptionalString(input.start_request.input["basic_auth_password"]) !== undefined
+        ? { password: readOptionalString(input.start_request.input["basic_auth_password"])! }
+        : {}),
+      ...(readOptionalString(input.start_request.input["basic_auth_password_secret_ref"]) !== undefined
+        ? { password_secret_ref: readOptionalString(input.start_request.input["basic_auth_password_secret_ref"])! }
+        : {}),
+    });
+    if (!basicAuthPassword.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", basicAuthPassword.message) };
+    }
+    const basicAuthUsername = readOptionalString(input.start_request.input["basic_auth_username"]);
+
+    let browser: BrowserName = "chromium";
+    const browserRaw = readOptionalString(input.start_request.input["browser"]);
+    if (browserRaw !== undefined) {
+      const name = browserRaw.trim().toLowerCase();
+      if (!isBrowserName(name)) {
+        return {
+          ok: false,
+          failure: failure("orchestration", "invalid_request", `browser must be chromium|firefox|webkit (got "${browserRaw}").`),
+        };
+      }
+      browser = name;
+    }
+    const launchBrowser =
+      this.#dependencies.launchBrowser !== undefined
+        ? this.#dependencies.launchBrowser
+        : createLaunchBrowser(browser);
+
+    const discover: QaPipelineDiscover = loginFields !== undefined && resolvedPassword !== undefined
       ? (operationId, context) =>
           this.#dependencies.discoverAfterLogin.discover({
             operation_id: operationId,
@@ -85,12 +152,20 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
             username_field_name: loginFields.username_field_name,
             username: loginFields.username,
             password_field_name: loginFields.password_field_name,
-            password: loginFields.password,
+            password: resolvedPassword,
             submit_action_name: loginFields.submit_action_name,
             target_url: url,
-            ...(basicAuth !== undefined ? { basic_auth_username: basicAuth.username, basic_auth_password: basicAuth.password } : {}),
+            ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
+              ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
+              : {}),
           })
-      : (operationId, context) => this.#dependencies.discoverUiSurface.discover({ operation_id: operationId, context, url });
+      : (operationId, context) =>
+          this.#dependencies.discoverUiSurface.discover({
+            operation_id: operationId,
+            context,
+            url,
+            browser,
+          });
 
     // Screenshots are always written to disk for real, even with no
     // output_path (JSON-only mode) — a real file is genuinely more useful
@@ -120,7 +195,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       authorizer: this.#dependencies.authorizer,
       discover,
       generator: this.#dependencies.generator,
-      ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
+      launchBrowser,
       ...(screenshotDirReady ? { screenshotDir } : {}),
     });
 
@@ -161,15 +236,28 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       }
     }
 
+    const priorHints =
+      this.#dependencies.sessionMemory?.list(input.reference.workspace_id, FAILURE_AVOIDANCE_KEY_PREFIX) ?? [];
+
     const evidence = [
       `capture:${result.value.discovery_capture_id}`,
       ...result.value.test_cases.flatMap((testCase) => testCase.evidence),
     ];
 
+    const reportJson = qaRunReportJson(result.value, html, writtenPath);
     return {
       ok: true,
       value: {
-        output: qaRunReportJson(result.value, html, writtenPath),
+        output: {
+          ...reportJson,
+          prior_failure_avoidance_hints: priorHints.map((entry) => ({
+            key: entry.key,
+            causal_mistake: entry.value,
+            source_ref: entry.source_ref,
+            retained_at: entry.retained_at,
+            expires_at: entry.expires_at,
+          })),
+        },
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -182,8 +270,19 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         rule_results: [],
         skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
         tool_usage: ["playwright-execution-engine@0.1.0", "playwright-dom-pipeline@0.1.0"],
-        citations: unique([...evidence, `requirement:${requirementRef}`, `source-url:${url}`]),
-        uncertainty: { level: "none", reasons: [] },
+        citations: unique([
+          ...evidence,
+          `requirement:${requirementRef}`,
+          `source-url:${url}`,
+          ...priorHints.map((h) => h.source_ref),
+        ]),
+        uncertainty: {
+          level: priorHints.length > 0 ? "low" : "none",
+          reasons:
+            priorHints.length > 0
+              ? [`${priorHints.length} prior failure-avoidance hint(s) from Session Memory — advisory, not confirmed cause.`]
+              : [],
+        },
         policy_events: [],
         usage: { steps: 3, duration_seconds: 0, tool_calls: result.value.test_cases.length + 1, retries: 0 },
         evidence: unique(evidence),
@@ -199,22 +298,33 @@ type LoginFields = Readonly<{
   username_field_name: string;
   username: string;
   password_field_name: string;
-  password: string;
+  password?: string;
+  password_secret_ref?: string;
   submit_action_name: string;
 }>;
 
-/** All six login fields are required together or not at all — a partial set is a caller configuration error, not "no login." */
-function readLoginFields(input: Readonly<Record<string, unknown>>): LoginFields | undefined {
-  const keys = ["login_url", "username_field_name", "username", "password_field_name", "password", "submit_action_name"] as const;
-  const present = keys.filter((key) => readOptionalString(input[key]) !== undefined);
-  if (present.length === 0) return undefined;
-  if (present.length !== keys.length) return undefined;
+/**
+ * Login sextet: five always-required string fields + (password XOR
+ * password_secret_ref). Partial sets are caller configuration errors.
+ */
+function readLoginFields(input: Readonly<Record<string, unknown>>): LoginFields | "partial" | undefined {
+  const required = ["login_url", "username_field_name", "username", "password_field_name", "submit_action_name"] as const;
+  const presentRequired = required.filter((key) => readOptionalString(input[key]) !== undefined);
+  const password = readOptionalString(input["password"]);
+  const passwordSecretRef = readOptionalString(input["password_secret_ref"]);
+  const hasAnyLogin = presentRequired.length > 0 || password !== undefined || passwordSecretRef !== undefined;
+  if (!hasAnyLogin) return undefined;
+  if (presentRequired.length !== required.length) return "partial";
+  if ((password === undefined && passwordSecretRef === undefined) || (password !== undefined && passwordSecretRef !== undefined)) {
+    return "partial";
+  }
   return {
     login_url: readOptionalString(input["login_url"])!,
     username_field_name: readOptionalString(input["username_field_name"])!,
     username: readOptionalString(input["username"])!,
     password_field_name: readOptionalString(input["password_field_name"])!,
-    password: readOptionalString(input["password"])!,
+    ...(password !== undefined ? { password } : {}),
+    ...(passwordSecretRef !== undefined ? { password_secret_ref: passwordSecretRef } : {}),
     submit_action_name: readOptionalString(input["submit_action_name"])!,
   };
 }
@@ -271,6 +381,53 @@ function qaRunReportJson(report: QaRunReport, html: string, writtenPath: string 
     discovery_capture_id: report.discovery_capture_id,
     discovery_element_count: report.discovery_element_count,
     summary: { ...report.summary },
+    release_recommendation: report.release_recommendation,
+    release_recommendation_rationale: report.release_recommendation_rationale,
+    variant_coverage: report.variant_coverage.map((row) => ({ ...row })),
+    residual_risks: report.residual_risks.map((risk) => ({
+      id: risk.id,
+      severity: risk.severity,
+      message: risk.message,
+      evidence: [...risk.evidence],
+    })),
+    draft_defects: report.draft_defects.map((defect) => ({
+      id: defect.id,
+      version: defect.version,
+      status: defect.status,
+      summary: defect.summary,
+      observed_behavior: defect.observed_behavior,
+      expected_behavior: defect.expected_behavior,
+      expected_behavior_authority: defect.expected_behavior_authority,
+      affected_requirement_refs: [...(defect.affected_requirement_refs ?? [])],
+      workspace_scope: defect.workspace_scope,
+      environment_ref: defect.environment_ref,
+      reproduction_conditions: [...defect.reproduction_conditions],
+      evidence: [...defect.evidence],
+      severity: defect.severity,
+      severity_rationale: defect.severity_rationale,
+      priority: defect.priority,
+      classification: defect.classification,
+      suspected_cause: defect.suspected_cause ?? null,
+      confirmed_cause: defect.confirmed_cause ?? null,
+      owner: defect.owner,
+      related_execution_refs: [...(defect.related_execution_refs ?? [])],
+      related_test_refs: [...(defect.related_test_refs ?? [])],
+    })),
+    accessibility_smoke: {
+      schema_version: report.accessibility_smoke.schema_version,
+      source_url: report.accessibility_smoke.source_url ?? null,
+      element_count: report.accessibility_smoke.element_count,
+      summary: { ...report.accessibility_smoke.summary },
+      findings: report.accessibility_smoke.findings.map((finding) => ({
+        id: finding.id,
+        category: finding.category,
+        severity: finding.severity,
+        message: finding.message,
+        evidence: [...finding.evidence],
+        element_ids: [...finding.element_ids],
+      })),
+      limitations: [...report.accessibility_smoke.limitations],
+    },
     test_cases: report.test_cases.map((testCase) => ({
       test_case_id: testCase.test_case_id,
       purpose: testCase.purpose,
