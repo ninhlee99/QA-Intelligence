@@ -1,6 +1,10 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import { chromium, type Browser } from "playwright";
 
 import { newFullSizePage } from "./full-size-page.js";
+import { accessibleNamesMatch } from "../../shared/accessible-name.js";
 import {
   executionRequestDigest,
   type CancelRequest,
@@ -98,6 +102,8 @@ type Dependencies = Readonly<{
   launchBrowser?: () => Promise<Browser>;
   /** Required only if a plan's steps include a `type` step with `secret_ref`. */
   secrets?: SecretResolver;
+  /** Directory failure screenshots are written under. Screenshot capture is skipped (evidence stays capture_id-only) when omitted. */
+  screenshotDir?: string;
 }>;
 
 type AttemptRecord = Readonly<{
@@ -135,6 +141,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #plans: ReadonlyMap<string, PlaywrightExecutionPlan>;
   readonly #launchBrowser: () => Promise<Browser>;
   readonly #secrets: SecretResolver | undefined;
+  readonly #screenshotDir: string | undefined;
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
   readonly #cancelled = new Set<string>();
@@ -146,6 +153,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#plans = dependencies.plans;
     this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
     this.#secrets = dependencies.secrets;
+    this.#screenshotDir = dependencies.screenshotDir;
   }
 
   async descriptor(request: DescriptorRequest): Promise<ExecutionEngineResult<"descriptor">> {
@@ -362,6 +370,10 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             } else {
               const passed = plan.assert(cleaned.value.sanitized_tree, { dialog_triggered: dialogTriggered });
               emit("assertion_result", { passed, dialog_triggered: dialogTriggered });
+
+              const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
+              if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });
+
               emit("completed");
 
               const completedAt = this.#clock.now();
@@ -369,7 +381,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                 ok: true,
                 value: {
                   outcome: passed ? "passed" : "failed",
-                  evidence: [cleaned.value.capture_id],
+                  evidence: [cleaned.value.capture_id, ...screenshotEvidence],
                   assertion_results: [{ assertion: "plan.assert", result: passed ? "pass" : "fail" }],
                   resource_usage: {},
                   timing: {
@@ -428,6 +440,32 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       ok: true,
       value: { cleanup_status: "completed", residual_resources: [] },
     });
+  }
+
+  /**
+   * SPEC-407 §3 "screenshot and trace capture" (screenshot-only slice of
+   * that requirement — full tracing/video/network logs remain out of
+   * scope). Best-effort evidence, not a correctness gate: any failure
+   * (including `screenshotDir` being unwritable) is swallowed to `[]`
+   * rather than failing the whole `start()` result, matching this
+   * adapter's existing `"best_effort"` `cleanup_guarantee` (`descriptor()`
+   * above). Skipped entirely when `screenshotDir` is not configured —
+   * every existing caller that omits it keeps today's
+   * `evidence: [capture_id]`-only behavior unchanged.
+   */
+  async #captureFailureScreenshot(
+    page: import("playwright").Page,
+    attempt: ExecutionAttemptIdentity,
+  ): Promise<readonly string[]> {
+    if (this.#screenshotDir === undefined) return [];
+    try {
+      await mkdir(this.#screenshotDir, { recursive: true });
+      const path = join(this.#screenshotDir, `${attempt.execution_id}_${attempt.attempt_id}_${Date.now()}.png`);
+      await page.screenshot({ path });
+      return [path];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -603,7 +641,7 @@ function nodeExists(
   node: import("../../dom-cleaner/public.js").CleanedDomNode,
   target: PlaywrightInteractionTarget,
 ): boolean {
-  const nameMatches = node.accessible_name === target.accessible_name;
+  const nameMatches = accessibleNamesMatch(node.accessible_name, target.accessible_name);
   const roleMatches = target.accessible_role === undefined || node.accessible_role === target.accessible_role;
   if (nameMatches && roleMatches) return true;
   return node.children.some((child) => nodeExists(child, target));

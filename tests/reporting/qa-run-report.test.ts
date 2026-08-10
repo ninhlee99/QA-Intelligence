@@ -43,11 +43,22 @@ test("summarizeQaRunTestCases counts each outcome bucket correctly, treating can
     testCase({ outcome: "not_executed", skip_reason: "no generated assertion" }),
   ]);
 
-  assert.deepEqual(summary, { generated: 5, executed: 4, passed: 2, failed: 2, not_executed: 1 });
+  assert.deepEqual(summary, { generated: 5, executed: 4, passed: 2, failed: 2, flaky: 0, not_executed: 1 });
+});
+
+test("summarizeQaRunTestCases counts flaky separately from both passed and failed", () => {
+  const summary = summarizeQaRunTestCases([
+    testCase({ outcome: "passed" }),
+    testCase({ outcome: "flaky" }),
+    testCase({ outcome: "flaky" }),
+    testCase({ outcome: "failed" }),
+  ]);
+
+  assert.deepEqual(summary, { generated: 4, executed: 4, passed: 1, failed: 1, flaky: 2, not_executed: 0 });
 });
 
 test("summarizeQaRunTestCases on an empty result set reports all-zero counts, not a fabricated pass", () => {
-  assert.deepEqual(summarizeQaRunTestCases([]), { generated: 0, executed: 0, passed: 0, failed: 0, not_executed: 0 });
+  assert.deepEqual(summarizeQaRunTestCases([]), { generated: 0, executed: 0, passed: 0, failed: 0, flaky: 0, not_executed: 0 });
 });
 
 test("renderQaRunReportHtml produces a self-contained document carrying the report's summary counts, target, and every test case row", () => {
@@ -116,4 +127,38 @@ test("renderQaRunReportHtml renders unbindable acceptance-criteria findings as t
 test("renderQaRunReportHtml omits the findings section entirely when there are no generation findings", () => {
   const html = renderQaRunReportHtml(report([testCase()]));
   assert.ok(!html.includes("Unbindable acceptance criteria"));
+});
+
+test("renderQaRunReportHtml embeds a .png evidence entry as a file:// <img>, while a non-screenshot entry still renders as <code>", () => {
+  const value = report([
+    testCase({
+      test_case_id: "tc-screenshot",
+      outcome: "failed",
+      evidence: ["capture:abc", "/tmp/qa-screenshots/op-1/exec-1_attempt-1_1699999999999.png"],
+    }),
+  ]);
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.includes('<img src="file:///tmp/qa-screenshots/op-1/exec-1_attempt-1_1699999999999.png"'));
+  assert.ok(html.includes("<code>capture:abc</code>"));
+});
+
+test("renderQaRunReportHtml never reads the screenshot file off disk — a path that does not exist still renders identically", () => {
+  const value = report([
+    testCase({ test_case_id: "tc-missing", outcome: "failed", evidence: ["/does/not/exist/on/disk.png"] }),
+  ]);
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.includes('<img src="file:///does/not/exist/on/disk.png"'));
+});
+
+test("renderQaRunReportHtml surfaces a flaky outcome with its own CSS class and label", () => {
+  const value = report([testCase({ test_case_id: "tc-flaky", outcome: "flaky" })]);
+
+  const html = renderQaRunReportHtml(value);
+
+  assert.ok(html.includes('class="outcome-flaky"'));
+  assert.ok(html.includes('<span class="n">1</span>flaky'));
 });

@@ -8,7 +8,7 @@
  * path elsewhere on the host.
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
@@ -92,12 +92,36 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
           })
       : (operationId, context) => this.#dependencies.discoverUiSurface.discover({ operation_id: operationId, context, url });
 
+    // Screenshots are always written to disk for real, even with no
+    // output_path (JSON-only mode) — a real file is genuinely more useful
+    // than silently dropping failure evidence, even though a JSON-only
+    // caller has no direct MCP mechanism to fetch it back. When
+    // output_path IS supplied, screenshots live in a sibling directory next
+    // to the report HTML file (both already confined inside outputBaseDir
+    // by resolveOutputPath below); otherwise they live under a fixed,
+    // non-attacker-controlled default location (operation_id is opaque and
+    // server-generated — see AgentRuntimeToolRegistry — never raw MCP
+    // input, so no additional path confinement is needed here).
+    const screenshotDir =
+      outputPath !== undefined
+        ? join(dirname(outputPath), ".qa-screenshots", input.execution.operation_id)
+        : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-screenshots", input.execution.operation_id);
+    let screenshotDirReady = true;
+    try {
+      await mkdir(screenshotDir, { recursive: true });
+    } catch {
+      // Best-effort: screenshot capture is optional evidence, never a
+      // reason to fail the whole run_auto_qa call.
+      screenshotDirReady = false;
+    }
+
     const pipeline = new RunAutoQaPipeline({
       clock: this.#dependencies.clock,
       authorizer: this.#dependencies.authorizer,
       discover,
       generator: this.#dependencies.generator,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
+      ...(screenshotDirReady ? { screenshotDir } : {}),
     });
 
     const result = await pipeline.run({

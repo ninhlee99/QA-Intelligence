@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../../../src/adapters/playwright/playwright-execution-engine.js";
@@ -130,6 +133,82 @@ test("start drives a real Chromium page through the Semantic UI pipeline and rep
   assert.equal(result.ok, true, JSON.stringify(result));
   if (!result.ok) return;
   assert.equal(result.value.outcome, "failed");
+});
+
+test("start writes a real screenshot file to disk when screenshotDir is configured and the plan assertion does not hold", async () => {
+  const screenshotDir = mkdtempSync(join(tmpdir(), "qa-screenshot-test-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-screenshot-failed", planFor("failed")]]),
+    screenshotDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-screenshot", attempt_id: "attempt-screenshot-failed" };
+
+  const result = await engine.start(startRequestFor(attempt, "failed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.equal(result.value.outcome, "failed");
+  const screenshotPath = result.value.evidence.find((e) => e.endsWith(".png"));
+  assert.ok(screenshotPath, "a failed run with screenshotDir configured SHALL capture a real screenshot file, not only the synthetic capture_id");
+  assert.ok(existsSync(screenshotPath!), "the evidence path SHALL be a real file, not just a plausible-looking string");
+  assert.ok(statSync(screenshotPath!).size > 0, "the screenshot file SHALL be non-empty");
+  assert.ok(result.value.evidence.length >= 2, "evidence SHALL include both capture_id and the screenshot path");
+});
+
+test("start does not capture a screenshot when the plan assertion passes, even with screenshotDir configured", async () => {
+  const screenshotDir = mkdtempSync(join(tmpdir(), "qa-screenshot-test-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-screenshot-passed", planFor("passed")]]),
+    screenshotDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-screenshot", attempt_id: "attempt-screenshot-passed" };
+
+  const result = await engine.start(startRequestFor(attempt, "passed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.ok(result.value.evidence.every((e) => !e.endsWith(".png")), "screenshot capture SHALL be failure-only, not unconditional");
+});
+
+test("start does not attempt screenshot capture when screenshotDir is not configured", async () => {
+  const engine = makeEngine(new Map([["attempt-no-screenshot-dir", planFor("failed")]]));
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-screenshot", attempt_id: "attempt-no-screenshot-dir" };
+
+  const result = await engine.start(startRequestFor(attempt, "failed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.equal(result.value.evidence.length, 1, "opt-in default (no screenshotDir) SHALL keep today's capture_id-only evidence");
+});
+
+test("a screenshotDir that cannot be written to is swallowed — start still resolves ok with the real outcome, not a screenshot-capture failure", async () => {
+  // A regular file, not a directory, at the screenshotDir path: mkdir(recursive) over
+  // an existing file fails, so page.screenshot({ path }) inside it can never succeed.
+  const parent = mkdtempSync(join(tmpdir(), "qa-screenshot-test-"));
+  const unwritableScreenshotDir = join(parent, "not-a-directory");
+  writeFileSync(unwritableScreenshotDir, "not a directory");
+
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-screenshot-unwritable", planFor("failed")]]),
+    screenshotDir: unwritableScreenshotDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-screenshot", attempt_id: "attempt-screenshot-unwritable" };
+
+  const result = await engine.start(startRequestFor(attempt, "failed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.equal(result.value.outcome, "failed");
+  assert.equal(result.value.evidence.length, 1, "screenshot capture failure SHALL be swallowed, not propagated as a start() failure");
 });
 
 test("start fails closed with infrastructure_failure when the browser cannot launch (ADR-022 §4)", async () => {

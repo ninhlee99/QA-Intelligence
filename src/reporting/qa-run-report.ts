@@ -8,7 +8,7 @@
  */
 import type { TestCaseGenerationFinding } from "../test-design/public.js";
 
-export type QaRunTestCaseOutcome = "passed" | "failed" | "cancelled" | "not_executed";
+export type QaRunTestCaseOutcome = "passed" | "failed" | "cancelled" | "not_executed" | "flaky";
 
 export type QaRunTestCaseResult = Readonly<{
   test_case_id: string;
@@ -37,6 +37,7 @@ export type QaRunReport = Readonly<{
     executed: number;
     passed: number;
     failed: number;
+    flaky: number;
     not_executed: number;
   }>;
 }>;
@@ -46,17 +47,20 @@ export function summarizeQaRunTestCases(
 ): QaRunReport["summary"] {
   let passed = 0;
   let failed = 0;
+  let flaky = 0;
   let notExecuted = 0;
   for (const result of results) {
     if (result.outcome === "passed") passed++;
     else if (result.outcome === "failed" || result.outcome === "cancelled") failed++;
+    else if (result.outcome === "flaky") flaky++;
     else notExecuted++;
   }
   return {
     generated: results.length,
-    executed: passed + failed,
+    executed: passed + failed + flaky,
     passed,
     failed,
+    flaky,
     not_executed: notExecuted,
   };
 }
@@ -93,6 +97,7 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   .outcome-failed { color: #c0392b; font-weight: 600; }
   .outcome-cancelled { color: #c0392b; font-weight: 600; }
   .outcome-not_executed { color: #8a6d00; font-weight: 600; }
+  .outcome-flaky { color: #b8860b; font-weight: 600; }
   .meta { color: #555; font-size: 0.9rem; }
   code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
 </style>
@@ -111,6 +116,7 @@ export function renderQaRunReportHtml(report: QaRunReport): string {
   <div class="stat"><span class="n">${report.summary.executed}</span>executed</div>
   <div class="stat"><span class="n">${report.summary.passed}</span>passed</div>
   <div class="stat"><span class="n">${report.summary.failed}</span>failed</div>
+  <div class="stat"><span class="n">${report.summary.flaky}</span>flaky</div>
   <div class="stat"><span class="n">${report.summary.not_executed}</span>not executed</div>
 </div>
 <h2>Test cases</h2>
@@ -135,8 +141,21 @@ function testCaseRow(result: QaRunTestCaseResult): string {
       <td>${escapeHtml(result.variant)}</td>
       <td>${escapeHtml(result.purpose)}</td>
       <td class="outcome-${result.outcome}">${outcomeLabel}</td>
-      <td>${result.evidence.map((e) => `<code>${escapeHtml(e)}</code>`).join("<br>")}</td>
+      <td>${result.evidence.map(evidenceCell).join("<br>")}</td>
     </tr>`;
+}
+
+/** Written exclusively by `PlaywrightExecutionEngine#captureFailureScreenshot` with a fixed `.png` suffix — no other evidence producer uses this extension today. */
+function isScreenshotPath(entry: string): boolean {
+  return entry.endsWith(".png");
+}
+
+/** Pure string formatting only — never reads the referenced file, so this stays true even when the path no longer exists on disk. */
+function evidenceCell(entry: string): string {
+  if (isScreenshotPath(entry)) {
+    return `<img src="file://${encodeURI(entry)}" alt="failure screenshot" style="max-width:320px;display:block;margin:0.25rem 0;">`;
+  }
+  return `<code>${escapeHtml(entry)}</code>`;
 }
 
 function escapeHtml(value: string): string {

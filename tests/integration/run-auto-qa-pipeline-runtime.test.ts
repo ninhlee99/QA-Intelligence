@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
@@ -181,7 +182,7 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
 
   const output = executed.value.output as {
-    test_cases: Array<{ test_case_id: string; variant: string; outcome: string; skip_reason: string | null }>;
+    test_cases: Array<{ test_case_id: string; variant: string; outcome: string; skip_reason: string | null; evidence: string[] }>;
     summary: { generated: number; executed: number; passed: number; failed: number; not_executed: number };
     report_html: string;
     report_path: string | null;
@@ -215,6 +216,23 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.ok(output!.report_html.includes("QA run report"));
   assert.ok(output!.report_html.includes("7"), "rendered HTML should surface the generated count");
   assert.equal(output!.report_path, null, "no output_path was supplied");
+
+  // Decision 1 (Option A): even with no output_path (JSON-only mode), a
+  // real screenshot file is written for the one failing (positive-variant)
+  // test case, under the default `<cwd>/.qa-screenshots/<operation_id>/`
+  // directory — the JSON evidence array carries its real absolute path.
+  const screenshotPath = positive.evidence.find((e: string) => e.endsWith(".png"));
+  assert.ok(screenshotPath, "the failing positive-variant test case should carry real screenshot evidence even in JSON-only mode");
+  assert.ok(existsSync(screenshotPath!), "the screenshot evidence path should be a real file written to disk");
+  const stats = await stat(screenshotPath!);
+  assert.ok(stats.size > 0);
+  assert.ok(
+    screenshotPath!.includes(join(".qa-screenshots", "operation-runtime-execute")),
+    `expected the screenshot path to live under the default .qa-screenshots/<operation_id> directory, got: ${screenshotPath}`,
+  );
+  assert.ok(output!.report_html.includes(`file://${screenshotPath}`), "the inline report_html should embed the same screenshot as a file:// <img>");
+
+  await rm(join(process.cwd(), ".qa-screenshots"), { recursive: true, force: true });
 });
 
 test("run_auto_qa writes the HTML report to output_path when supplied", async () => {
@@ -287,12 +305,28 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
     if (!executed.ok) return;
     assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
 
-    const output = executed.value.output as { report_path: string | null } | null;
+    const output = executed.value.output as {
+      report_path: string | null;
+      test_cases: Array<{ variant: string; evidence: string[] }>;
+    } | null;
     assert.equal(output!.report_path, outputPath);
 
     const written = await readFile(outputPath, "utf8");
     assert.ok(written.includes("<!doctype html>"));
     assert.ok(written.includes("QA run report"));
+
+    // With output_path supplied, screenshots live in a sibling directory
+    // next to the report HTML (dirname(outputPath)/.qa-screenshots/...),
+    // not the JSON-only-mode default location.
+    const positive = output!.test_cases.find((testCase) => testCase.variant === "positive")!;
+    const screenshotPath = positive.evidence.find((e) => e.endsWith(".png"));
+    assert.ok(screenshotPath, "the failing positive-variant test case should carry real screenshot evidence");
+    assert.ok(existsSync(screenshotPath!));
+    assert.ok(
+      screenshotPath!.startsWith(join(dirname(outputPath), ".qa-screenshots")),
+      `expected the screenshot to live under dirname(outputPath)/.qa-screenshots, got: ${screenshotPath}`,
+    );
+    assert.ok(written.includes(`file://${screenshotPath}`), "the written HTML report should embed the same screenshot as a file:// <img>");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
