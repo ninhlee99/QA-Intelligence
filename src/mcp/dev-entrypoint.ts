@@ -51,6 +51,7 @@ function devWorkspaceContext(): WorkspaceContext {
       "agent:execute",
       "agent:read",
       "requirement:read",
+      "requirement:create",
       "knowledge:read",
       "assessment:create",
       "execution:read",

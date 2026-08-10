@@ -148,14 +148,19 @@ on both stdio and remote transports:
 | `register_test_dataset` / `list_test_datasets` | SPEC-208: dataset governance metadata (no secret rows) |
 | `create_automation_asset` | SPEC-209: AutomationAsset stub from TestCase refs |
 | `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
-| `raise_mistake_recurrence_candidate` | SPEC-105 §9a: create recurrence candidate (never promotes) |
+| `compare_ui_surfaces` | Role/permission thin: diff two UI maps (admin vs viewer) |
+| `register_requirement` / `list_requirements` | SPEC-202 ingest real Requirements for generate/run_auto_qa |
+| `discover_ui_workflow` | Multi-page same-origin crawl (pages + edges) |
+| `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run browser/API packs |
+| `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status only) |
+| `export_defects_for_tracker` | Markdown/Jira text export (no tracker API call) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.
 Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.
 
 Prefer `password_secret_ref` / `field_secret_refs` after `register_workspace_secret` (demo seed: `workspace-secret:demo-password`).
 Prefer `environment_ref` after `register_workspace_environment` (demo seeds: `environment:dev-fixture-page` / `environment:dev-fixture-login`). Non-loopback http(s) URLs must match the allowlist; `data:` and loopback remain fixture escapes.
-For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`.
+For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`. Generated assertions may also set `expected_url_includes` / `expected_title_includes`.
 
 Host Skills: `claude-code/skills/dev` (code-first) and `claude-code/skills/test`
 (UI/spec-first Senior QA workflow). Run `npm run mcp:dev` or `npm run mcp:remote`

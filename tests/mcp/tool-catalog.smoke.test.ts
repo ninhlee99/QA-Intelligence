@@ -25,6 +25,7 @@ function authorizer() {
     "agent:execute",
     "agent:read",
     "requirement:read",
+    "requirement:create",
     "knowledge:read",
     "assessment:create",
     "execution:read",
@@ -100,6 +101,15 @@ const EXPECTED_TOOLS = [
   "create_automation_asset",
   "evaluate_test_case_quality_skill",
   "raise_mistake_recurrence_candidate",
+  "register_requirement",
+  "list_requirements",
+  "discover_ui_workflow",
+  "register_regression_suite",
+  "list_regression_suites",
+  "run_regression_suite",
+  "generate_api_smoke_from_openapi",
+  "export_defects_for_tracker",
+  "compare_ui_surfaces",
 ] as const;
 
 test("dev fixture registers the full MCP catalog without duplicates", () => {

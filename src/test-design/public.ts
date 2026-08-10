@@ -168,6 +168,10 @@ export type TestCaseGeneratedAssertion = Readonly<{
    * match against). SHALL be false to pass.
    */
   expect_no_dialog?: boolean;
+  /** Final page URL must include this substring (richer oracle). */
+  expected_url_includes?: string;
+  /** Document title must include this substring (richer oracle). */
+  expected_title_includes?: string;
 }>;
 
 export type TestCaseGenerationUiElement = Readonly<{

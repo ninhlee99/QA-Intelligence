@@ -84,6 +84,10 @@ export type PlaywrightInteractionStep =
  */
 export type PlaywrightAssertContext = Readonly<{
   dialog_triggered: boolean;
+  /** Final page URL after steps (for URL oracles). */
+  url: string;
+  /** Document title after steps. */
+  title: string;
 }>;
 
 export type PlaywrightExecutionPlan = Readonly<{
@@ -371,8 +375,14 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               emit("cancelled");
               result = this.#cancelledResult(request, startedAt);
             } else {
-              const passed = plan.assert(cleaned.value.sanitized_tree, { dialog_triggered: dialogTriggered });
-              emit("assertion_result", { passed, dialog_triggered: dialogTriggered });
+              const pageUrl = page.url();
+              const pageTitle = await page.title().catch(() => "");
+              const passed = plan.assert(cleaned.value.sanitized_tree, {
+                dialog_triggered: dialogTriggered,
+                url: pageUrl,
+                title: pageTitle,
+              });
+              emit("assertion_result", { passed, dialog_triggered: dialogTriggered, url: pageUrl });
 
               const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
               if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });

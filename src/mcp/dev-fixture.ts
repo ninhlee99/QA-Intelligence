@@ -112,6 +112,17 @@ import {
 } from "../execution/assess-execution-record-quality.js";
 import type { ExecutionRecord } from "../execution/public.js";
 import { DraftDefectsRuntimeExecutor } from "../bug-analysis/draft-defects-runtime-executor.js";
+import { RequirementRegistryRuntimeExecutor } from "../requirement-review/requirement-registry-runtime-executor.js";
+import { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
+import { UiWorkflowDiscoveryRuntimeExecutor } from "../discovery/discover-ui-workflow-runtime-executor.js";
+import { InMemoryRegressionSuiteRegistry } from "../test-design/regression-suite-registry.js";
+import {
+  CompareUiSurfacesRuntimeExecutor,
+  DefectExportRuntimeExecutor,
+  OpenApiSmokeRuntimeExecutor,
+  RegressionSuiteRuntimeExecutor,
+} from "../test-design/pro-tester-runtime-executors.js";
+
 import { compactMcpInput } from "./mcp-input.js";
 import type { AgentRuntimeToolDefinition } from "./agent-runtime-tool-registry.js";
 
@@ -190,6 +201,24 @@ export const SKILL_QUALITY_EVAL_AGENT = { id: "evaluate-test-case-quality-skill-
 export const SKILL_QUALITY_EVAL_SKILL = { id: "evaluate-test-case-quality-skill", version: "0.1.0" } as const;
 export const MISTAKE_RECURRENCE_AGENT = { id: "raise-mistake-recurrence-candidate-agent", version: "0.1.0" } as const;
 export const MISTAKE_RECURRENCE_SKILL = { id: "raise-mistake-recurrence-candidate", version: "0.1.0" } as const;
+export const REQUIREMENT_REGISTER_AGENT = { id: "requirement-registry-agent", version: "0.1.0" } as const;
+export const REQUIREMENT_REGISTER_SKILL = { id: "register-requirement", version: "0.1.0" } as const;
+export const REQUIREMENT_LIST_AGENT = { id: "requirement-list-agent", version: "0.1.0" } as const;
+export const REQUIREMENT_LIST_SKILL = { id: "list-requirements", version: "0.1.0" } as const;
+export const UI_WORKFLOW_AGENT = { id: "ui-workflow-discovery-agent", version: "0.1.0" } as const;
+export const UI_WORKFLOW_SKILL = { id: "discover-ui-workflow", version: "0.1.0" } as const;
+export const REGRESSION_REGISTER_AGENT = { id: "regression-suite-register-agent", version: "0.1.0" } as const;
+export const REGRESSION_REGISTER_SKILL = { id: "register-regression-suite", version: "0.1.0" } as const;
+export const REGRESSION_LIST_AGENT = { id: "regression-suite-list-agent", version: "0.1.0" } as const;
+export const REGRESSION_LIST_SKILL = { id: "list-regression-suites", version: "0.1.0" } as const;
+export const REGRESSION_RUN_AGENT = { id: "regression-suite-run-agent", version: "0.1.0" } as const;
+export const REGRESSION_RUN_SKILL = { id: "run-regression-suite", version: "0.1.0" } as const;
+export const OPENAPI_SMOKE_AGENT = { id: "openapi-to-api-smoke-agent", version: "0.1.0" } as const;
+export const OPENAPI_SMOKE_SKILL = { id: "generate-api-smoke-from-openapi", version: "0.1.0" } as const;
+export const DEFECT_EXPORT_AGENT = { id: "export-defects-agent", version: "0.1.0" } as const;
+export const DEFECT_EXPORT_SKILL = { id: "export-defects-for-tracker", version: "0.1.0" } as const;
+export const COMPARE_UI_AGENT = { id: "compare-ui-surfaces-agent", version: "0.1.0" } as const;
+export const COMPARE_UI_SKILL = { id: "compare-ui-surfaces", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
 export const DEMO_PASSWORD_SECRET_REF = "workspace-secret:demo-password";
 export const DEMO_PAGE_ENVIRONMENT_REF = "environment:dev-fixture-page";
@@ -386,6 +415,9 @@ export function buildDevFixture(options: {
     provider_ref: "playwright-execution-engine@0.1.0",
   });
   const uiDiscoverySkill = new DiscoverUiSurface({ clock, authorizer });
+  const uiWorkflowSkill = new DiscoverUiWorkflow({ clock, authorizer, discoverUiSurface: uiDiscoverySkill });
+  const regressionSuites = new InMemoryRegressionSuiteRegistry(clock);
+
   const discoverAfterLoginSkill = new DiscoverAfterLogin({ clock, authorizer });
   const requirementResolver = new InMemoryRequirementResolver(
     workspaceId,
@@ -1097,6 +1129,97 @@ export function buildDevFixture(options: {
       candidateRepository,
       expected_agent: MISTAKE_RECURRENCE_AGENT,
       expected_skill: MISTAKE_RECURRENCE_SKILL,
+    }),
+  );
+  executorMap.set(
+    REQUIREMENT_REGISTER_AGENT.id,
+    new RequirementRegistryRuntimeExecutor({
+      resolver: requirementResolver,
+      expected_agent: REQUIREMENT_REGISTER_AGENT,
+      expected_skill: REQUIREMENT_REGISTER_SKILL,
+      mode: "register",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    REQUIREMENT_LIST_AGENT.id,
+    new RequirementRegistryRuntimeExecutor({
+      resolver: requirementResolver,
+      expected_agent: REQUIREMENT_LIST_AGENT,
+      expected_skill: REQUIREMENT_LIST_SKILL,
+      mode: "list",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    UI_WORKFLOW_AGENT.id,
+    new UiWorkflowDiscoveryRuntimeExecutor({
+      skill: uiWorkflowSkill,
+      expected_agent: UI_WORKFLOW_AGENT,
+      expected_skill: UI_WORKFLOW_SKILL,
+    }),
+  );
+  executorMap.set(
+    REGRESSION_REGISTER_AGENT.id,
+    new RegressionSuiteRuntimeExecutor({
+      registry: regressionSuites,
+      expected_agent: REGRESSION_REGISTER_AGENT,
+      expected_skill: REGRESSION_REGISTER_SKILL,
+      mode: "register",
+      authorizer,
+      clock,
+      browserAuthorizer: authorizer,
+      apiSmoke: apiSmokeSkill,
+      credentials,
+    }),
+  );
+  executorMap.set(
+    REGRESSION_LIST_AGENT.id,
+    new RegressionSuiteRuntimeExecutor({
+      registry: regressionSuites,
+      expected_agent: REGRESSION_LIST_AGENT,
+      expected_skill: REGRESSION_LIST_SKILL,
+      mode: "list",
+      authorizer,
+      clock,
+      browserAuthorizer: authorizer,
+      apiSmoke: apiSmokeSkill,
+      credentials,
+    }),
+  );
+  executorMap.set(
+    REGRESSION_RUN_AGENT.id,
+    new RegressionSuiteRuntimeExecutor({
+      registry: regressionSuites,
+      expected_agent: REGRESSION_RUN_AGENT,
+      expected_skill: REGRESSION_RUN_SKILL,
+      mode: "run",
+      authorizer,
+      clock,
+      browserAuthorizer: authorizer,
+      apiSmoke: apiSmokeSkill,
+      credentials,
+    }),
+  );
+  executorMap.set(
+    OPENAPI_SMOKE_AGENT.id,
+    new OpenApiSmokeRuntimeExecutor({
+      expected_agent: OPENAPI_SMOKE_AGENT,
+      expected_skill: OPENAPI_SMOKE_SKILL,
+    }),
+  );
+  executorMap.set(
+    DEFECT_EXPORT_AGENT.id,
+    new DefectExportRuntimeExecutor({
+      expected_agent: DEFECT_EXPORT_AGENT,
+      expected_skill: DEFECT_EXPORT_SKILL,
+    }),
+  );
+  executorMap.set(
+    COMPARE_UI_AGENT.id,
+    new CompareUiSurfacesRuntimeExecutor({
+      expected_agent: COMPARE_UI_AGENT,
+      expected_skill: COMPARE_UI_SKILL,
     }),
   );
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
@@ -2056,6 +2179,192 @@ export function buildDevFixture(options: {
           owner: (args["owner"] as string | undefined) ?? "",
           expires_at: (args["expires_at"] as string | undefined) ?? "",
           idempotency_key: (args["idempotency_key"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "register_requirement",
+      description:
+        "SPEC-202 ingest: register/replace a Requirement (id/title/statement/acceptance_criteria). scope.workspace_id forced to this Workspace. Use requirement_ref = id@version with generate_test_cases / run_auto_qa.",
+      inputSchema: {
+        type: "object",
+        properties: { requirement: { type: "object" } },
+        required: ["requirement"],
+      },
+      agent: REQUIREMENT_REGISTER_AGENT,
+      purpose: "Register Workspace Requirement",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [REQUIREMENT_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) => compactMcpInput({ requirement: (args["requirement"] as JsonValue | undefined) ?? {} }),
+    },
+    {
+      name: "list_requirements",
+      description: "List registered Requirement refs (id@version) for this Workspace.",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      agent: REQUIREMENT_LIST_AGENT,
+      purpose: "List Requirements",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [REQUIREMENT_LIST_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: () => ({}),
+    },
+    {
+      name: "discover_ui_workflow",
+      description:
+        "SPEC-201 Navigation thin slice: same-origin multi-page crawl from url (max_pages default 3, cap 8). Returns pages + link edges + start_page_map. Not full Region/State/Permission.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          max_pages: { type: "number" },
+          browser: { type: "string" },
+        },
+        required: ["url"],
+      },
+      agent: UI_WORKFLOW_AGENT,
+      purpose: "Discover multi-page UI workflow",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [UI_WORKFLOW_SKILL],
+      budgets: { max_steps: 16, max_duration_seconds: 180, max_tool_calls: 16, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          max_pages: (args["max_pages"] as number | undefined) ?? 0,
+          browser: (args["browser"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "register_regression_suite",
+      description:
+        "Persist a regression pack: cases[{kind:browser,test_case,generated_assertion}|{kind:api,case}]. Re-run via run_regression_suite.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          cases: { type: "array", items: { type: "object" } },
+          id: { type: "string" },
+          environment_ref: { type: "string" },
+          base_url: { type: "string" },
+        },
+        required: ["label", "cases"],
+      },
+      agent: REGRESSION_REGISTER_AGENT,
+      purpose: "Register regression suite",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [REGRESSION_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          label: (args["label"] as string | undefined) ?? "",
+          cases: (args["cases"] as JsonValue | undefined) ?? [],
+          id: (args["id"] as string | undefined) ?? "",
+          environment_ref: (args["environment_ref"] as string | undefined) ?? "",
+          base_url: (args["base_url"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "list_regression_suites",
+      description: "List registered regression suites for this Workspace.",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      agent: REGRESSION_LIST_AGENT,
+      purpose: "List regression suites",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [REGRESSION_LIST_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: () => ({}),
+    },
+    {
+      name: "run_regression_suite",
+      description: "Re-run a registered regression suite (browser + API cases). Pass base_url for API cases if not stored on suite.",
+      inputSchema: {
+        type: "object",
+        properties: { suite_id: { type: "string" }, base_url: { type: "string" } },
+        required: ["suite_id"],
+      },
+      agent: REGRESSION_RUN_AGENT,
+      purpose: "Run regression suite",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [REGRESSION_RUN_SKILL],
+      budgets: { max_steps: 64, max_duration_seconds: 600, max_tool_calls: 64, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          suite_id: (args["suite_id"] as string | undefined) ?? "",
+          base_url: (args["base_url"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "generate_api_smoke_from_openapi",
+      description:
+        "Generate ApiSmokeCase[] from OpenAPI 3 JSON (status asserts from documented responses). Pass to execute_api_smoke. Does not invent bodies/auth.",
+      inputSchema: {
+        type: "object",
+        properties: { openapi: { type: "object" } },
+        required: ["openapi"],
+      },
+      agent: OPENAPI_SMOKE_AGENT,
+      purpose: "OpenAPI to API smoke cases",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [OPENAPI_SMOKE_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 60, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) => compactMcpInput({ openapi: (args["openapi"] as JsonValue | undefined) ?? {} }),
+    },
+    {
+      name: "export_defects_for_tracker",
+      description:
+        "Format Defect drafts as markdown or jira_description text for paste into Jira/Linear. Does not call tracker APIs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          defects: { type: "array", items: { type: "object" } },
+          format: { type: "string", description: "markdown | jira_description" },
+        },
+        required: ["defects"],
+      },
+      agent: DEFECT_EXPORT_AGENT,
+      purpose: "Export defects for tracker paste",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [DEFECT_EXPORT_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 1, max_retries: 0 },
+      buildInput: (args) =>
+        compactMcpInput({
+          defects: (args["defects"] as JsonValue | undefined) ?? [],
+          format: (args["format"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "compare_ui_surfaces",
+      description:
+        "Permission/role thin slice: diff two Semantic UI element arrays (e.g. admin vs viewer maps from separate discovery sessions).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          elements_a: { type: "array", items: { type: "object" } },
+          elements_b: { type: "array", items: { type: "object" } },
+          label_a: { type: "string" },
+          label_b: { type: "string" },
+        },
+        required: ["elements_a", "elements_b"],
+      },
+      agent: COMPARE_UI_AGENT,
+      purpose: "Compare two UI surfaces for role diffs",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [COMPARE_UI_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 1, max_retries: 0 },
+      buildInput: (args) =>
+        compactMcpInput({
+          elements_a: (args["elements_a"] as JsonValue | undefined) ?? [],
+          elements_b: (args["elements_b"] as JsonValue | undefined) ?? [],
+          label_a: (args["label_a"] as string | undefined) ?? "",
+          label_b: (args["label_b"] as string | undefined) ?? "",
         }),
     },
   ];

@@ -329,6 +329,7 @@ precisely so the system never claims false confidence).
 
 ## Sequencing notes for whoever picks this up next
 
+- **Pro-tester follow-up (2026-08-10):** requirement ingest, `discover_ui_workflow`, regression suites, OpenAPI→API smoke, defect tracker export text, UI surface compare, URL/title oracles — still Explicitly not: SSO/MFA, axe-core full, load/pen-test, Jira API filing, Vault, GOV-012 production.
 - Each phase is a vertical slice like Requirement Review — Skill, Runtime
   Executor, MCP tool, integration test — not a horizontal layer across all
   three phases at once.

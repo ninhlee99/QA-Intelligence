@@ -130,11 +130,19 @@ export function testCaseToExecutionPlan(
     steps.push({ kind: "type", target, text });
   }
 
+  const expectedUrl = assertion.expected_url_includes;
+  const expectedTitle = assertion.expected_title_includes;
+
   if (assertion.expected_text !== undefined) {
     const expectedText = assertion.expected_text;
     return {
       ok: true,
-      value: { url, steps, assert: (cleaned: CleanedDomNode) => hasText(cleaned, expectedText) },
+      value: {
+        url,
+        steps,
+        assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
+          hasText(cleaned, expectedText) && urlTitleOk(context, expectedUrl, expectedTitle),
+      },
     };
   }
 
@@ -146,9 +154,21 @@ export function testCaseToExecutionPlan(
       url,
       steps,
       assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
-        forbidden.every((text) => !hasText(cleaned, text)) && (!expectNoDialog || !context.dialog_triggered),
+        forbidden.every((text) => !hasText(cleaned, text)) &&
+        (!expectNoDialog || !context.dialog_triggered) &&
+        urlTitleOk(context, expectedUrl, expectedTitle),
     },
   };
+}
+
+function urlTitleOk(
+  context: PlaywrightAssertContext,
+  expectedUrl: string | undefined,
+  expectedTitle: string | undefined,
+): boolean {
+  if (expectedUrl !== undefined && !context.url.includes(expectedUrl)) return false;
+  if (expectedTitle !== undefined && !context.title.includes(expectedTitle)) return false;
+  return true;
 }
 
 function hasText(node: CleanedDomNode, expected: string): boolean {

@@ -13,7 +13,7 @@ import type {
 
 export class InMemoryRequirementResolver implements RequirementResolver {
   readonly #workspaceId: string;
-  readonly #requirements: ReadonlyMap<string, Requirement>;
+  readonly #requirements: Map<string, Requirement>;
   readonly #authorizer: WorkspaceAuthorizer;
 
   constructor(
@@ -29,6 +29,48 @@ export class InMemoryRequirementResolver implements RequirementResolver {
         immutableCopy(requirement),
       ]),
     );
+  }
+
+  /**
+   * SPEC-202 ingest path: register/replace a Requirement for this Workspace.
+   * Ref key is `id@version`. Scope.workspace_id must match the resolver Workspace.
+   */
+  register(requirement: Requirement):
+    | Readonly<{ ok: true; ref: string }>
+    | Readonly<{ ok: false; code: "workspace_mismatch" | "invalid_requirement"; message: string }> {
+    if (typeof requirement.id !== "string" || requirement.id.trim().length === 0) {
+      return { ok: false, code: "invalid_requirement", message: "Requirement.id is required." };
+    }
+    if (typeof requirement.version !== "string" || requirement.version.trim().length === 0) {
+      return { ok: false, code: "invalid_requirement", message: "Requirement.version is required." };
+    }
+    const scopeWorkspace =
+      requirement.scope !== null &&
+      typeof requirement.scope === "object" &&
+      !Array.isArray(requirement.scope) &&
+      typeof requirement.scope["workspace_id"] === "string"
+        ? requirement.scope["workspace_id"]
+        : undefined;
+    if (scopeWorkspace !== this.#workspaceId) {
+      return {
+        ok: false,
+        code: "workspace_mismatch",
+        message: `Requirement.scope.workspace_id must equal "${this.#workspaceId}".`,
+      };
+    }
+    const ref = `${requirement.id}@${requirement.version}`;
+    this.#requirements.set(ref, immutableCopy(requirement));
+    return { ok: true, ref };
+  }
+
+  list(): readonly Readonly<{ ref: string; title: string; status: string }>[] {
+    return [...this.#requirements.entries()]
+      .map(([ref, requirement]) => ({
+        ref,
+        title: requirement.title,
+        status: requirement.status,
+      }))
+      .sort((a, b) => a.ref.localeCompare(b.ref));
   }
 
   async resolve(
