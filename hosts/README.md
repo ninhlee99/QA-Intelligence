@@ -78,11 +78,29 @@ today, not only conformance tests (`tests/mcp/remote/`).
 ## Directories
 
 - `claude-code/.claude-plugin/plugin.json` — Claude Code plugin manifest (local `stdio`)
+- `claude-code/skills/` — Claude Code Skills bundled with this plugin
+  (`dev/SKILL.md` → `/qa-intelligence:dev`, `test/SKILL.md` →
+  `/qa-intelligence:test`). Claude Code auto-discovers any
+  `skills/*/SKILL.md` under a plugin's root, so installing the plugin
+  installs these Skills too — no separate registration step.
 - `codex/.codex-plugin/plugin.json` — Codex plugin manifest (local `stdio`)
 - `cursor/mcp.json.example` — Cursor MCP server config for local `stdio`
   (copy into your Cursor MCP settings and replace the absolute path)
 - `cursor/mcp-remote.json.example` — Cursor MCP server config for the
   remote Streamable HTTP transport (see "Remote transport" below)
+
+## Installing the Claude Code plugin
+
+Two ways to get the MCP server and the bundled Skills at once:
+
+- **Local plugin directory** — point Claude Code's plugin settings directly
+  at `hosts/claude-code/` as the plugin root. No marketplace needed; the
+  `skills/` directory ships with it automatically.
+- **Marketplace** — this repo's root `.claude-plugin/marketplace.json`
+  declares the same `hosts/claude-code` directory as the `qa-intelligence`
+  plugin's `source`, so `claude plugin install qa-intelligence` (or adding
+  this repo as a marketplace) installs the MCP connection and the Skills
+  together, the same way the local-directory path does.
 
 ## Before use
 
