@@ -2316,10 +2316,13 @@ export function buildDevFixture(options: {
     {
       name: "generate_api_smoke_from_openapi",
       description:
-        "Generate ApiSmokeCase[] from OpenAPI 3 JSON (status asserts from documented responses). Pass to execute_api_smoke. Does not invent bodies/auth.",
+        "Generate ApiSmokeCase[] from OpenAPI 3 JSON (status asserts from documented responses). Set include_authz_negatives=true to add unauthenticated 401|403 cases for secured ops. Pass to execute_api_smoke. Does not invent bodies/tokens.",
       inputSchema: {
         type: "object",
-        properties: { openapi: { type: "object" } },
+        properties: {
+          openapi: { type: "object" },
+          include_authz_negatives: { type: "boolean" },
+        },
         required: ["openapi"],
       },
       agent: OPENAPI_SMOKE_AGENT,
@@ -2328,7 +2331,11 @@ export function buildDevFixture(options: {
       policy_version: policyVersion,
       allowed_skills: [OPENAPI_SMOKE_SKILL],
       budgets: { max_steps: 8, max_duration_seconds: 60, max_tool_calls: 2, max_retries: 1 },
-      buildInput: (args) => compactMcpInput({ openapi: (args["openapi"] as JsonValue | undefined) ?? {} }),
+      buildInput: (args) =>
+        compactMcpInput({
+          openapi: (args["openapi"] as JsonValue | undefined) ?? {},
+          include_authz_negatives: args["include_authz_negatives"] === true,
+        }),
     },
     {
       name: "export_defects_for_tracker",

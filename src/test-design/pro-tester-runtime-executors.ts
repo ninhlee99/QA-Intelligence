@@ -297,7 +297,10 @@ export class OpenApiSmokeRuntimeExecutor implements AgentRunExecutor {
         failure: failure("orchestration", "invalid_request", "generate_api_smoke_from_openapi requires openapi object (OpenAPI 3 JSON)."),
       };
     }
-    const converted = openApiToApiSmokeCases(doc as JsonObject);
+    const includeAuthz = input.start_request.input["include_authz_negatives"] === true;
+    const converted = openApiToApiSmokeCases(doc as JsonObject, {
+      ...(includeAuthz ? { include_authz_negatives: true } : {}),
+    });
     if (!converted.ok) {
       return { ok: false, failure: failure("orchestration", "invalid_request", converted.message) };
     }

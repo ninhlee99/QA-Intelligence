@@ -43,8 +43,8 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
    `generated_assertion` pairs via `register_regression_suite` so the next
    local rebuild can `run_regression_suite` without regenerating everything.
 8. **API (when this screen calls your HTTP API).** If OpenAPI/JSON exists in
-   repo, `generate_api_smoke_from_openapi` → `execute_api_smoke` on local
-   base URL. Add one protected-route case expecting 401/403 when auth exists.
+   repo, `generate_api_smoke_from_openapi` (`include_authz_negatives: true`
+   when secured) → `execute_api_smoke` on local base URL.
 9. **Optional:** `generate_exploratory_charter`; `assess_defect_quality` on
    serious drafts; `export_defects_for_tracker` before asking a tester to file.
 10. **Persist:** report HTML + testcases JSON + suite id; save drafts if any.

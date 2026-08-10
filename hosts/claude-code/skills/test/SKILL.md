@@ -64,11 +64,10 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
    `run_regression_suite`.    Prefer durable path under `.qa-regression-suites/` (returned as
    `persisted_path`) so suites survive MCP restart for real regression.
 8. **API path (when HTTP exists).**
-   - Have OpenAPI JSON → `generate_api_smoke_from_openapi` → review warnings
-     → `execute_api_smoke` with `base_url` + secret refs.
-   - Include at least one **authz negative** (expect 401/403) when the
-     product has protected routes — do not claim API coverage from happy
-     200s alone.
+   - Have OpenAPI JSON → `generate_api_smoke_from_openapi` with
+     `include_authz_negatives: true` when routes are protected → review
+     warnings → `execute_api_smoke` with `base_url` + secret refs.
+   - Do not claim API coverage from happy 200s alone.
 9. **Optional depth (same session):**
    - `list_failure_avoidance_hints`
    - `generate_exploratory_charter` / `execute_exploratory_session`

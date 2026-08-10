@@ -1,9 +1,16 @@
 /**
  * Convert OpenAPI 3.x (JSON) into ApiSmokeCase[] — status asserts only from
- * documented response codes. Never invents request bodies or auth.
+ * documented response codes. Never invents request bodies or auth tokens.
+ * Optional authz negatives: unauthenticated calls expecting 401/403 when
+ * the operation documents security or 401/403 responses.
  */
 import type { ApiSmokeCase, HttpMethod } from "./public.js";
 import type { JsonObject, JsonValue } from "../requirement-review/public.js";
+
+export type OpenApiToSmokeOptions = Readonly<{
+  /** Add one unauthenticated case per protected operation (expect 401|403). */
+  include_authz_negatives?: boolean;
+}>;
 
 export type OpenApiToSmokeResult =
   | Readonly<{ ok: true; cases: readonly ApiSmokeCase[]; warnings: readonly string[] }>
@@ -11,7 +18,10 @@ export type OpenApiToSmokeResult =
 
 const METHODS: readonly HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
-export function openApiToApiSmokeCases(document: JsonObject): OpenApiToSmokeResult {
+export function openApiToApiSmokeCases(
+  document: JsonObject,
+  options: OpenApiToSmokeOptions = {},
+): OpenApiToSmokeResult {
   const paths = document["paths"];
   if (paths === null || typeof paths !== "object" || Array.isArray(paths)) {
     return { ok: false, message: "OpenAPI document requires a paths object." };
@@ -20,6 +30,7 @@ export function openApiToApiSmokeCases(document: JsonObject): OpenApiToSmokeResu
   const cases: ApiSmokeCase[] = [];
   const warnings: string[] = [];
   let seq = 0;
+  const rootSecurity = Array.isArray(document["security"]) ? document["security"] : [];
 
   for (const [pathKey, pathItem] of Object.entries(paths as JsonObject)) {
     if (pathItem === null || typeof pathItem !== "object" || Array.isArray(pathItem)) continue;
@@ -48,13 +59,56 @@ export function openApiToApiSmokeCases(document: JsonObject): OpenApiToSmokeResu
         path: pathKey,
         expect: { status },
       });
+
+      if (options.include_authz_negatives === true && looksProtected(operation, rootSecurity, responses)) {
+        const authzStatus = pickAuthzStatus(responses);
+        cases.push({
+          id: `${opId}-unauth`,
+          method,
+          path: pathKey,
+          expect: { status: authzStatus },
+        });
+      }
     }
   }
 
   if (cases.length === 0) {
     return { ok: false, message: "No executable operations found in OpenAPI paths." };
   }
-  return { ok: true, cases: cases.slice(0, 80), warnings };
+  if (options.include_authz_negatives === true) {
+    warnings.push(
+      "Authz negatives call paths without credentials and expect 401|403 — skip if the route is intentionally public.",
+    );
+  }
+  return { ok: true, cases: cases.slice(0, 120), warnings };
+}
+
+function looksProtected(
+  operation: JsonObject,
+  rootSecurity: readonly JsonValue[],
+  responses: JsonValue | undefined,
+): boolean {
+  if (Array.isArray(operation["security"]) && (operation["security"] as JsonValue[]).length > 0) return true;
+  if (rootSecurity.length > 0 && operation["security"] !== undefined) {
+    // Explicit empty security array means optional/public in OpenAPI 3.
+    if (Array.isArray(operation["security"]) && (operation["security"] as JsonValue[]).length === 0) return false;
+  }
+  if (rootSecurity.length > 0 && operation["security"] === undefined) return true;
+  if (responses !== null && typeof responses === "object" && !Array.isArray(responses)) {
+    const keys = Object.keys(responses as JsonObject);
+    if (keys.includes("401") || keys.includes("403")) return true;
+  }
+  return false;
+}
+
+function pickAuthzStatus(responses: JsonValue | undefined): number | readonly number[] {
+  if (responses !== null && typeof responses === "object" && !Array.isArray(responses)) {
+    const keys = Object.keys(responses as JsonObject);
+    if (keys.includes("401") && keys.includes("403")) return [401, 403];
+    if (keys.includes("401")) return 401;
+    if (keys.includes("403")) return 403;
+  }
+  return [401, 403];
 }
 
 function pickExpectedStatus(responses: JsonValue | undefined): number | undefined {

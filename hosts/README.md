@@ -152,7 +152,8 @@ on both stdio and remote transports:
 | `register_requirement` / `list_requirements` | SPEC-202 ingest real Requirements for generate/run_auto_qa |
 | `discover_ui_workflow` | Multi-page same-origin crawl (pages + edges) |
 | `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run browser/API packs |
-| `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status only) |
+| `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status; optional authz negatives) |
+| `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges |
 | `export_defects_for_tracker` | Markdown/Jira text export (no tracker API call) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.

@@ -61,6 +61,30 @@ test("openApiToApiSmokeCases picks documented statuses", () => {
   assert.equal(result.cases[1]?.expect.status, 201);
 });
 
+test("openApiToApiSmokeCases can add authz negatives for secured ops", () => {
+  const result = openApiToApiSmokeCases(
+    {
+      openapi: "3.0.0",
+      security: [{ bearerAuth: [] }],
+      paths: {
+        "/me": {
+          get: {
+            operationId: "me",
+            responses: { "200": { description: "ok" }, "401": { description: "unauth" } },
+          },
+        },
+      },
+    },
+    { include_authz_negatives: true },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.ok(result.cases.some((c) => c.id === "me"));
+  const unauth = result.cases.find((c) => c.id === "me-unauth");
+  assert.ok(unauth);
+  assert.deepEqual(unauth?.expect.status, 401);
+});
+
 test("compareUiSurfaces reports only-A / only-B", () => {
   const compared = compareUiSurfaces({
     label_a: "admin",
