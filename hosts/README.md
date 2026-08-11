@@ -144,7 +144,9 @@ on both stdio and remote transports:
 | `list_workspace_environments` | List registered target environments |
 | `generate_business_analysis_stub` | SPEC-204: Workflow stub from UI map / URL |
 | `generate_risk_stub` | SPEC-205: Risk stubs from UI map / URL |
-| `generate_test_strategy` | SPEC-206: Test Strategy stub (complements exploratory charter) |
+| `generate_test_strategy_stub` | SPEC-206: Test Strategy **stub** from UI map (heuristic — not a professional strategy) |
+| `file_defects_to_tracker` | Optional Jira/Linear/webhook filing (dry-run default; `confirm_file=true` to POST) |
+| `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
 | `register_test_dataset` / `list_test_datasets` | SPEC-208: dataset governance metadata (no secret rows) |
 | `create_automation_asset` | SPEC-209: AutomationAsset stub from TestCase refs |
 | `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
