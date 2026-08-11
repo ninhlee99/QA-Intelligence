@@ -86,17 +86,40 @@ function detectHighRiskUnconfirmed(
     const lower = body.toLowerCase();
     const hasHighRiskTag =
       /\b(money|permission|legacy|pii)\b/.test(lower) ||
-      /tag\s*`?(money|permission|legacy|pii)/i.test(body);
+      /tag\s*`?(money|permission|legacy|pii)/i.test(body) ||
+      /tag:\s*(money|permission|legacy|pii)/i.test(body);
+
+    // Stock templates ship with HTML comment stubs and empty role cells — Expert treats as unconfirmed.
+    const hasStub =
+      /<!--/.test(body) ||
+      /\bstatus\b[^\n]*\bdraft\b/i.test(body) ||
+      /\|\s*admin\s*\|\s*\|/.test(body) ||
+      /\|\s*user\s*\|\s*\|/.test(body) ||
+      /do not waive/i.test(lower);
+
     const hasTodo =
       /<!--\s*todo/i.test(body) ||
       /\btodo:\s*confirm/i.test(lower) ||
       /confirm (with )?human/i.test(lower) ||
       /confirm matrix before release/i.test(lower) ||
-      /human confirm oracles/i.test(lower);
-    if (hasHighRiskTag && hasTodo) {
+      /human confirm oracles/i.test(lower) ||
+      /needs human confirm/i.test(lower);
+
+    if (hasHighRiskTag && (hasTodo || hasStub)) {
       unconfirmed = true;
-      notes.push(`${file}: high-risk tag with TODO/confirm language`);
+      notes.push(`${file}: high-risk domain still stub/TODO — Expert would confirm before pass`);
     }
+  }
+
+  // INDEX marks high-risk rows as draft → unconfirmed
+  try {
+    const index = readFileSync(join(packPath, "INDEX.md"), "utf8");
+    if (/money|permission|legacy|pii/i.test(index) && /\bdraft\b/i.test(index)) {
+      unconfirmed = true;
+      notes.push("INDEX.md: high-risk rows still draft");
+    }
+  } catch {
+    /* already handled */
   }
 
   return { unconfirmed, notes };

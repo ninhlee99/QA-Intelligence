@@ -107,7 +107,7 @@ test("validateExpertClaim refuses pass-like wording when checklist false", () =>
   assert.match(result.refuse_reason ?? "", /REFUSE/);
 });
 
-test("validateExpertClaim allows blocked wording always", () => {
+test("validateExpertClaim allows negated blocked wording", () => {
   const checklist = deriveExpertChecklist({
     ...cleanBase,
     release_recommendation: "changes_required",
@@ -115,8 +115,19 @@ test("validateExpertClaim allows blocked wording always", () => {
     draft_defect_count: 1,
   });
   const result = validateExpertClaim({
-    proposed_claim: "Blocked: failures present; do not release.",
+    proposed_claim: "Do not pass — failures remain.",
     expert_checklist: checklist,
   });
   assert.equal(result.allowed, true);
+  assert.equal(result.normalized_claim_kind, "blocked_or_other");
+});
+
+test("e2 mandate blockers refuse claim_pass", () => {
+  const checklist = deriveExpertChecklist({
+    ...cleanBase,
+    e2_mandate_blockers: ["e2_roles_not_exercised"],
+    context: "run_auto_qa",
+  });
+  assert.equal(checklist["claim_pass_allowed"], false);
+  assert.ok((checklist["blockers"] as string[]).some((b) => b.startsWith("e2_")));
 });

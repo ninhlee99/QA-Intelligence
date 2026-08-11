@@ -106,7 +106,7 @@ export function withProfessionalAnalysis(
   };
 }
 
-import { expertChecklistHtml, expertChecklistFromQaRunReport } from "./expert-checklist.js";
+import { expertChecklistHtml, expertChecklistFromQaRunReport, type ExpertChecklistFromReportOptions } from "./expert-checklist.js";
 
 function flakeTaxonomyHtml(taxonomy: FlakeTaxonomy): string {
   if (taxonomy.flaky_count === 0) {
@@ -166,7 +166,7 @@ function coverageGapsHtml(report: QaRunReport): string {
 <ul>${items.join("\n")}</ul>`;
 }
 
-function expertChecklistSection(report: QaRunReport): string {
+function expertChecklistSection(report: QaRunReport, options?: ExpertChecklistFromReportOptions): string {
   let gapCount = 1; // scope limits always
   if (report.test_cases.some((tc) => tc.outcome === "not_executed")) gapCount += 1;
   if (report.generation_findings.length > 0) gapCount += 1;
@@ -174,12 +174,16 @@ function expertChecklistSection(report: QaRunReport): string {
   const hasFail = report.test_cases.some((tc) => tc.outcome === "failed" || tc.outcome === "cancelled");
   const hasFlaky = report.test_cases.some((tc) => tc.outcome === "flaky");
   const retestAction = hasFail || hasFlaky ? "targeted_retest" : "no_retest_needed";
-  const checklist = expertChecklistFromQaRunReport(report, gapCount, retestAction);
+  const checklist = expertChecklistFromQaRunReport(report, gapCount, retestAction, options ?? {});
   return expertChecklistHtml(checklist);
 }
 
 /** Renders a self-contained HTML report — no external stylesheet/script, safe to open directly from disk. */
-export function renderQaRunReportHtml(report: QaRunReport, flakeTaxonomy?: FlakeTaxonomy): string {
+export function renderQaRunReportHtml(
+  report: QaRunReport,
+  flakeTaxonomy?: FlakeTaxonomy,
+  checklistOptions?: ExpertChecklistFromReportOptions,
+): string {
   const taxonomy = flakeTaxonomy ?? deriveFlakeTaxonomy(report);
   const rows = report.test_cases.map(testCaseRow).join("\n");
   const findings =
@@ -294,7 +298,7 @@ ${report.draft_defects.map(defectRow).join("\n")}
 ${coverage}
 ${coverageGapsHtml(report)}
 ${flakeTaxonomyHtml(taxonomy)}
-${expertChecklistSection(report)}
+${expertChecklistSection(report, checklistOptions)}
 <h2>Test cases</h2>
 <table>
   <thead><tr><th>Test case</th><th>Variant</th><th>Purpose</th><th>Outcome</th><th>Evidence</th></tr></thead>

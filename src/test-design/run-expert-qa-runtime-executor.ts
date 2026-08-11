@@ -178,6 +178,17 @@ function reinforceChecklist(autoOutput: JsonObject, domainGate: DomainPackGateIn
   const suitePresent =
     typeof suite === "object" && suite !== null && !Array.isArray(suite) && typeof (suite as JsonObject)["suite_id"] === "string";
 
+  const priorChecklist = autoOutput["expert_checklist"];
+  const e2FromPrior =
+    typeof priorChecklist === "object" &&
+    priorChecklist !== null &&
+    !Array.isArray(priorChecklist) &&
+    Array.isArray((priorChecklist as JsonObject)["blockers"])
+      ? ((priorChecklist as JsonObject)["blockers"] as unknown[])
+          .map(String)
+          .filter((b) => b.startsWith("e2_"))
+      : [];
+
   if (
     typeof reportLike.release_recommendation === "string" &&
     typeof reportLike.release_recommendation_rationale === "string" &&
@@ -188,6 +199,7 @@ function reinforceChecklist(autoOutput: JsonObject, domainGate: DomainPackGateIn
     return expertChecklistFromQaRunReport(reportLike, gaps.length, action, {
       suiteIdPresent: suitePresent,
       domainPack: domainGate,
+      ...(e2FromPrior.length > 0 ? { e2MandateBlockers: e2FromPrior } : {}),
       context: "run_expert_qa",
     });
   }

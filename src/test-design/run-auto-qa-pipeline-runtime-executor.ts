@@ -19,9 +19,15 @@ import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/r
 import type { SessionMemory } from "../memory/session-memory.js";
 import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
-import { expertChecklistFromQaRunReport, type DomainPackGateInput } from "../reporting/expert-checklist.js";
+import { expertChecklistFromQaRunReport, type DomainPackGateInput, type ExpertChecklistFromReportOptions } from "../reporting/expert-checklist.js";
 import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveFlakeTaxonomy, flakeTaxonomyJson } from "../reporting/flake-taxonomy.js";
+import {
+  buildExpertObservations,
+  detectExpertRiskSignals,
+  deriveExpertMandateBlockers,
+  hookCoverageFromExtensions,
+} from "../reporting/expert-risk-signals.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
 import type { InMemoryRegressionSuiteRegistry, RegressionCase } from "./regression-suite-registry.js";
@@ -250,20 +256,6 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
 
     const report = result.value.report;
     const flakeTaxonomy = deriveFlakeTaxonomy(report);
-    const html = renderQaRunReportHtml(report, flakeTaxonomy);
-    let writtenPath: string | undefined;
-    if (outputPath !== undefined) {
-      try {
-        await mkdir(dirname(outputPath), { recursive: true });
-        await writeFile(outputPath, html, "utf8");
-        writtenPath = outputPath;
-      } catch (error) {
-        return {
-          ok: false,
-          failure: failure("infrastructure", "infrastructure_failure", `Failed to write HTML report to "${outputPath}": ${(error as Error).message}`, true),
-        };
-      }
-    }
 
     const hooks = await runExpertHooks({
       operation_id: input.execution.operation_id,
@@ -338,6 +330,41 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       autoSuite = { skipped: true, reason: "regression_registry_not_configured" };
     }
 
+    const domainPack = assessDomainPackFromInput(input.start_request.input);
+    const requestContext = readOptionalString(input.start_request.input["request_context"]);
+    const riskSignals = detectExpertRiskSignals({
+      ...(requestContext !== undefined ? { request_context: requestContext } : {}),
+      requirement_title: requirementTitle,
+      acceptance_criteria: acceptanceCriteria,
+      has_login_fields: loginFields !== undefined,
+    });
+    const hookCoverage = hookCoverageFromExtensions(
+      hooks.extensions as JsonObject,
+      acceptanceCriteria,
+    );
+    const mandateBlockers = deriveExpertMandateBlockers(riskSignals, hookCoverage);
+    const checklistOptions = {
+      domainPack,
+      e2MandateBlockers: mandateBlockers.map((b) => b.code),
+      context: "run_auto_qa" as const,
+      suiteIdPresent: autoSuite !== undefined && "suite_id" in autoSuite,
+    };
+
+    const html = renderQaRunReportHtml(report, flakeTaxonomy, checklistOptions);
+    let writtenPath: string | undefined;
+    if (outputPath !== undefined) {
+      try {
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, html, "utf8");
+        writtenPath = outputPath;
+      } catch (error) {
+        return {
+          ok: false,
+          failure: failure("infrastructure", "infrastructure_failure", `Failed to write HTML report to "${outputPath}": ${(error as Error).message}`, true),
+        };
+      }
+    }
+
     const priorHints =
       this.#dependencies.sessionMemory?.list(input.reference.workspace_id, FAILURE_AVOIDANCE_KEY_PREFIX) ?? [];
 
@@ -366,7 +393,16 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       `capture:${report.discovery_capture_id}`,
       ...report.test_cases.flatMap((testCase) => testCase.evidence),
       ...(autoSuite && "suite_id" in autoSuite ? [`suite:${autoSuite.suite_id}`] : []),
+      ...mandateBlockers.map((b) => `mandate:${b.code}`),
     ];
+
+    const expertObservations = buildExpertObservations({
+      signals: riskSignals,
+      coverage: hookCoverage,
+      mandate_blockers: mandateBlockers,
+      summary: report.summary,
+      release_recommendation: report.release_recommendation,
+    });
 
     const reportJson = qaRunReportJson(
       report,
@@ -374,10 +410,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       writtenPath,
       autoSuite,
       flakeTaxonomy,
-      {
-        domainPack: assessDomainPackFromInput(input.start_request.input),
-        context: "run_auto_qa",
-      },
+      checklistOptions,
     );
     return {
       ok: true,
@@ -385,6 +418,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         output: {
           ...reportJson,
           expert_extensions: hooks.extensions,
+          expert_observations: expertObservations,
           learning: {
             failure_avoidance_hints: priorHints.map((entry) => ({
               key: entry.key,
@@ -527,14 +561,13 @@ function qaRunReportJson(
     | Readonly<{ skipped: true; reason: string }>
     | undefined,
   flakeTaxonomy: ReturnType<typeof deriveFlakeTaxonomy>,
-  checklistOptions?: Readonly<{
-    domainPack?: DomainPackGateInput;
-    context?: "run_auto_qa" | "run_expert_qa";
-  }>,
+  checklistOptions?: ExpertChecklistFromReportOptions,
 ): JsonObject {
   const gaps = deriveCoverageGaps(report);
   const retest = deriveSmartRetestSuggestion(report);
-  const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
+  const suitePresent =
+    checklistOptions?.suiteIdPresent === true ||
+    (autoSuite !== undefined && "suite_id" in autoSuite);
   return {
     schema_version: report.schema_version,
     workspace_id: report.workspace_id,
@@ -625,6 +658,9 @@ function qaRunReportJson(
       {
         suiteIdPresent: suitePresent,
         ...(checklistOptions?.domainPack !== undefined ? { domainPack: checklistOptions.domainPack } : {}),
+        ...(checklistOptions?.e2MandateBlockers !== undefined
+          ? { e2MandateBlockers: checklistOptions.e2MandateBlockers }
+          : {}),
         context: checklistOptions?.context ?? "run_auto_qa",
       },
     ),

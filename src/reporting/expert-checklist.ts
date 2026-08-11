@@ -35,6 +35,8 @@ export type ExpertChecklistInput = Readonly<{
   /** True when this response already carries a durable suite id (regression path). */
   suite_id_present?: boolean;
   domain_pack?: DomainPackGateInput;
+  /** E2 smells not exercised — Expert would block "done". */
+  e2_mandate_blockers?: readonly string[];
   context: "run_auto_qa" | "run_regression_suite" | "run_expert_qa";
 }>;
 
@@ -49,6 +51,7 @@ const PASS_BLOCKING_PREFIXES = [
   "domain_pack_absent",
   "domain_high_risk_unconfirmed",
   "suite_missing",
+  "e2_",
 ] as const;
 
 export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
@@ -115,6 +118,11 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
     satisfied.push("suite_id_present");
   }
 
+  for (const mandate of input.e2_mandate_blockers ?? []) {
+    const code = mandate.trim();
+    if (code.length > 0) blockers.push(code.startsWith("e2_") ? code : `e2_${code}`);
+  }
+
   const host_actions: string[] = [
     "State release_recommendation as the first verdict — never lead with pass-count.",
     "Paste coverage_gaps (and domain risks not tested) into the user-facing result.",
@@ -137,6 +145,11 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
   if (blockers.includes("suite_missing")) {
     host_actions.unshift(
       "Suite was not auto-registered — re-run with registry or register_regression_suite before claiming complete Expert loop.",
+    );
+  }
+  if (blockers.some((b) => b.startsWith("e2_"))) {
+    host_actions.unshift(
+      "E2 Expert mandate open — run role_b / openapi(+authz negatives) / include_workflow_journeys / expected_network before claiming done.",
     );
   }
   if (input.smart_retest_action === "targeted_retest") {
@@ -188,6 +201,7 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
 export type ExpertChecklistFromReportOptions = Readonly<{
   suiteIdPresent?: boolean;
   domainPack?: DomainPackGateInput;
+  e2MandateBlockers?: readonly string[];
   context?: ExpertChecklistInput["context"];
 }>;
 
@@ -211,12 +225,29 @@ export function expertChecklistFromQaRunReport(
     smart_retest_action: smartRetestAction,
     suite_id_present: options.suiteIdPresent === true,
     ...(options.domainPack !== undefined ? { domain_pack: options.domainPack } : {}),
+    ...(options.e2MandateBlockers !== undefined && options.e2MandateBlockers.length > 0
+      ? { e2_mandate_blockers: options.e2MandateBlockers }
+      : {}),
     context: options.context ?? "run_auto_qa",
   });
 }
 
-const PASS_CLAIM_PATTERN =
-  /\b(pass|passed|ready\s+to\s+(ship|release|merge)|ship\s+it|all\s+good|lgtm|safe\s+to\s+(merge|release)|recommend\s+release)\b/i;
+const PASS_CLAIM_POSITIVE =
+  /\b(passed|pass(?:es|ing)?|ready\s+to\s+(ship|release|merge)|ship\s+it|all\s+good|lgtm|safe\s+to\s+(merge|release)|recommend(?:ed)?\s+release|merge-?ready|go\s+live|production\s+ready|sẵn\s+sàng\s+(merge|release|ship)|đạt\s+yêu\s+cầu)\b/i;
+
+/** Negation windows — Expert saying "do not pass" is blocked wording, not a pass claim. */
+const PASS_CLAIM_NEGATION =
+  /\b(do\s+not|don't|dont|not|never|cannot|can't|cant|không|chưa|không\s+được)\b[\s\w-]{0,24}\b(pass|passed|ship|release|merge|ready|lgtm|đạt|sẵn\s+sàng)/i;
+
+/**
+ * True only when the host is asserting a green pass — not when refusing one.
+ */
+export function isPassLikeClaim(proposedClaim: string): boolean {
+  const claim = proposedClaim.trim();
+  if (claim.length === 0) return false;
+  if (PASS_CLAIM_NEGATION.test(claim)) return false;
+  return PASS_CLAIM_POSITIVE.test(claim);
+}
 
 export type ValidateExpertClaimInput = Readonly<{
   proposed_claim: string;
@@ -239,7 +270,7 @@ export function validateExpertClaim(input: ValidateExpertClaimInput): ValidateEx
   const checklist = input.expert_checklist;
   const claimPassAllowed = checklist["claim_pass_allowed"] === true;
   const claim = input.proposed_claim.trim();
-  const passLike = PASS_CLAIM_PATTERN.test(claim);
+  const passLike = isPassLikeClaim(claim);
   const blockers = Array.isArray(checklist["blockers"])
     ? (checklist["blockers"] as unknown[]).map(String)
     : [];

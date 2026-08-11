@@ -18,8 +18,9 @@ Agent **MUST NOT** say ready / ship / all good / pass unless **all** true:
 3. `release_recommendation` quoted from MCP (not invented)
 4. `coverage_gaps` stated — including scope NOT covered
 5. Retest plan: follow `smart_retest_suggestion` / `expert_checklist.host_actions`
-6. Serious Strategy A → `suite_id` present (auto-registered or register)
-7. Domain pack present (or absence acknowledged as gap — still not pass); high-risk TODOs confirmed when flagged
+6. Domain pack present with high-risk stubs confirmed (or absence acknowledged as gap — still not pass)
+7. E2 smells (roles/API/money/journey) exercised or listed as blockers — no silent skip
+8. `expert_observations` reviewed like a human session close-out
 
 If `claim_pass_allowed` is **false** → status = **blocked / incomplete** — list `expert_checklist.blockers`. Never green-wash.  
 Even when true → **human release_signoff** still required.
