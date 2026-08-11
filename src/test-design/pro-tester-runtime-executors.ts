@@ -463,10 +463,11 @@ export class DefectExportRuntimeExecutor implements AgentRunExecutor {
       defect_id: defect.id,
       ...buildDefectEvidencePack(defect),
     }));
+    const quality_warnings = deriveDefectExportQualityWarnings(defects);
     return {
       ok: true,
       value: {
-        output: { format, text, defect_count: raw.length, evidence_packs },
+        output: { format, text, defect_count: raw.length, evidence_packs, quality_warnings },
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -1090,6 +1091,46 @@ function filterRegressionCases(
     });
   }
   return filtered;
+}
+
+/**
+ * Pre-export quality gate — non-blocking but surfaces integrity issues
+ * before a defect is pasted/filed to an external tracker.
+ */
+function deriveDefectExportQualityWarnings(defects: readonly Defect[]): readonly JsonObject[] {
+  const warnings: JsonObject[] = [];
+
+  const withConfirmedCause = defects.filter((d) => d.confirmed_cause != null && d.confirmed_cause !== "");
+  if (withConfirmedCause.length > 0) {
+    warnings.push({
+      rule: "no_confirmed_cause",
+      severity: "high",
+      message: `${withConfirmedCause.length} defect(s) have confirmed_cause set — this pipeline never confirms root cause. Review before filing.`,
+      defect_ids: withConfirmedCause.map((d) => d.id),
+    });
+  }
+
+  const noEvidence = defects.filter((d) => !d.evidence || d.evidence.length === 0);
+  if (noEvidence.length > 0) {
+    warnings.push({
+      rule: "evidence_required",
+      severity: "medium",
+      message: `${noEvidence.length} defect(s) have no evidence (screenshot/trace). Hard to reproduce without it.`,
+      defect_ids: noEvidence.map((d) => d.id),
+    });
+  }
+
+  const draftStatus = defects.filter((d) => d.status !== "draft");
+  if (draftStatus.length > 0) {
+    warnings.push({
+      rule: "export_from_draft_only",
+      severity: "low",
+      message: `${draftStatus.length} defect(s) have status other than "draft" — verify these are intentionally being re-exported.`,
+      defect_ids: draftStatus.map((d) => d.id),
+    });
+  }
+
+  return warnings;
 }
 
 function mapQaOutcome(raw: string): QaRunTestCaseOutcome {

@@ -105,6 +105,39 @@ export function withProfessionalAnalysis(
   };
 }
 
+/** Derives an explicit coverage gap summary for the HTML report. */
+function coverageGapsHtml(report: QaRunReport): string {
+  const items: string[] = [];
+
+  const notExecuted = report.test_cases.filter((tc) => tc.outcome === "not_executed");
+  if (notExecuted.length > 0) {
+    items.push(
+      `<li class="risk-high"><strong>Not executed:</strong> ${notExecuted.length} test case(s) skipped — AC may be unbound or execution was skipped (${notExecuted.map((tc) => escapeHtml(tc.test_case_id)).join(", ")})</li>`,
+    );
+  }
+
+  if (report.generation_findings.length > 0) {
+    items.push(
+      `<li class="risk-high"><strong>Unbindable AC:</strong> ${report.generation_findings.length} acceptance criterion/criteria not bound to any discovered element — these were NOT tested</li>`,
+    );
+  }
+
+  const criticalA11y = report.accessibility_smoke.findings.filter((f) => f.severity === "critical");
+  if (criticalA11y.length > 0) {
+    items.push(
+      `<li class="risk-high"><strong>Unlabeled fields:</strong> ${criticalA11y.length} field(s) without accessible name — test cases for these controls may be unreliable</li>`,
+    );
+  }
+
+  items.push(
+    `<li class="risk-low"><strong>Scope limits (always):</strong> full WCAG audit, load testing, penetration testing, API authorization matrix, cross-browser parity were NOT performed in this run</li>`,
+  );
+
+  return `<h2>Coverage gaps</h2>
+<p class="meta">Expert QA rule: never claim pass by silence. Gaps surfaced proactively.</p>
+<ul>${items.join("\n")}</ul>`;
+}
+
 /** Renders a self-contained HTML report — no external stylesheet/script, safe to open directly from disk. */
 export function renderQaRunReportHtml(report: QaRunReport): string {
   const rows = report.test_cases.map(testCaseRow).join("\n");
@@ -218,6 +251,7 @@ ${report.draft_defects.map(defectRow).join("\n")}
   <div class="stat"><span class="n">${report.accessibility_smoke.findings.length}</span>a11y findings</div>
 </div>
 ${coverage}
+${coverageGapsHtml(report)}
 <h2>Test cases</h2>
 <table>
   <thead><tr><th>Test case</th><th>Variant</th><th>Purpose</th><th>Outcome</th><th>Evidence</th></tr></thead>
@@ -274,10 +308,18 @@ function isScreenshotPath(entry: string): boolean {
   return entry.endsWith(".png");
 }
 
+/** Playwright trace zip written by `PlaywrightExecutionEngine#captureFailureTrace` — fail-only. */
+function isTracePath(entry: string): boolean {
+  return entry.endsWith(".zip") || entry.includes(".qa-traces/");
+}
+
 /** Pure string formatting only — never reads the referenced file, so this stays true even when the path no longer exists on disk. */
 function evidenceCell(entry: string): string {
   if (isScreenshotPath(entry)) {
     return `<img src="file://${encodeURI(entry)}" alt="failure screenshot" style="max-width:320px;display:block;margin:0.25rem 0;">`;
+  }
+  if (isTracePath(entry)) {
+    return `<span style="display:block;margin:0.25rem 0">🎬 <a href="file://${encodeURI(entry)}" title="Open trace zip"><code>${escapeHtml(entry)}</code></a> <small style="color:#666">(npx playwright show-trace)</small></span>`;
   }
   return `<code>${escapeHtml(entry)}</code>`;
 }

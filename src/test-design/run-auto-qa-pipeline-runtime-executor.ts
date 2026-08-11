@@ -453,7 +453,84 @@ function qaRunReportJson(report: QaRunReport, html: string, writtenPath: string 
       message: finding.message,
       evidence: [...finding.evidence],
     })),
+    coverage_gaps: deriveCoverageGaps(report),
+    smart_retest_suggestion: deriveSmartRetestSuggestion(report),
     report_html: html,
     report_path: writtenPath ?? null,
   };
+}
+
+/**
+ * Derives a smart retest suggestion: exactly which case_ids to re-run after a fix,
+ * and the recommended `run_regression_suite` call shape. Expert QA never re-runs
+ * the full suite when only a subset of cases failed.
+ */
+function deriveSmartRetestSuggestion(report: QaRunReport): JsonObject {
+  const failedCases = report.test_cases.filter((tc) => tc.outcome === "failed" || tc.outcome === "cancelled");
+  const flakyCases = report.test_cases.filter((tc) => tc.outcome === "flaky");
+  const relatedDefectIds = report.draft_defects.map((d) => `DEF-DRAFT:${d.id}`);
+
+  if (failedCases.length === 0 && flakyCases.length === 0) {
+    return {
+      action: "no_retest_needed",
+      message: "All executed cases passed. No retest required unless requirements change.",
+    };
+  }
+
+  return {
+    action: "targeted_retest",
+    message: `Re-run only the ${failedCases.length} failed + ${flakyCases.length} flaky case(s) after fix. Do NOT re-run the full suite unless AC changed.`,
+    failed_case_ids: failedCases.map((tc) => tc.test_case_id),
+    flaky_case_ids: flakyCases.map((tc) => tc.test_case_id),
+    related_defect_ids: relatedDefectIds,
+    recommended_call: {
+      tool: "run_regression_suite",
+      hint: relatedDefectIds.length > 0
+        ? `Pass related_defect_ids: ${JSON.stringify(relatedDefectIds)} to run targeted subset`
+        : `Pass case_ids: ${JSON.stringify([...failedCases, ...flakyCases].map((tc) => tc.test_case_id))}`,
+    },
+  };
+}
+
+/**
+ * Derives an explicit "what was NOT tested" summary from run data.
+ * Expert QA rule: never claim pass by silence — surface gaps proactively.
+ */
+function deriveCoverageGaps(report: QaRunReport): readonly JsonObject[] {
+  const gaps: JsonObject[] = [];
+
+  const notExecuted = report.test_cases.filter((tc) => tc.outcome === "not_executed");
+  if (notExecuted.length > 0) {
+    gaps.push({
+      gap: "not_executed_test_cases",
+      count: notExecuted.length,
+      message: `${notExecuted.length} test case(s) were not executed — AC may be unbound or execution was skipped.`,
+      test_case_ids: notExecuted.map((tc) => tc.test_case_id),
+    });
+  }
+
+  if (report.generation_findings.length > 0) {
+    gaps.push({
+      gap: "unbindable_acceptance_criteria",
+      count: report.generation_findings.length,
+      message: `${report.generation_findings.length} acceptance criterion/criteria could not be bound to any discovered UI element.`,
+    });
+  }
+
+  const criticalA11y = report.accessibility_smoke.findings.filter((f) => f.severity === "critical");
+  if (criticalA11y.length > 0) {
+    gaps.push({
+      gap: "unlabeled_editable_fields",
+      count: criticalA11y.length,
+      message: `${criticalA11y.length} unlabeled editable field(s) detected — test cases for these controls may be unreliable.`,
+    });
+  }
+
+  gaps.push({
+    gap: "scope_limits",
+    message: "This run covers UI naming smoke and generated AC variants only. Not covered: full WCAG audit, load testing, penetration testing, API authorization matrix, cross-browser parity.",
+    not_covered: ["full_wcag", "load_test", "pen_test", "api_authz_matrix", "cross_browser"],
+  });
+
+  return gaps;
 }

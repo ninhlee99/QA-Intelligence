@@ -1,85 +1,140 @@
 ---
 name: dev
 description: >
-  Dev-side QA workflow for QA Intelligence. Reads local screen source to
-  derive acceptance criteria, registers them, then drives qa-intelligence
-  MCP (discover → run_auto_qa → regression suite → optional OpenAPI smoke)
-  against localhost before handing to a tester.
+  Expert QA workflow cho developer. Đọc source code → derive AC → test
+  localhost trước khi push. Tư duy peer reviewer chặt chẽ, không cheerleader.
   Trigger: "/qa-intelligence:dev", "test this screen locally", "run dev QA",
-  "test against localhost with qa-intelligence".
+  "test against localhost", "kiểm tra trước khi merge".
 ---
 
-# QA Intelligence — Dev Workflow (Senior QA stance)
+# QA Intelligence — Dev Workflow (Expert QA stance)
 
-Validate a screen you just built using **code as AC source**, then exercise
-the live UI through MCP. Same tools/output shapes as `/qa-intelligence:test`.
-Act like a careful QA peer-reviewer for your own change — not a green-CI cheerleader.
+Vai trò: Developer đang tự QA code của mình trước khi push — với tư duy của Expert QA Engineer, không phải "chạy cho xong CI".
 
-## Preconditions
+**Nguyên tắc:** Code là nguồn sự thật AC. Không đoán behavior. Không bỏ qua lỗi nhỏ. Claim pass chỉ khi `release_recommendation` cho phép.
 
-- MCP connected (`npm run build` if tools fail). See `hosts/README.md`.
-- Target running on `localhost` / `127.0.0.1` (loopback allowed without env register).
-- Do **not** use `execute_browser_test` (DEMO seeded plans only). Use `run_auto_qa`
-  / `run_regression_suite`.
+---
 
-## Procedure
+## Bước 0 — Đánh giá scope trước khi làm
 
-1. **Find the screen source** (route/page/form). Read it — don't guess.
-2. **Derive AC from code:** required/optional + validation; success/error →
-   `expected_text`; accessible names as UI exposes them. Note code↔comment
-   conflicts; don't silently pick one. Optional URL/title oracles when
-   navigation changes (`expected_url_includes` / `expected_title_includes`).
-   When submit triggers an API, add `expected_network` on the AC
-   (`url_includes` + status/`body_includes`) — generator copies onto the
-   positive assertion so UI and API assert in one run.
-3. **`register_requirement`** with derived AC (scope stays this Workspace).
-   Keep the returned `requirement_ref` (`id@version`) for later tools.
-4. **Discover.** `discover_ui_surface` on the local URL. If the change spans
-   multiple routes, `discover_ui_workflow` then `generate_journey_test_cases`
-   from `pages`+`edges` (optional caller-known `expected_network` — never invent
-   API paths), and spot-check hot pages.
-5. **`run_auto_qa`** against the local URL with derived `acceptance_criteria`
-   (+ `requirement_ref`). Add login_* / secret refs if session-gated. Set
-   `output_path` (default `docs/qa-reports/dev/<screen>-<date>.html`).
-6. **If generation_findings (unbindable AC):** wrong accessible name or
-   missing control — say which after re-checking source.
-7. **Register regression suite** from generated `test_case` +
-   `generated_assertion` pairs via `register_regression_suite` so the next
-   local rebuild can `run_regression_suite` without regenerating everything.
-   Optional: `create_automation_asset` + `regression_suite_id` for governance
-   bind (persists under `.qa-automation-assets/`).
-   Optional fills: `register_test_dataset` (`field_samples`, synthetic) →
-   `resolve_test_dataset_fields` → pass `field_values` on execute/regression.
-   Optional visual: `capture_ui_baseline` / `compare_ui_baseline` (exact match
-   observation). Optional surface: `register_ui_surface_baseline` after
-   discover. Learning list: `list_learning_candidates` (never promote;
-   durable across restart). Fail traces under `.qa-traces/`.
-8. **API (when this screen calls your HTTP API).** If OpenAPI/JSON exists in
-   repo, `generate_api_smoke_from_openapi` (`include_authz_negatives: true`
-   when secured) → `execute_api_smoke` on local base URL.
-9. **Optional:** `generate_exploratory_charter` /
-   `execute_exploratory_session` (bounded probes only — not free explore);
-   `assess_defect_quality` on serious drafts; `export_defects_for_tracker`
-   before asking a tester to file.
-10. **Persist:** report HTML + testcases JSON + suite id; save drafts if any.
-11. **Summarize gate-first:** `release_recommendation` → fails/flakes/a11y
-    critical → unbound AC → residual risks → artifact paths + suite id.
-    State scope limit (local surface; naming smoke ≠ WCAG).
+Hỏi bản thân:
 
-## After deploy / on staging
+1. **Thay đổi này ảnh hưởng gì?**
+   - UI + form → cần test case mọi variant (positive/negative/boundary/adversarial)
+   - API endpoint → cần `execute_api_smoke` song song
+   - Auth / permission → cần `discover_and_compare_role_ui_surfaces`
+   - Navigation/routing → cần `discover_ui_workflow` + `generate_journey_test_cases`
 
-1. `register_workspace_environment` for staging base URL if required.
-2. `run_regression_suite` (update `base_url` / `field_values` as needed) **or**
-   regenerate with `run_auto_qa` when UI/AC changed.
-3. Role-sensitive change → `discover_and_compare_role_ui_surfaces` (or two
-   discoveries + `compare_ui_surfaces`).
-4. Retest loop: fix → `run_regression_suite` with `case_ids` /
-   `related_defect_ids` → only claim green when `release_recommendation`
-   allows (not pass-count alone).
+2. **Đã có regression suite chưa?**
+   - Có → `run_regression_suite` trước (nhanh hơn re-generate)
+   - Chưa → full pipeline → register suite sau
 
-## Non-goals
+3. **Có thể regression break gì khác không?**
+   - Shared component → chạy thêm suite của những screen dùng chung
 
-- Inventing AC not in code
-- Claiming production readiness from localhost alone
-- DEMO `execute_browser_test` against real apps
-- Claiming full API/authz matrix from a single 200 smoke
+---
+
+## Pipeline chuẩn (tính năng mới)
+
+```
+1. Đọc source → derive AC
+   - Mỗi required field → test case positive + negative + boundary
+   - Submit trigger API → ghi expected_network (url_includes + status)
+   - Navigation → expected_url_includes / expected_title_includes
+   - Tên field trong code phải khớp accessible_name thật trên UI
+
+2. register_requirement với AC đầy đủ
+   → giữ requirement_ref (id@version) để dùng lại
+
+3. discover_ui_surface trên localhost URL
+   → Kiểm tra accessible names khớp với AC không
+   → Nếu sai → sửa code trước khi test
+
+4. run_auto_qa với acceptance_criteria + requirement_ref + output_path
+   → output_path: "docs/qa-reports/dev/<screen>-<date>.html"
+   → Đọc generation_findings: nếu AC không bind được → sửa accessible name
+
+5. Đọc kết quả ngay:
+   a. release_recommendation trước tiên
+   b. Defects → mỗi cái đều có evidence (screenshot / trace)
+   c. Unbindable AC → đây là lỗi trong code hoặc AC, không phải bỏ qua
+   d. Flaky → điều tra trước khi push
+
+6. [Có API] generate_api_smoke_from_openapi (include_authz_negatives=true)
+   → execute_api_smoke
+   → Không claim API pass từ happy path 200 đơn thuần
+
+7. register_regression_suite → giữ suite_id
+
+8. [Lần đầu] capture_ui_baseline + register_ui_surface_baseline
+   → Lần sau so sánh baseline ngay sau run
+
+9. Nếu có fail → xem .qa-traces/*.zip trước khi report cho QA
+   → npx playwright show-trace <path>
+```
+
+---
+
+## Pipeline regression (sau fix)
+
+```
+1. list_regression_suites → lấy suite_id
+2. run_regression_suite với case_ids hoặc related_defect_ids
+   (chỉ subset liên quan đến fix)
+3. compare_ui_baseline nếu fix UI layout
+4. compare_ui_surface_to_baseline nếu thêm/xóa control
+5. Đọc release_recommendation → không đọc pass count
+6. list_failure_avoidance_hints → lỗi cũ đã được nhớ chưa?
+```
+
+---
+
+## Đọc kết quả — thứ tự bắt buộc
+
+1. `release_recommendation` — nếu không phải `release` → phải fix trước khi push
+2. `security_incident` / `critical` severity → block push hoàn toàn
+3. `unlabeled_editable_field` (a11y) → fix accessible name
+4. Unbindable AC (`not_executed`) → sửa source hoặc AC
+5. Flaky → phân tích trace, đừng re-run hy vọng pass
+6. Residual risks → document trong PR description
+
+---
+
+## Coverage — nói thật trong PR
+
+Sau mỗi test session, tự ghi vào PR:
+
+```
+QA coverage:
+- UI: run_auto_qa trên /path/to/screen — release_recommendation: [value]
+- Variants tested: positive/negative/boundary/adversarial
+- API: [tested với execute_api_smoke / chưa test — lý do]
+- Auth: [tested role A vs B / chỉ one role]
+- Browser: [chromium only / chromium+firefox]
+- Not tested: full WCAG, load, pen-test
+- Artifacts: [HTML path], suite_id: [id]
+```
+
+---
+
+## Sau deploy lên staging
+
+```
+1. register_workspace_environment cho staging base URL
+2. run_regression_suite (update base_url)
+3. [nếu UI thay đổi] run_auto_qa lại trên staging
+4. compare_ui_baseline staging vs localhost (nếu có)
+```
+
+---
+
+## Quy tắc không được vi phạm
+
+| Không bao giờ | Thay vào đó |
+|---|---|
+| Push khi `release_recommendation` = `do_not_release` | Fix trước, chạy lại |
+| Bỏ qua unbindable AC | Sửa accessible name trong source |
+| Re-run flaky hy vọng pass | Xem trace → tìm root cause |
+| Claim "tested" khi chỉ chạy happy path | Khai rõ scope trong PR |
+| `execute_browser_test` trên localhost thật | Dùng `run_auto_qa` |
+| Password plain text trong input | `register_workspace_secret` → `password_secret_ref` |

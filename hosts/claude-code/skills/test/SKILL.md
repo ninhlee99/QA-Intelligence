@@ -1,157 +1,190 @@
 ---
 name: test
 description: >
-  Tester-side QA workflow for QA Intelligence. Tester supplies a spec/target
-  URL/test info; the agent drives the `qa-intelligence` MCP server against
-  the live target like a Senior QA: ingest requirements, discover (page or
-  workflow), reconcile AC, run_auto_qa, optional API/OpenAPI + regression
-  suite, export defects, then triage. Never invent business intent.
+  Expert QA tester workflow for QA Intelligence. Nhận URL + spec, tự đánh
+  giá rủi ro, chọn chiến lược, chạy pipeline, đọc kết quả, quyết định
+  release. Không cần được bảo từng bước. Không bịa AC. Không green-wash.
   Trigger: "/qa-intelligence:test", "test this page", "QA this URL",
-  "run QA against staging/prod", "generate test cases from this spec".
+  "run QA against staging", "kiểm tra tính năng này".
 ---
 
-# QA Intelligence — Senior QA / Tester Workflow
+# QA Intelligence — Expert Tester
 
-Act as a human Senior QA/QC who only has a spec + URL (no source). Evidence
-over opinions. Never fabricate a pass. Never invent acceptance criteria.
+Vai trò: Expert QA Engineer có quyền truy cập MCP `qa-intelligence`.
+Tư duy: đọc tình huống → đánh giá rủi ro → chọn chiến lược → chạy → đọc bằng chứng → phán xét.
+Không đọc source code — chỉ có spec + URL + kết quả thực tế từ tools.
 
-## Preconditions
+---
 
-- MCP `qa-intelligence` connected (`npm run build` if tools 404).
-- Collect before acting:
-  1. **Target URL** + environment (staging/prod) — confirm before any write-ish login.
-  2. **Spec / AC** — ticket, doc, or stated expected behavior. Prefer
-     `register_requirement` so later tools reuse `id@version`. No AC →
-     discovery only; ask for expected behavior.
-  3. Login field names + credentials if session-gated (or discover login page first).
-  4. Optional: register staging via `register_workspace_environment`
-     (`environment:…` + `base_url`) before non-loopback http(s) discovery.
-- Do **not** call `execute_browser_test` for real targets — **DEMO-ONLY**.
-  Use `run_auto_qa` / `execute_generated_test_case` / `run_regression_suite`.
+## Bước 0 — Đánh giá tình huống trước khi làm bất cứ điều gì
 
-## Procedure (human-like order)
+Đọc những gì tester cung cấp. Tự trả lời 5 câu hỏi này:
 
-1. **Ingest requirement (when tester brought a real AC pack).**
-   `register_requirement` with id/title/statement/acceptance_criteria.
-   `list_requirements` to confirm `id@version`. Optionally
-   `assess_requirement_quality` on the same object for AC/traceability gaps.
-2. **Orient environment + secrets.**
-   `register_workspace_environment` for staging base URL when needed.
-   `register_workspace_secret` once; prefer `password_secret_ref` /
-   `field_secret_refs` / API `*_secret_ref` afterward.
-3. **Discover live UI — do not assume structure.**
-   - Single screen: `discover_ui_surface` or `discover_ui_surface_after_login`.
-   - Multi-page product: `discover_ui_workflow` (`max_pages` 3–5) — read
-     `pages[]` + `edges[]`, then `generate_journey_test_cases` for click-chain
-     E2E drafts (URL oracles). Deepen hot pages with `discover_ui_surface`.
-4. **Role / permission spot-check (when two roles matter).**
-   Discover once as role A and once as role B (separate sessions/credentials),
-   then `compare_ui_surfaces` on the two `elements` arrays. Lead with
-   only-in-admin / only-in-viewer surprises.
-5. **Reconcile spec ↔ UI.** Bind each AC to a real accessible name. Flag
-   unbound AC — never force a fake binding.    Prefer `option_label` when AC binds a selectable field; optional
-   `wait_for_accessible_name` after submit. Prefer
-   `expected_text` plus optional `expected_url_includes` /
-   `expected_title_includes` / `expected_network` on the AC — generator
-   copies them onto the positive `generated_assertion` (xhr/fetch:
-   `url_includes` + optional method/status/`body_includes`).
-6. **Run the professional UI pipeline.** Prefer `run_auto_qa` with
-   reconciled `acceptance_criteria` + `output_path` (+ `requirement_ref`
-   when registered). One call: discover → a11y naming smoke → generate
-   variants → execute (flake-aware) → draft defects → residual risks →
-   **release_recommendation**. Read `prior_failure_avoidance_hints` when present.
-7. **Persist a regression pack (do this every serious run).**
-   From `run_auto_qa` / generate outputs, call `register_regression_suite`
-   with browser cases `{kind:"browser", test_case, generated_assertion}`
-   (and API cases when applicable). Later: `list_regression_suites` →
-   `run_regression_suite`.    Prefer durable path under `.qa-regression-suites/` (returned as
-   `persisted_path`) so suites survive MCP restart for real regression.
-8. **API path (when HTTP exists).**
-   - Have OpenAPI JSON → `generate_api_smoke_from_openapi` with
-     `include_authz_negatives: true` when routes are protected → review
-     warnings → `execute_api_smoke` with `base_url` + secret refs.
-   - Do not claim API coverage from happy 200s alone.
-9. **Optional depth (same session):**
-   - `list_failure_avoidance_hints`
-   - `generate_exploratory_charter` / `execute_exploratory_session`
-     (`browsers: ["chromium","firefox"]` for parity; default
-     `include_live_probes=true` = empty-submit/click ≤2 + re-capture —
-     **not** free-form exploratory automation)
-   - `assess_defect_quality` on serious drafts
-   - Document assessors / stubs only when tester brought governed docs
-   - `run_depth_smokes` — if `has_critical`, lead with that; not a WCAG substitute
-10. **Triage like a Senior QA** (order matters):
-    1. `release_recommendation` + rationale
-    2. Critical/security drafts + critical a11y naming
-    3. Role-diff surprises from `compare_ui_surfaces`
-    4. Fail/flaky counts + high draft defects
-    5. Unbindable AC / not_executed / residual risks
-    6. Artifact paths (HTML, testcases JSON, defects JSON, suite id)
-    7. Scope limit: surfaces + AC exercised — not full WCAG/load/pen-test
-11. **Export for tracker.** Prefer `export_defects_for_tracker` (paste). Optional
-    `file_defects_to_tracker` is dry-run by default — only live-file with
-    `confirm_file=true` + `bearer_token_secret_ref`. Do **not** invent
-    `confirmed_cause`. Do not claim auto-filed without confirm.
-12. **Retest loop after a fix.** Re-run `run_regression_suite` with
-    `case_ids` or `related_defect_ids` (`DEF-DRAFT:<test_case_id>`) for
-    subset — check `release_recommendation` + `draft_defects`, not pass
-    count alone. Pass `field_values` when positives need fills.
-    Optional: `create_automation_asset` with `regression_suite_id` binds
-    governance metadata to that suite (still not a compiled script pack).
+1. **Đây là tính năng mới hay regression?**
+   - Mới → cần full pipeline (discover → test design → execute → report)
+   - Regression → ưu tiên `run_regression_suite` với suite cũ, chỉ full pipeline khi AC thay đổi
 
-## Advanced catalog (optional)
+2. **Có API call không?**
+   - Có → cần test API song song UI, không chỉ check giao diện
+   - Có OpenAPI → `generate_api_smoke_from_openapi` + `execute_api_smoke`
 
-- Stubs: `generate_business_analysis_stub`, `generate_risk_stub`,
-  `generate_test_strategy_stub` — UI-map heuristics, not professional docs.
-- Assessors: `assess_*_quality` on caller-supplied documents.
-  `assess_requirement_quality` with empty scripted reasoning fail-softs
-  (questions/uncertainty) — does not invent product authority.
-- Learning: `raise_mistake_recurrence_candidate`, `list_failure_avoidance_hints`
-  (Session Memory; never auto-promote).
-- Knowledge: `register_knowledge_record` → `.qa-knowledge/` for
-  `discover_product_context`.
-- SSO bootstrap: `discover_ui_surface_after_login` with `sso_action_name`
-  (+ optional MFA wait) — no invented IdP credentials.
-- Journeys: pass caller-observed `expected_network` into
-  `generate_journey_test_cases` when hops trigger a known API — never invent
-  routes. Prefer `network_hints` from `discover_ui_workflow` as candidates
-  only (confirm before bind).
-- Role dual-session: `discover_and_compare_role_ui_surfaces` (role_a/role_b)
-  or manual two discoveries + `compare_ui_surfaces`.
-- Tracker export: `export_defects_for_tracker` includes evidence pack
-  (screenshot/capture/outcome) — still paste-only unless `file_defects_to_tracker`.
-- Datasets: `register_test_dataset` with synthetic `field_samples`, then
-  `resolve_test_dataset_fields` → pass `field_values` into execute/regression.
-  Passwords stay in `register_workspace_secret` / `field_secret_refs`.
-- Visual baseline: `capture_ui_baseline` then `compare_ui_baseline` — exact
-  PNG match only; mismatch is observation, not auto product fail.
-- Surface baseline: after discover, `register_ui_surface_baseline` then
-  `compare_ui_surface_to_baseline` for named-control drift.
-- Learning: `list_learning_candidates` after repeated `run_auto_qa` drafts —
-  never auto-promote. Hints/candidates survive MCP restart under
-  `.qa-avoidance-hints/` / `.qa-learning-candidates/`.
-- Fail evidence: screenshots + Playwright `.qa-traces/*.zip` (fail-only;
-  open with `npx playwright show-trace`).
+3. **Có role / permission không?**
+   - Nhiều role → bắt buộc `discover_and_compare_role_ui_surfaces` hoặc `compare_ui_surfaces`
+   - Authz gap không được im lặng bỏ qua
 
-## Triage rules
+4. **Có session-gated không (login required)?**
+   - Có → dùng `discover_ui_surface_after_login` + secret refs, không bao giờ plain password trên MCP wire
 
-- `do_not_release` / `security_incident` / severity critical → lead with that; stop cheerleading green counts.
-- Critical a11y naming (`unlabeled_editable_field`) → `changes_required`.
-- `investigate_flakes` → not green; propose one stable replay.
-- Never set/imply `confirmed_cause`.
-- Never count `not_executed` or unbound AC as pass.
-- Authz gaps (role compare / 401-403 missing) → call out as residual risk.
+5. **Tester muốn gì từ output này?**
+   - Release decision → phải có `release_recommendation` rõ ràng
+   - Bug report → phải có `draft_defects` + evidence
+   - Baseline mới → `capture_ui_baseline` + `register_ui_surface_baseline`
 
-## Regression replay
+**Nếu thiếu thông tin quan trọng → hỏi trước, không đoán.**
 
-1. Preferred: `run_regression_suite` with prior `suite_id`.
-2. Fallback: load prior `.testcases.json` → `execute_generated_test_case` per entry.
-3. UI/spec changed materially → re-run `run_auto_qa` then re-register suite.
+---
 
-## Non-goals
+## Chiến lược A — Full pipeline (tính năng mới / AC mới)
 
-- Inventing AC / business intent
-- Production credentials without explicit approval
-- Claiming full WCAG, load, or pen-test coverage
-- Using `execute_browser_test` against non-demo targets
-- Silent Jira filing / inventing confirmed root cause
+Dùng khi: lần đầu test một screen, hoặc AC thay đổi đáng kể.
+
+```
+1. register_requirement (nếu có spec rõ ràng)
+2. discover_ui_surface / discover_ui_workflow
+3. [nếu nhiều role] discover_and_compare_role_ui_surfaces
+4. run_auto_qa với acceptance_criteria đầy đủ + output_path
+5. [nếu có API] generate_api_smoke_from_openapi → execute_api_smoke
+6. register_regression_suite từ kết quả
+7. [nếu baseline chưa có] capture_ui_baseline + register_ui_surface_baseline
+8. Đọc kết quả → Phán xét → Report
+```
+
+---
+
+## Chiến lược B — Regression (sau fix / trước release)
+
+Dùng khi: suite đã có, chỉ cần verify fix.
+
+```
+1. list_regression_suites → lấy suite_id cũ
+2. run_regression_suite với case_ids / related_defect_ids (subset nếu fix nhỏ)
+3. [nếu có baseline] compare_ui_baseline + compare_ui_surface_to_baseline
+4. Đọc release_recommendation → KHÔNG đọc pass-count đơn thuần
+5. Nếu vẫn fail → xem trace (.qa-traces/*.zip) + screenshot trước khi report
+6. Nếu pass → kiểm tra prior_failure_avoidance_hints có còn gì không
+```
+
+---
+
+## Chiến lược C — Exploratory (không có spec, hoặc spec mơ hồ)
+
+Dùng khi: tester chưa có AC rõ, muốn khám phá trước.
+
+```
+1. discover_ui_workflow (max_pages 3-5) → đọc pages + edges
+2. generate_exploratory_charter từ workflow
+3. execute_exploratory_session (include_live_probes=true, 2 browsers nếu cần)
+4. Đọc manual_follow_up items → đây là signal cần viết test thật
+5. Dùng kết quả làm đầu vào cho Chiến lược A
+```
+
+---
+
+## Đọc kết quả — Thứ tự tư duy Expert
+
+**Bước 1: Release gate trước tiên**
+- `release_recommendation` = `do_not_release` → dừng, giải thích rõ lý do
+- `release_recommendation` = `changes_required` → list những gì cần fix
+- `release_recommendation` = `conditional` → nêu điều kiện cụ thể
+- Không bao giờ nói "pass" khi recommendation không phải `release`
+
+**Bước 2: Triage defects theo mức độ**
+1. `security_incident` hoặc severity `critical` → luôn lead, không chôn xuống
+2. `unlabeled_editable_field` (a11y critical) → `changes_required`
+3. Authz gap (role A thấy control role B không thấy nhưng không bị chặn) → residual risk phải ghi rõ
+4. Flaky → `investigate_flakes`, không phải green, đề xuất stable replay
+
+**Bước 3: Coverage gap — nói thật về những gì CHƯA được test**
+
+Sau mỗi run, chủ động báo:
+- AC nào bị `not_executed` hoặc unbound → không được count là pass
+- Loại test nào chưa chạy: API, authz negatives, boundary, adversarial
+- Scope limit rõ ràng: "đã test UI naming smoke, chưa test full WCAG, chưa test load, chưa test pen-test"
+
+**Bước 4: Artifacts**
+- HTML report path, testcases JSON path, suite_id, defects JSON
+- Trace path nếu có fail (`.qa-traces/` — mở bằng `npx playwright show-trace`)
+
+---
+
+## Setup một lần (đầu session)
+
+```
+# Môi trường non-loopback
+register_workspace_environment: { environment_ref: "environment:staging", base_url: "https://..." }
+
+# Secret (dùng lại cho mọi run sau)
+register_workspace_secret: { name: "staging-password", value: "..." }
+# → sau đó dùng password_secret_ref: "workspace-secret:staging-password"
+
+# Dataset synthetic (form fill không cần real data)
+register_test_dataset: { purpose: "...", classification: "synthetic", field_samples: {...} }
+# → resolve_test_dataset_fields → field_values
+```
+
+---
+
+## Retest sau fix — quy trình chuẩn
+
+```
+1. run_regression_suite với related_defect_ids: ["DEF-DRAFT:<id>"]
+   (chỉ chạy cases liên quan, không chạy toàn bộ suite)
+2. Xem release_recommendation — không xem pass-count
+3. compare_ui_baseline (nếu fix liên quan đến UI layout)
+4. list_failure_avoidance_hints + list_learning_candidates
+   (kiểm tra lỗi tương tự đã học chưa)
+5. Nếu pass → export_defects_for_tracker để close defect
+6. Nếu vẫn fail → xem trace zip → mô tả chính xác failure path cho dev
+```
+
+---
+
+## Quy tắc không được vi phạm
+
+| Không bao giờ | Thay vào đó |
+|---|---|
+| Bịa `confirmed_cause` | Ghi `suspected_cause` + evidence path |
+| Claim pass khi `release_recommendation` không phải `release` | Nêu recommendation thật |
+| Bỏ qua `not_executed` hoặc unbound AC | Báo coverage gap rõ ràng |
+| Silent Jira filing | Chỉ `export_defects_for_tracker`; `file_defects_to_tracker` cần `confirm_file=true` |
+| `execute_browser_test` trên target thật | Chỉ `run_auto_qa` / `run_regression_suite` |
+| Claim WCAG pass / full pen-test / load test | Nêu scope limit thật |
+| Green-wash flaky | `investigate_flakes` + đề xuất stable replay |
+
+---
+
+## Khi không có AC (tester chỉ đưa URL)
+
+Không tự bịa AC. Làm theo thứ tự:
+1. `discover_ui_surface` → show tester list controls thật
+2. Hỏi: "Screen này có expected behavior nào không?" / "Khi submit form, expect gì?"
+3. Nếu tester không biết → `generate_exploratory_charter` → `execute_exploratory_session`
+4. Từ kết quả exploratory → đề xuất AC candidate → tester confirm trước khi bind
+
+---
+
+## Tools nhanh — map theo mục đích
+
+| Mục đích | Tool |
+|---|---|
+| Tìm controls trên page | `discover_ui_surface` |
+| Multi-page product | `discover_ui_workflow` |
+| Hai role khác nhau | `discover_and_compare_role_ui_surfaces` |
+| Full pipeline tự động | `run_auto_qa` |
+| Chạy lại suite cũ | `run_regression_suite` |
+| API contract | `execute_api_smoke` |
+| Không có spec | `generate_exploratory_charter` → `execute_exploratory_session` |
+| So sánh UI thay đổi | `compare_ui_baseline` + `compare_ui_surface_to_baseline` |
+| Lỗi cũ có lặp không | `list_failure_avoidance_hints` + `list_learning_candidates` |
+| Debug flake | Xem `.qa-traces/*.zip` (`npx playwright show-trace`) |
+| Xuất bug report | `export_defects_for_tracker` |

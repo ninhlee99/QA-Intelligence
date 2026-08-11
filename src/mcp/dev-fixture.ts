@@ -1279,6 +1279,7 @@ export function buildDevFixture(options: {
       skill: uiWorkflowSkill,
       expected_agent: UI_WORKFLOW_AGENT,
       expected_skill: UI_WORKFLOW_SKILL,
+      ...(sessionMemory !== undefined ? { sessionMemory } : {}),
     }),
   );
   executorMap.set(

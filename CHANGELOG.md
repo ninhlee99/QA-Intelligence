@@ -4,6 +4,14 @@
 
 ### Added
 
+- Expert QA upgrade (A+B+C groups):
+  - A1: Rewrote `hosts/claude-code/skills/test/SKILL.md` and `dev/SKILL.md` — risk-first triage, 3 strategies (full/regression/exploratory), explicit coverage gap section, tool map by purpose
+  - A2: `run_auto_qa` output now includes `coverage_gaps` (not-executed cases, unbindable AC, unlabeled fields, scope limits) and `smart_retest_suggestion` (exact `case_ids`/`related_defect_ids` for targeted retest after fix)
+  - A3: `smart_retest_suggestion` in `run_auto_qa` output — never re-run full suite when only subset failed
+  - B1: HTML report `evidenceCell` now renders trace `.zip` as clickable link with `npx playwright show-trace` hint
+  - B2: `discover_ui_workflow` persists `network_hints` to `SessionMemory` (key `network-hints:<workspace>:<url>`); surfaces `prior_network_hints` on subsequent runs for AC authoring — never invent routes
+  - B3: `export_defects_for_tracker` now includes `quality_warnings` pre-export gate (confirmed_cause set, no evidence, non-draft status)
+  - C1+C2: Added `hosts/cursor/skills/test/SKILL.md`, `hosts/cursor/skills/dev/SKILL.md`, `hosts/codex/skills/test/SKILL.md`, `hosts/codex/skills/dev/SKILL.md`
 - P6: Playwright fail-only traces → `.qa-traces/` (+ evidence pack `trace`); durable `avoid:*` (`.qa-avoidance-hints/`), learning candidates (`.qa-learning-candidates/`), mistake occurrences (`.qa-mistake-occurrences/`) across MCP restart
 - P5: visual baselines (`capture_ui_baseline` / `compare_ui_baseline` → `.qa-baselines/`, exact PNG hash+dims, observation only); surface baselines (`register_ui_surface_baseline` / `compare_ui_surface_to_baseline`); stable `avoid:<classification>:<test_ref>` recurrence keys + auto-raise Learning candidate on repeat; `list_learning_candidates` (never promotes)
 - P4.5: synthetic `field_samples` on `register_test_dataset` (credential-shape reject); durable `.qa-test-datasets/`; `resolve_test_dataset_fields` → `field_values` for execute/regression
