@@ -74,6 +74,7 @@ const EXPECTED_TOOLS = [
   "run_auto_qa",
   "bootstrap_domain_pack",
   "run_expert_qa",
+  "validate_expert_claim",
   "assess_ui_accessibility_smoke",
   "generate_exploratory_charter",
   "execute_exploratory_session",

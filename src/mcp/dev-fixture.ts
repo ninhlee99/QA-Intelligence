@@ -40,6 +40,7 @@ import { ExecuteGeneratedTestCaseRuntimeExecutor } from "../test-design/execute-
 import { RunAutoQaPipelineRuntimeExecutor } from "../test-design/run-auto-qa-pipeline-runtime-executor.js";
 import { RunExpertQaRuntimeExecutor } from "../test-design/run-expert-qa-runtime-executor.js";
 import { DomainPackBootstrapRuntimeExecutor } from "../domain-pack/bootstrap-domain-pack-runtime-executor.js";
+import { ValidateExpertClaimRuntimeExecutor } from "../reporting/validate-expert-claim-runtime-executor.js";
 import {
   AssessDefectQuality,
   DefectQualityRuleEngine,
@@ -161,6 +162,8 @@ export const DOMAIN_PACK_BOOTSTRAP_AGENT = { id: "domain-pack-bootstrap-agent", 
 export const DOMAIN_PACK_BOOTSTRAP_SKILL = { id: "bootstrap-domain-pack", version: "0.1.0" } as const;
 export const EXPERT_QA_AGENT = { id: "expert-qa-facade-agent", version: "0.1.0" } as const;
 export const EXPERT_QA_SKILL = { id: "run-expert-qa", version: "0.1.0" } as const;
+export const VALIDATE_EXPERT_CLAIM_AGENT = { id: "validate-expert-claim-agent", version: "0.1.0" } as const;
+export const VALIDATE_EXPERT_CLAIM_SKILL = { id: "validate-expert-claim", version: "0.1.0" } as const;
 export const A11Y_SMOKE_AGENT = { id: "ui-accessibility-smoke-agent", version: "0.1.0" } as const;
 export const A11Y_SMOKE_SKILL = { id: "assess-ui-accessibility-smoke", version: "0.1.0" } as const;
 export const EXPLORATORY_AGENT = { id: "exploratory-charter-agent", version: "0.1.0" } as const;
@@ -851,6 +854,13 @@ export function buildDevFixture(options: {
           expected_skill: EXPERT_QA_SKILL,
           auto_qa_agent: AUTO_QA_AGENT,
           auto_qa_skill: AUTO_QA_SKILL,
+        }),
+      ],
+      [
+        VALIDATE_EXPERT_CLAIM_AGENT.id,
+        new ValidateExpertClaimRuntimeExecutor({
+          expected_agent: VALIDATE_EXPERT_CLAIM_AGENT,
+          expected_skill: VALIDATE_EXPERT_CLAIM_SKILL,
         }),
       ],
       [
@@ -1709,6 +1719,20 @@ export function buildDevFixture(options: {
             description:
               "When true, discover multi-page workflow from url, generate journey cases, merge into auto-registered suite (journeys not executed in this pass).",
           },
+          product_root: {
+            type: "string",
+            description: "Absolute product workspace path — used to assess domain-knowledge/ for claim_pass gate.",
+          },
+          acknowledge_domain_pack_absent: {
+            type: "boolean",
+            description:
+              "Record that pack is absent (still blocks claim_pass_allowed). Prefer bootstrap / run_expert_qa instead.",
+          },
+          domain_high_risk_confirmed: {
+            type: "boolean",
+            description:
+              "Set true only after human confirms money/permission/legacy/pii TODOs in the domain pack.",
+          },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1746,6 +1770,9 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
           role_b: (args["role_b"] as JsonValue | undefined) ?? {},
           include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
+          product_root: (args["product_root"] as string | undefined) ?? "",
+          acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
+          domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
         }),
     },
     {
@@ -1820,6 +1847,8 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: { type: "boolean" },
           role_b: { type: "object" },
           include_workflow_journeys: { type: "boolean" },
+          acknowledge_domain_pack_absent: { type: "boolean" },
+          domain_high_risk_confirmed: { type: "boolean" },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1863,6 +1892,38 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
           role_b: (args["role_b"] as JsonValue | undefined) ?? {},
           include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
+          acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
+          domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
+        }),
+    },
+    {
+      name: "validate_expert_claim",
+      description:
+        "Hard Expert refuse gate: pass proposed_claim wording + expert_checklist from a prior run. Returns allowed=false when pass/ready/ship language is attempted while claim_pass_allowed is false. Skills MUST call this before telling the user the build is ready.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          proposed_claim: {
+            type: "string",
+            description: "Exact wording (or summary) you intend to tell the user.",
+          },
+          expert_checklist: {
+            type: "object",
+            description: "expert_checklist object from run_expert_qa / run_auto_qa / run_regression_suite.",
+          },
+        },
+        required: ["proposed_claim", "expert_checklist"],
+      },
+      agent: VALIDATE_EXPERT_CLAIM_AGENT,
+      purpose: "Refuse green-wash pass claims",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [VALIDATE_EXPERT_CLAIM_SKILL],
+      budgets: { max_steps: 2, max_duration_seconds: 15, max_tool_calls: 1, max_retries: 0 },
+      buildInput: (args) =>
+        compactMcpInput({
+          proposed_claim: (args["proposed_claim"] as string | undefined) ?? "",
+          expert_checklist: (args["expert_checklist"] as JsonValue | undefined) ?? {},
         }),
     },
     {
@@ -2854,6 +2915,9 @@ export function buildDevFixture(options: {
           field_values: { type: "object", description: "Map accessible_name → fill value for browser cases." },
           requirement_ref: { type: "string" },
           target_url: { type: "string" },
+          product_root: { type: "string", description: "Absolute product root for domain pack claim_pass gate." },
+          acknowledge_domain_pack_absent: { type: "boolean" },
+          domain_high_risk_confirmed: { type: "boolean" },
         },
         required: ["suite_id"],
       },
@@ -2872,6 +2936,9 @@ export function buildDevFixture(options: {
           field_values: (args["field_values"] as JsonValue | undefined) ?? {},
           requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
           target_url: (args["target_url"] as string | undefined) ?? "",
+          product_root: (args["product_root"] as string | undefined) ?? "",
+          acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
+          domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
         }),
     },
     {

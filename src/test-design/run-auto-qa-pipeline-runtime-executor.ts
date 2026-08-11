@@ -19,7 +19,8 @@ import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/r
 import type { SessionMemory } from "../memory/session-memory.js";
 import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
-import { expertChecklistFromQaRunReport } from "../reporting/expert-checklist.js";
+import { expertChecklistFromQaRunReport, type DomainPackGateInput } from "../reporting/expert-checklist.js";
+import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveFlakeTaxonomy, flakeTaxonomyJson } from "../reporting/flake-taxonomy.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
@@ -367,7 +368,17 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       ...(autoSuite && "suite_id" in autoSuite ? [`suite:${autoSuite.suite_id}`] : []),
     ];
 
-    const reportJson = qaRunReportJson(report, html, writtenPath, autoSuite, flakeTaxonomy);
+    const reportJson = qaRunReportJson(
+      report,
+      html,
+      writtenPath,
+      autoSuite,
+      flakeTaxonomy,
+      {
+        domainPack: assessDomainPackFromInput(input.start_request.input),
+        context: "run_auto_qa",
+      },
+    );
     return {
       ok: true,
       value: {
@@ -516,6 +527,10 @@ function qaRunReportJson(
     | Readonly<{ skipped: true; reason: string }>
     | undefined,
   flakeTaxonomy: ReturnType<typeof deriveFlakeTaxonomy>,
+  checklistOptions?: Readonly<{
+    domainPack?: DomainPackGateInput;
+    context?: "run_auto_qa" | "run_expert_qa";
+  }>,
 ): JsonObject {
   const gaps = deriveCoverageGaps(report);
   const retest = deriveSmartRetestSuggestion(report);
@@ -607,11 +622,27 @@ function qaRunReportJson(
       report,
       gaps.length,
       String(retest["action"] ?? "unknown"),
-      suitePresent,
+      {
+        suiteIdPresent: suitePresent,
+        ...(checklistOptions?.domainPack !== undefined ? { domainPack: checklistOptions.domainPack } : {}),
+        context: checklistOptions?.context ?? "run_auto_qa",
+      },
     ),
     report_html: html,
     report_path: writtenPath ?? null,
   };
+}
+
+function assessDomainPackFromInput(raw: Readonly<Record<string, JsonValue | undefined>>): DomainPackGateInput {
+  const productRoot = typeof raw["product_root"] === "string" ? raw["product_root"] : undefined;
+  const packRaw = typeof raw["pack_dirname"] === "string" ? raw["pack_dirname"].trim() : undefined;
+  const pack_dirname = packRaw === ".qa-domain" ? (".qa-domain" as const) : ("domain-knowledge" as const);
+  return assessDomainPackGate({
+    ...(productRoot !== undefined ? { product_root: productRoot } : {}),
+    pack_dirname,
+    acknowledge_domain_pack_absent: raw["acknowledge_domain_pack_absent"] === true,
+    domain_high_risk_confirmed: raw["domain_high_risk_confirmed"] === true,
+  });
 }
 
 /**

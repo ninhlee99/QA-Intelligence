@@ -9,4 +9,4 @@ description: >
 Follow `hosts/references/expert-tester-workflow.md` + `hosts/references/domain-pack.md`.  
 Details: `hosts/claude-code/skills/test/SKILL.md`.
 
-Prefer MCP `run_expert_qa` (product_root) or `bootstrap_domain_pack` + `run_auto_qa`.
+Prefer MCP `run_expert_qa` then `validate_expert_claim` before pass wording.

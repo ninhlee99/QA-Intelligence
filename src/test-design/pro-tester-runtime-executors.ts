@@ -13,6 +13,7 @@ import type { ApiSmokeCase } from "../api-testing/public.js";
 import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
 import { formatDefectsForTracker, type DefectExportFormat } from "../bug-analysis/format-defects-for-tracker.js";
 import { fileDefectsToTracker, type DefectTrackerProvider } from "../bug-analysis/file-defects-to-tracker.js";
+import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveExpertChecklist } from "../reporting/expert-checklist.js";
 import type { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
 import { resolveBearerToken, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
@@ -356,6 +357,13 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       coverage_gap_count: coverageGapCount,
       smart_retest_action: smartRetestAction,
       suite_id_present: true,
+      domain_pack: assessDomainPackGate({
+        ...(typeof input.start_request.input["product_root"] === "string"
+          ? { product_root: input.start_request.input["product_root"] }
+          : {}),
+        acknowledge_domain_pack_absent: input.start_request.input["acknowledge_domain_pack_absent"] === true,
+        domain_high_risk_confirmed: input.start_request.input["domain_high_risk_confirmed"] === true,
+      }),
       context: "run_regression_suite",
     });
 

@@ -2,7 +2,13 @@
  * Expert facade: optional domain pack bootstrap + full run_auto_qa pipeline
  * in one MCP tool so hosts need not chain bootstrap → run_auto_qa manually.
  */
+import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { bootstrapDomainPack } from "../domain-pack/bootstrap-domain-pack.js";
+import {
+  expertChecklistFromQaRunReport,
+  type DomainPackGateInput,
+} from "../reporting/expert-checklist.js";
+import type { QaRunReport } from "../reporting/qa-run-report.js";
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type {
   AgentRunExecutor,
@@ -17,7 +23,6 @@ export type RunExpertQaRuntimeExecutorDependencies = Readonly<{
   autoQa: RunAutoQaPipelineRuntimeExecutor;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
-  /** Agent/skill the inner auto-qa executor validates against. */
   auto_qa_agent: VersionReference;
   auto_qa_skill: VersionReference;
 }>;
@@ -39,6 +44,7 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
       packDirnameRaw === ".qa-domain" ? (".qa-domain" as const) : ("domain-knowledge" as const);
 
     let domainPack: JsonObject;
+    let bootstrapNotes: string[] = [];
     if (productRoot !== undefined) {
       const requestContext =
         readString(input.start_request.input["request_context"]) ??
@@ -51,6 +57,7 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
       if (!result.ok) {
         domainPack = { ok: false, message: result.message };
       } else {
+        bootstrapNotes = [...result.notes];
         domainPack = {
           ok: true,
           pack_path: result.pack_path,
@@ -68,6 +75,14 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
+    const domainGate: DomainPackGateInput = assessDomainPackGate({
+      ...(productRoot !== undefined ? { product_root: productRoot } : {}),
+      pack_dirname,
+      acknowledge_domain_pack_absent: input.start_request.input["acknowledge_domain_pack_absent"] === true,
+      domain_high_risk_confirmed: input.start_request.input["domain_high_risk_confirmed"] === true,
+      bootstrap_notes: bootstrapNotes,
+    });
+
     const innerInput: AgentRunExecutorInput = {
       ...input,
       start_request: {
@@ -75,19 +90,39 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
         agent: this.#dependencies.auto_qa_agent,
         allowed_skills: [this.#dependencies.auto_qa_skill],
         purpose: input.start_request.purpose,
+        input: {
+          ...input.start_request.input,
+          ...(productRoot !== undefined ? { product_root: productRoot } : {}),
+          ...(input.start_request.input["acknowledge_domain_pack_absent"] === true
+            ? { acknowledge_domain_pack_absent: true }
+            : {}),
+          ...(input.start_request.input["domain_high_risk_confirmed"] === true
+            ? { domain_high_risk_confirmed: true }
+            : {}),
+        },
       },
     };
 
     const autoResult = await this.#dependencies.autoQa.execute(innerInput);
     if (!autoResult.ok) return autoResult;
 
+    const autoOutput = autoResult.value.output as JsonObject;
+    const reinforcedChecklist = reinforceChecklist(autoOutput, domainGate);
+
     const output = {
-      ...(autoResult.value.output as JsonObject),
+      ...autoOutput,
       domain_pack: domainPack,
+      domain_pack_gate: {
+        present: domainGate.present,
+        high_risk_unconfirmed: domainGate.high_risk_unconfirmed,
+        ...(domainGate.pack_path !== undefined ? { pack_path: domainGate.pack_path } : {}),
+        ...(domainGate.notes !== undefined ? { notes: [...domainGate.notes] } : {}),
+      },
+      expert_checklist: reinforcedChecklist,
       expert_facade: {
         tool: "run_expert_qa",
         wrapped: ["bootstrap_domain_pack?", "run_auto_qa"],
-        note: "Single Expert entry — honor expert_checklist; suite_id from auto_registered_suite when present.",
+        note: "Honor expert_checklist + call validate_expert_claim before any pass/ready/ship wording.",
       },
     };
 
@@ -108,10 +143,56 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
         citations: [
           ...autoResult.value.citations,
           ...(typeof domainPack["pack_path"] === "string" ? [`pack:${domainPack["pack_path"]}`] : []),
+          `claim_pass_allowed:${reinforcedChecklist["claim_pass_allowed"] === true}`,
         ],
+        uncertainty: {
+          level:
+            reinforcedChecklist["claim_pass_allowed"] === true
+              ? autoResult.value.uncertainty.level
+              : "high",
+          reasons: [
+            ...autoResult.value.uncertainty.reasons,
+            ...(reinforcedChecklist["claim_pass_allowed"] === true
+              ? []
+              : ["claim_pass_allowed=false — host must not green-wash; see expert_checklist.blockers"]),
+          ],
+        },
       },
     };
   }
+}
+
+function reinforceChecklist(autoOutput: JsonObject, domainGate: DomainPackGateInput): JsonObject {
+  const reportLike = autoOutput as unknown as QaRunReport & {
+    coverage_gaps?: unknown[];
+    smart_retest_suggestion?: { action?: string };
+    auto_registered_suite?: { suite_id?: string } | null;
+  };
+  const gaps = Array.isArray(autoOutput["coverage_gaps"]) ? autoOutput["coverage_gaps"] : [];
+  const retest = autoOutput["smart_retest_suggestion"];
+  const action =
+    typeof retest === "object" && retest !== null && !Array.isArray(retest)
+      ? String((retest as JsonObject)["action"] ?? "unknown")
+      : "unknown";
+  const suite = autoOutput["auto_registered_suite"];
+  const suitePresent =
+    typeof suite === "object" && suite !== null && !Array.isArray(suite) && typeof (suite as JsonObject)["suite_id"] === "string";
+
+  if (
+    typeof reportLike.release_recommendation === "string" &&
+    typeof reportLike.release_recommendation_rationale === "string" &&
+    Array.isArray(reportLike.test_cases) &&
+    typeof reportLike.summary === "object" &&
+    reportLike.summary !== null
+  ) {
+    return expertChecklistFromQaRunReport(reportLike, gaps.length, action, {
+      suiteIdPresent: suitePresent,
+      domainPack: domainGate,
+      context: "run_expert_qa",
+    });
+  }
+
+  return (autoOutput["expert_checklist"] as JsonObject) ?? {};
 }
 
 function validateConfiguration(

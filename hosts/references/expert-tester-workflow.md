@@ -13,14 +13,16 @@ MCP `qa-intelligence` = evidence. Skills = Expert discipline.
 
 Agent **MUST NOT** say ready / ship / all good / pass unless **all** true:
 
-1. MCP `expert_checklist.claim_pass_allowed === true` (when field present) **or** equivalent bar below
-2. `release_recommendation` quoted from MCP (not invented)
-3. `coverage_gaps` stated — including scope NOT covered
-4. Retest plan: follow `smart_retest_suggestion` / `expert_checklist.host_actions`
-5. Serious Strategy A → `suite_id` from `run_auto_qa.auto_registered_suite` (or `register_regression_suite` if auto-register skipped)
-6. Domain pack → G0d via `bootstrap_domain_pack` (or equivalent write)
+1. MCP `expert_checklist.claim_pass_allowed === true`
+2. MCP `validate_expert_claim` returned `allowed: true` for the exact user-facing wording
+3. `release_recommendation` quoted from MCP (not invented)
+4. `coverage_gaps` stated — including scope NOT covered
+5. Retest plan: follow `smart_retest_suggestion` / `expert_checklist.host_actions`
+6. Serious Strategy A → `suite_id` present (auto-registered or register)
+7. Domain pack present (or absence acknowledged as gap — still not pass); high-risk TODOs confirmed when flagged
 
-If `claim_pass_allowed` is **false** → status = **blocked / incomplete** — list `expert_checklist.blockers`. Never green-wash.
+If `claim_pass_allowed` is **false** → status = **blocked / incomplete** — list `expert_checklist.blockers`. Never green-wash.  
+Even when true → **human release_signoff** still required.
 
 ---
 

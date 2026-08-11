@@ -16,7 +16,7 @@ Same Expert bar as `:test`. Not a CI cheerleader.
 
 ## Hard refuses
 
-No “safe to merge” unless MCP `expert_checklist.claim_pass_allowed` is true (when present). Localhost green ≠ production ready.
+No “safe to merge” unless `expert_checklist.claim_pass_allowed` **and** `validate_expert_claim.allowed`. Localhost green ≠ production ready. Human release_signoff still required.
 
 ---
 
@@ -25,7 +25,7 @@ No “safe to merge” unless MCP `expert_checklist.claim_pass_allowed` is true 
 1. URL (ask if missing) — env from URL  
 2. AC from **source**; note code↔comment conflicts  
 3. G0 + learning hints  
-4. **G0d:** `bootstrap_domain_pack` on this product repo (`product_root` + request/source context)  
-5. Prefer `run_expert_qa` with `product_root` = this repo (or `bootstrap_domain_pack` + `run_auto_qa`). Suite auto-registers — use `suite_id`. Pass `role_b` / `openapi` / `include_workflow_journeys` when E2 applies. Read `flake_taxonomy` + `learning`.  
-6. Output contract — `Command: dev`  
+4. Prefer `run_expert_qa` with `product_root` = this repo  
+5. Honor `flake_taxonomy` + `learning` + domain gate blockers  
+6. Before merge-ready wording: `validate_expert_claim`  
 7. After fix: targeted retest only  
