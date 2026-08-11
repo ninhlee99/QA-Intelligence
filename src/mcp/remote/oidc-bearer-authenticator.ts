@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "../../runtime/public.js";
 import type { WorkspaceContextIssuer } from "../../requirement-review/public.js";
 import type { SessionMemory } from "../../memory/session-memory.js";
+import type { MistakeRecurrenceTracker } from "../../learning-engine/mistake-recurrence.js";
+import type { CandidateRepository } from "../../candidate-repository/public.js";
 import { AgentRuntimeToolRegistry, type AgentRuntimeToolDefinition } from "../agent-runtime-tool-registry.js";
 import type { SdkMcpServerDependencies } from "../sdk-mcp-server.js";
 import type { BearerAuthenticationResult, BearerAuthenticator } from "./streamable-http-transport.js";
@@ -25,6 +27,9 @@ export type OidcBearerAuthenticatorOptions = Readonly<{
    */
   sessionMemory?: SessionMemory;
   sessionMemoryTtlSeconds?: number;
+  /** SPEC-105 §9a: shared recurrence tracker across requests in this process. */
+  mistakeRecurrenceTracker?: MistakeRecurrenceTracker;
+  candidateRepository?: CandidateRepository;
 }>;
 
 /**
@@ -80,6 +85,12 @@ export class OidcBearerAuthenticator implements BearerAuthenticator {
           ...(this.#options.sessionMemory !== undefined ? { sessionMemory: this.#options.sessionMemory } : {}),
           ...(this.#options.sessionMemoryTtlSeconds !== undefined
             ? { sessionMemoryTtlSeconds: this.#options.sessionMemoryTtlSeconds }
+            : {}),
+          ...(this.#options.mistakeRecurrenceTracker !== undefined
+            ? { mistakeRecurrenceTracker: this.#options.mistakeRecurrenceTracker }
+            : {}),
+          ...(this.#options.candidateRepository !== undefined
+            ? { candidateRepository: this.#options.candidateRepository }
             : {}),
         }),
       }),

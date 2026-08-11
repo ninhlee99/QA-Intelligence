@@ -204,6 +204,28 @@ function generationResultJson(
       expected_text: assertion.expected_text ?? null,
       forbidden_text: [...(assertion.forbidden_text ?? [])],
       expect_no_dialog: assertion.expect_no_dialog ?? false,
+      ...(assertion.expected_url_includes !== undefined
+        ? { expected_url_includes: assertion.expected_url_includes }
+        : {}),
+      ...(assertion.expected_title_includes !== undefined
+        ? { expected_title_includes: assertion.expected_title_includes }
+        : {}),
+      ...(assertion.expected_network !== undefined
+        ? {
+            expected_network: {
+              url_includes: assertion.expected_network.url_includes,
+              ...(assertion.expected_network.method !== undefined
+                ? { method: assertion.expected_network.method }
+                : {}),
+              ...(assertion.expected_network.status !== undefined
+                ? { status: assertion.expected_network.status }
+                : {}),
+              ...(assertion.expected_network.body_includes !== undefined
+                ? { body_includes: assertion.expected_network.body_includes }
+                : {}),
+            },
+          }
+        : {}),
     })),
   };
 }

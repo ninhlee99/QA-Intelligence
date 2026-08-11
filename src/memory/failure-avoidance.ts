@@ -48,12 +48,9 @@ export type FailureAvoidanceDecision =
 /**
  * SPEC-108 §7.3: evaluates a run's causal mistake as a save candidate and, if
  * eligible, retains it in Session Memory so a later run in this Workspace
- * CAN look it up before repeating the same mistake. This function only
- * covers the retain side of that path: no Skill in this repository yet
- * queries Session Memory for an avoidance fact before acting, so "the same
- * avoidable error is not repeated" is not yet an observed, end-to-end
- * outcome — only the write side (SPEC-108 §13's "retained... reused" claim
- * requires the read side to exist in a real Skill).
+ * CAN look it up before repeating the same mistake. The write path is this
+ * function; the read path is `SessionMemory.list(workspaceId, "avoid:")`
+ * consumed by `list_failure_avoidance_hints` / `run_auto_qa` (Phase 11).
  * A recurring mistake, or one that generalizes beyond this Workspace, SHALL
  * follow SPEC-105's full governed workflow instead — this function declines
  * it here rather than silently retaining a would-be Learning Engine input.

@@ -6,15 +6,17 @@
  * translation — it does not reinterpret intent (SPEC-207 §7: "a
  * tool-specific implementation SHALL NOT become a second source of test
  * meaning"). A `TestCase` with no corresponding `TestCaseGeneratedAssertion`
- * (no `expected_text` — see `generate-test-cases.ts`) SHALL NOT be
- * convertible: returning a plan whose `assert` always passes or always
- * fails would silently fabricate a result SPEC-210 §4 forbids.
+ * (no `expected_text` / url / title / network oracle — see
+ * `generate-test-cases.ts`) SHALL NOT be convertible: returning a plan whose
+ * `assert` always passes or always fails would silently fabricate a result
+ * SPEC-210 §4 forbids.
  */
 import type {
   PlaywrightAssertContext,
   PlaywrightExecutionPlan,
   PlaywrightInteractionStep,
 } from "../adapters/playwright/playwright-execution-engine.js";
+import { networkOracleSatisfied } from "../adapters/playwright/network-oracle.js";
 import type { CleanedDomNode } from "../dom-cleaner/public.js";
 import type { TestCase, TestCaseGeneratedAssertion } from "./public.js";
 
@@ -65,7 +67,12 @@ export function testCaseToExecutionPlan(
   const steps: PlaywrightInteractionStep[] = [];
   for (const step of testCase.steps) {
     if (step.action === "navigate") continue;
-    if (step.action !== "type" && step.action !== "click") {
+    if (
+      step.action !== "type" &&
+      step.action !== "click" &&
+      step.action !== "select" &&
+      step.action !== "wait_for"
+    ) {
       return {
         ok: false,
         failure: { code: "unsupported_step_action", message: `Test case "${testCase.id}" step action "${step.action}" has no execution-engine equivalent.` },
@@ -87,6 +94,30 @@ export function testCaseToExecutionPlan(
       steps.push({ kind: "click", target });
       continue;
     }
+    if (step.action === "wait_for") {
+      const timeoutRaw = step.input?.["timeout_ms"];
+      const timeout_ms = typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw) ? timeoutRaw : undefined;
+      steps.push({
+        kind: "wait_for",
+        target,
+        ...(timeout_ms !== undefined ? { timeout_ms } : {}),
+      });
+      continue;
+    }
+    if (step.action === "select") {
+      const optionLabel = step.input?.["option_label"];
+      if (typeof optionLabel !== "string" || optionLabel.trim().length === 0) {
+        return {
+          ok: false,
+          failure: {
+            code: "missing_step_target",
+            message: `Test case "${testCase.id}" has a select step with no option_label.`,
+          },
+        };
+      }
+      steps.push({ kind: "select", target, option_label: optionLabel });
+      continue;
+    }
     // A positive-variant `type` step has no literal value (SPEC-207 §6
     // never invents "correct" test data) — it stays an empty string unless
     // the caller supplied one via `fieldValues`. A negative/boundary/
@@ -101,11 +132,22 @@ export function testCaseToExecutionPlan(
     steps.push({ kind: "type", target, text });
   }
 
+  const expectedUrl = assertion.expected_url_includes;
+  const expectedTitle = assertion.expected_title_includes;
+  const expectedNetwork = assertion.expected_network;
+
   if (assertion.expected_text !== undefined) {
     const expectedText = assertion.expected_text;
     return {
       ok: true,
-      value: { url, steps, assert: (cleaned: CleanedDomNode) => hasText(cleaned, expectedText) },
+      value: {
+        url,
+        steps,
+        assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
+          hasText(cleaned, expectedText) &&
+          urlTitleOk(context, expectedUrl, expectedTitle) &&
+          networkOk(context, expectedNetwork),
+      },
     };
   }
 
@@ -117,9 +159,30 @@ export function testCaseToExecutionPlan(
       url,
       steps,
       assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
-        forbidden.every((text) => !hasText(cleaned, text)) && (!expectNoDialog || !context.dialog_triggered),
+        forbidden.every((text) => !hasText(cleaned, text)) &&
+        (!expectNoDialog || !context.dialog_triggered) &&
+        urlTitleOk(context, expectedUrl, expectedTitle) &&
+        networkOk(context, expectedNetwork),
     },
   };
+}
+
+function networkOk(
+  context: PlaywrightAssertContext,
+  expected: TestCaseGeneratedAssertion["expected_network"],
+): boolean {
+  if (expected === undefined) return true;
+  return networkOracleSatisfied(context.network, expected);
+}
+
+function urlTitleOk(
+  context: PlaywrightAssertContext,
+  expectedUrl: string | undefined,
+  expectedTitle: string | undefined,
+): boolean {
+  if (expectedUrl !== undefined && !context.url.includes(expectedUrl)) return false;
+  if (expectedTitle !== undefined && !context.title.includes(expectedTitle)) return false;
+  return true;
 }
 
 function hasText(node: CleanedDomNode, expected: string): boolean {

@@ -173,9 +173,11 @@ test("generates TestCases bound to discovered UI elements, and reports an unbind
   assert.ok(output, "expected a TestCaseGenerationResult output");
 
   // AC-1 binds to the discovered "Sign in" action + Username/Password
-  // fields and declared expected_text: 1 positive case, plus
-  // negative/boundary/adversarial per editable field (2 fields x 3 = 6).
-  assert.equal(output!.test_cases.length, 7, JSON.stringify(output!.test_cases, null, 2));
+  // fields and declared expected_text: 1 positive case, plus per editable
+  // field 5 unconditional variants (negative/boundary/empty/whitespace/
+  // unicode) + 0 type_confusion (neither field name looks numeric) + 4
+  // adversarial probes = 9 per field, 2 fields x 9 = 18, +1 positive = 19.
+  assert.equal(output!.test_cases.length, 19, JSON.stringify(output!.test_cases, null, 2));
   const positive = output!.test_cases.find((testCase) => testCase.tags.includes("positive"))!;
   assert.ok(positive, "expected a positive-variant test case");
   assert.ok(positive.traceability.includes(`${REQUIREMENT_REF}#AC-1`));
@@ -190,12 +192,30 @@ test("generates TestCases bound to discovered UI elements, and reports an unbind
   assert.equal(negativeCases.length, 2, "expected one negative case per editable field");
   const boundaryCases = output!.test_cases.filter((testCase) => testCase.tags.includes("boundary"));
   assert.equal(boundaryCases.length, 2);
+  const emptyCases = output!.test_cases.filter((testCase) => testCase.tags.includes("empty"));
+  assert.equal(emptyCases.length, 2);
+  const whitespaceCases = output!.test_cases.filter((testCase) => testCase.tags.includes("whitespace"));
+  assert.equal(whitespaceCases.length, 2);
+  const unicodeCases = output!.test_cases.filter((testCase) => testCase.tags.includes("unicode"));
+  assert.equal(unicodeCases.length, 2);
+  const typeConfusionCases = output!.test_cases.filter((testCase) => testCase.tags.includes("type_confusion"));
+  assert.equal(typeConfusionCases.length, 0, "neither Username nor Password looks numeric, so type_confusion SHALL NOT be fabricated");
   const adversarialCases = output!.test_cases.filter((testCase) => testCase.tags.includes("adversarial"));
-  assert.equal(adversarialCases.length, 2);
+  assert.equal(adversarialCases.length, 8, "4 adversarial probes x 2 editable fields");
 
-  const adversarialAssertion = output!.generated_assertions.find((assertion) => assertion.test_case_id === adversarialCases[0]!.id)!;
-  assert.ok(adversarialAssertion, "expected a generated assertion for the adversarial case");
-  assert.ok(adversarialAssertion.forbidden_text.includes("<img src=x onerror=alert(1)>"));
+  // Regression guard for the fixed latent bug: each adversarial case's
+  // forbidden_text SHALL match the exact value that was actually injected
+  // as its own step input — under the old shared-forbidden-list design,
+  // most entries here were never submitted, so this assertion would have
+  // passed vacuously regardless of what the page actually did.
+  const allGeneratedAssertions = output!.generated_assertions;
+  for (const adversarialCase of adversarialCases) {
+    const injectedValue: string | undefined = adversarialCase.steps.find((step) => step.action === "type" && step.input["value"] !== undefined)?.input["value"];
+    const matchingAssertion = allGeneratedAssertions.find((assertion) => assertion.test_case_id === adversarialCase.id);
+    assert.ok(matchingAssertion, `expected a generated assertion for adversarial case ${adversarialCase.id}`);
+    assert.ok(injectedValue, `expected adversarial case ${adversarialCase.id} to have injected a value`);
+    assert.equal(matchingAssertion!.forbidden_text[0], injectedValue, "forbidden_text SHALL assert absence of the exact value that was injected, not an unrelated probe");
+  }
 
   // AC-2 mentions no discovered element ("last visited page" / "browser refresh") — reported as a finding, not fabricated.
   assert.equal(output!.findings.length, 1, JSON.stringify(output!.findings, null, 2));

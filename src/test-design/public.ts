@@ -127,8 +127,10 @@ export type {
  */
 export type TestCaseGenerationFindingCategory =
   | "unbindable_criterion"
+  | "ambiguous_criterion"
   | "no_acceptance_criteria"
-  | "missing_expected_result";
+  | "missing_expected_result"
+  | "missing_option_label";
 
 export type TestCaseGenerationFinding = Readonly<{
   id: string;
@@ -140,9 +142,10 @@ export type TestCaseGenerationFinding = Readonly<{
 /**
  * A structured, executable counterpart to `TestCase.expected_results[].assertion`
  * (which stays free text per SPEC-207 §2). This generator SHALL NOT infer
- * `expected_text` from the assertion prose — that would be exactly the
- * "invented expected result" SPEC-207 §6 forbids. It exists only when the
- * source acceptance criterion explicitly carried an `expected_text` field
+ * oracle fields from assertion prose — that would be exactly the
+ * "invented expected result" SPEC-207 §6 forbids. Oracles exist only when
+ * the source acceptance criterion explicitly carried `expected_text` and/or
+ * `expected_url_includes` / `expected_title_includes` / `expected_network`
  * (see `generate-test-cases.ts`); otherwise the criterion still produces a
  * `TestCase` but with a `missing_expected_result` finding and no generated
  * assertion, so it cannot be executed unattended.
@@ -167,6 +170,20 @@ export type TestCaseGeneratedAssertion = Readonly<{
    * match against). SHALL be false to pass.
    */
   expect_no_dialog?: boolean;
+  /** Final page URL must include this substring (richer oracle). */
+  expected_url_includes?: string;
+  /** Document title must include this substring (richer oracle). */
+  expected_title_includes?: string;
+  /**
+   * UI→API coupling: at least one xhr/fetch during the run must match.
+   * Bodies are truncated snippets from the Playwright capture — never invent.
+   */
+  expected_network?: Readonly<{
+    url_includes: string;
+    method?: string;
+    status?: number | readonly number[];
+    body_includes?: string;
+  }>;
 }>;
 
 export type TestCaseGenerationUiElement = Readonly<{
@@ -195,14 +212,28 @@ export type TestCaseGenerationRequest = Readonly<{
  * rejects it). `boundary` submits an oversized value and expects no
  * infrastructure/system-error text to leak (SPEC-210 §4's
  * `infrastructure_error` distinction — a boundary case that crashes the
- * app is itself a finding-worthy bug, not test noise). `adversarial`
- * submits a benign injection/XSS probe string and expects it to come back
- * escaped as inert text, never executed or reflected as raw markup and
- * never accompanied by a leaked stack trace — this checks input
- * handling, not a real exploit attempt (no callback URLs, no destructive
- * payloads).
+ * app is itself a finding-worthy bug, not test noise). `empty` submits a
+ * blank value; `whitespace` submits spaces/tabs only — kept distinct from
+ * `empty` because some validators trim before checking and some don't, so
+ * they can pass/fail independently. `unicode` submits multi-byte/emoji
+ * input to catch encoding/mojibake bugs. `type_confusion` submits a
+ * non-numeric string into a field whose name looks numeric (Age, Amount,
+ * ...) — only generated when that signal is present, never fabricated for
+ * a field with no numeric name. `adversarial` submits a benign
+ * injection/XSS probe string and expects it to come back escaped as inert
+ * text, never executed or reflected as raw markup and never accompanied by
+ * a leaked stack trace — this checks input handling, not a real exploit
+ * attempt (no callback URLs, no destructive payloads).
  */
-export type TestCaseVariant = "positive" | "negative" | "boundary" | "adversarial";
+export type TestCaseVariant =
+  | "positive"
+  | "negative"
+  | "boundary"
+  | "empty"
+  | "whitespace"
+  | "unicode"
+  | "type_confusion"
+  | "adversarial";
 
 export type TestCaseGenerationResult = Readonly<{
   schema_version: "1.0.0";

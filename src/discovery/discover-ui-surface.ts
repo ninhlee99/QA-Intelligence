@@ -13,6 +13,7 @@ import { chromium, type Browser, type Page } from "playwright";
 
 import { extractRawDom } from "../adapters/playwright/extract-raw-dom.js";
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
+import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import { DeterministicDomCleaner } from "../adapters/dom-cleaner/deterministic-dom-cleaner.js";
 import type { CleanedDomNode } from "../dom-cleaner/public.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
@@ -30,6 +31,8 @@ export type DiscoverUiSurfaceRequest = Readonly<{
   operation_id: string;
   context: WorkspaceContext;
   url: string;
+  /** Phase 9 — defaults to chromium when omitted. */
+  browser?: BrowserName;
 }>;
 
 type Dependencies = Readonly<{
@@ -80,7 +83,9 @@ export class DiscoverUiSurface {
 
     let browser: Browser;
     try {
-      browser = await this.#launchBrowser();
+      const launch =
+        request.browser !== undefined ? createLaunchBrowser(request.browser) : this.#launchBrowser;
+      browser = await launch();
     } catch (error) {
       return {
         ok: false,

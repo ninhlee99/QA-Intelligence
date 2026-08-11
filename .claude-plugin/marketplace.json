@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "qa-intelligence",
+  "description": "QA Intelligence: governed requirement review and Auto QA pipeline via the QA Intelligence Agent Runtime (development slice — see hosts/README.md).",
+  "owner": {
+    "name": "QA Intelligence"
+  },
+  "plugins": [
+    {
+      "name": "qa-intelligence",
+      "description": "Connects Claude Code to the QA Intelligence MCP server (dev-entrypoint) and bundles the dev/test QA skills (hosts/claude-code/skills/).",
+      "source": "./hosts/claude-code",
+      "category": "testing"
+    }
+  ]
+}

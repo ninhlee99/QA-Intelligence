@@ -21,9 +21,13 @@
     "validate": "npm run validate:repository && npm run validate:schemas && npm run typecheck && npm test && npm run validate:dependencies",
     "validate:repository": "python3 tests/validate_repository.py",
     "validate:schemas": "node tests/validate-json-schemas.mjs",
-    "validate:dependencies": "npm audit --audit-level=high"
+    "validate:dependencies": "npm audit --audit-level=high",
+    "release:check": "npm run validate",
+    "mcp:dev": "npm run build && node dist/src/mcp/dev-entrypoint.js",
+    "mcp:remote": "npm run build && node dist/src/mcp/remote-dev-entrypoint.js"
   },
   "dependencies": {
+    "@axe-core/playwright": "^4.10.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",

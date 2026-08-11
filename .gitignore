@@ -1,2 +1,15 @@
 dist/
 node_modules/
+
+.qa-regression-suites/
+.qa-credentials/
+.qa-knowledge/
+.qa-automation-assets/
+.qa-test-datasets/
+.qa-screenshots/
+.qa-baselines/
+.qa-surface-baselines/
+.qa-traces/
+.qa-avoidance-hints/
+.qa-learning-candidates/
+.qa-mistake-occurrences/

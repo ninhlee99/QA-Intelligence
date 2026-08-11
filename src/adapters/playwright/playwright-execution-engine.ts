@@ -1,6 +1,10 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import { chromium, type Browser } from "playwright";
 
 import { newFullSizePage } from "./full-size-page.js";
+import { accessibleNamesMatch } from "../../shared/accessible-name.js";
 import {
   executionRequestDigest,
   type CancelRequest,
@@ -31,6 +35,12 @@ import type {
 } from "../../requirement-review/public.js";
 import { DeterministicDomCleaner } from "../dom-cleaner/deterministic-dom-cleaner.js";
 import { extractRawDom } from "./extract-raw-dom.js";
+import {
+  pushNetworkObservation,
+  readBodySnippet,
+  shouldCaptureNetworkResponse,
+  type PlaywrightNetworkObservation,
+} from "./network-oracle.js";
 
 export interface Clock {
   now(): Date;
@@ -46,16 +56,17 @@ export interface Clock {
  * Semantic UI pipeline already resolved.
  *
  * Phase 2 (docs/proposals/professional-qa-mcp-roadmap.md): `steps` adds
- * semantic interaction — `type`/`click` target an accessible name/role, the
- * same vocabulary `CleanedDomNode` and Discovery's `SemanticUiMap` already
- * use. This does NOT reopen raw CSS/XPath selectors (ADR-022 §4 stays in
- * force): a step resolves through Playwright's own `getByRole(role, {name})`
- * accessible locator, and each target is checked against the immediately
- * preceding DOM capture before acting, so an author still cannot reach past
- * the Semantic UI pipeline into implementation detail. `secret_ref`
- * indirection (never a raw value on the wire) is what SPEC-407 §4 calls
- * "approved injection" — a caller passes a Workspace-scoped reference; the
- * engine resolves it out-of-band through its `secrets` dependency.
+ * semantic interaction — `type`/`click`/`select`/`wait_for` target an
+ * accessible name/role, the same vocabulary `CleanedDomNode` and Discovery's
+ * `SemanticUiMap` already use. This does NOT reopen raw CSS/XPath selectors
+ * (ADR-022 §4 stays in force): a step resolves through Playwright's own
+ * `getByRole(role, {name})` accessible locator, and each target is checked
+ * against the immediately preceding DOM capture before acting, so an author
+ * still cannot reach past the Semantic UI pipeline into implementation
+ * detail. `secret_ref` indirection (never a raw value on the wire) is what
+ * SPEC-407 §4 calls "approved injection" — a caller passes a Workspace-scoped
+ * reference; the engine resolves it out-of-band through its `secrets`
+ * dependency.
  */
 export type PlaywrightInteractionTarget = Readonly<{
   accessible_name: string;
@@ -64,7 +75,9 @@ export type PlaywrightInteractionTarget = Readonly<{
 
 export type PlaywrightInteractionStep =
   | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget }>
-  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>;
+  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>
+  | Readonly<{ kind: "select"; target: PlaywrightInteractionTarget; option_label: string }>
+  | Readonly<{ kind: "wait_for"; target: PlaywrightInteractionTarget; timeout_ms?: number }>;
 
 /**
  * `dialog_triggered` is true if `window.alert`/`confirm`/`prompt` fired at
@@ -77,6 +90,15 @@ export type PlaywrightInteractionStep =
  */
 export type PlaywrightAssertContext = Readonly<{
   dialog_triggered: boolean;
+  /** Final page URL after steps (for URL oracles). */
+  url: string;
+  /** Document title after steps. */
+  title: string;
+  /**
+   * xhr/fetch responses observed from navigation through assertion.
+   * Bodies truncated; no request Authorization headers retained.
+   */
+  network: readonly PlaywrightNetworkObservation[];
 }>;
 
 export type PlaywrightExecutionPlan = Readonly<{
@@ -98,6 +120,14 @@ type Dependencies = Readonly<{
   launchBrowser?: () => Promise<Browser>;
   /** Required only if a plan's steps include a `type` step with `secret_ref`. */
   secrets?: SecretResolver;
+  /** Directory failure screenshots are written under. Screenshot capture is skipped (evidence stays capture_id-only) when omitted. */
+  screenshotDir?: string;
+  /**
+   * Directory failure Playwright traces (`.zip`) are written under.
+   * Trace capture is fail-only and best-effort — skipped when omitted.
+   * Video / full HAR remain out of scope.
+   */
+  traceDir?: string;
 }>;
 
 type AttemptRecord = Readonly<{
@@ -135,6 +165,8 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #plans: ReadonlyMap<string, PlaywrightExecutionPlan>;
   readonly #launchBrowser: () => Promise<Browser>;
   readonly #secrets: SecretResolver | undefined;
+  readonly #screenshotDir: string | undefined;
+  readonly #traceDir: string | undefined;
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
   readonly #cancelled = new Set<string>();
@@ -146,6 +178,8 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#plans = dependencies.plans;
     this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
     this.#secrets = dependencies.secrets;
+    this.#screenshotDir = dependencies.screenshotDir;
+    this.#traceDir = dependencies.traceDir;
   }
 
   async descriptor(request: DescriptorRequest): Promise<ExecutionEngineResult<"descriptor">> {
@@ -289,11 +323,38 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
         result = this.#cancelledResult(request, startedAt);
       } else {
         const page = await newFullSizePage(browser);
+        let tracingActive = false;
+        if (this.#traceDir !== undefined) {
+          try {
+            await page.context().tracing.start({ screenshots: true, snapshots: true });
+            tracingActive = true;
+          } catch {
+            tracingActive = false;
+          }
+        }
         let dialogTriggered = false;
         page.on("dialog", (dialog) => {
           dialogTriggered = true;
           void dialog.dismiss();
         });
+        const networkObservations: PlaywrightNetworkObservation[] = [];
+        const pendingNetworkReads: Promise<void>[] = [];
+        page.on("response", (response) => {
+          const request = response.request();
+          if (!shouldCaptureNetworkResponse(request.resourceType(), response.url())) return;
+          pendingNetworkReads.push(
+            (async () => {
+              const body_snippet = await readBodySnippet(response.headers()["content-type"], () => response.text());
+              pushNetworkObservation(networkObservations, {
+                method: request.method(),
+                url: response.url(),
+                status: response.status(),
+                body_snippet,
+              });
+            })(),
+          );
+        });
+        try {
         await page.goto(plan.url);
         // See DiscoverUiSurface for why: a single-page app's real content
         // often renders after `load` fires, and Phase 2's interaction
@@ -323,6 +384,10 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             },
           });
         } else {
+          // Let late xhr/fetch start after the last click, then drain body
+          // readers so observations are complete before assert.
+          await page.waitForTimeout(150);
+          await Promise.all(pendingNetworkReads);
           const raw = await extractRawDom(page);
           emit("progress", { stage: "dom_captured" });
 
@@ -360,8 +425,34 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               emit("cancelled");
               result = this.#cancelledResult(request, startedAt);
             } else {
-              const passed = plan.assert(cleaned.value.sanitized_tree, { dialog_triggered: dialogTriggered });
-              emit("assertion_result", { passed, dialog_triggered: dialogTriggered });
+              const pageUrl = page.url();
+              const pageTitle = await page.title().catch(() => "");
+              const network = Object.freeze([...networkObservations]);
+              const passed = plan.assert(cleaned.value.sanitized_tree, {
+                dialog_triggered: dialogTriggered,
+                url: pageUrl,
+                title: pageTitle,
+                network,
+              });
+              emit("assertion_result", {
+                passed,
+                dialog_triggered: dialogTriggered,
+                url: pageUrl,
+                network_count: network.length,
+              });
+
+              const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
+              if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });
+
+              let traceEvidence: readonly string[] = [];
+              if (!passed && tracingActive) {
+                traceEvidence = await this.#captureFailureTrace(page, request.attempt);
+                if (traceEvidence.length > 0) {
+                  emit("evidence_created", { kind: "trace", ref: traceEvidence[0]! });
+                  tracingActive = false;
+                }
+              }
+
               emit("completed");
 
               const completedAt = this.#clock.now();
@@ -369,7 +460,12 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                 ok: true,
                 value: {
                   outcome: passed ? "passed" : "failed",
-                  evidence: [cleaned.value.capture_id],
+                  evidence: [
+                    cleaned.value.capture_id,
+                    ...screenshotEvidence,
+                    ...traceEvidence,
+                    ...(network.length > 0 ? [`network-obs:${network.length}`] : []),
+                  ],
                   assertion_results: [{ assertion: "plan.assert", result: passed ? "pass" : "fail" }],
                   resource_usage: {},
                   timing: {
@@ -382,7 +478,12 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             }
           }
         }
-        await page.close();
+        } finally {
+          if (tracingActive) {
+            await page.context().tracing.stop().catch(() => undefined);
+          }
+          await page.close();
+        }
       }
     } catch (error) {
       emit("failed", { reason: "engine_error" });
@@ -431,6 +532,53 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   }
 
   /**
+   * SPEC-407 §3 "screenshot and trace capture" (screenshot-only slice of
+   * that requirement — full tracing/video/network logs remain out of
+   * scope). Best-effort evidence, not a correctness gate: any failure
+   * (including `screenshotDir` being unwritable) is swallowed to `[]`
+   * rather than failing the whole `start()` result, matching this
+   * adapter's existing `"best_effort"` `cleanup_guarantee` (`descriptor()`
+   * above). Skipped entirely when `screenshotDir` is not configured —
+   * every existing caller that omits it keeps today's
+   * `evidence: [capture_id]`-only behavior unchanged.
+   */
+  async #captureFailureScreenshot(
+    page: import("playwright").Page,
+    attempt: ExecutionAttemptIdentity,
+  ): Promise<readonly string[]> {
+    if (this.#screenshotDir === undefined) return [];
+    try {
+      await mkdir(this.#screenshotDir, { recursive: true });
+      const path = join(this.#screenshotDir, `${attempt.execution_id}_${attempt.attempt_id}_${Date.now()}.png`);
+      await page.screenshot({ path });
+      return [path];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * SPEC-407 §3 trace slice: stop active Playwright tracing into a zip under
+   * `traceDir`. Fail-only + best-effort — never fails the run. Callers that
+   * omit `traceDir` keep screenshot-only behavior.
+   */
+  async #captureFailureTrace(
+    page: import("playwright").Page,
+    attempt: ExecutionAttemptIdentity,
+  ): Promise<readonly string[]> {
+    if (this.#traceDir === undefined) return [];
+    try {
+      await mkdir(this.#traceDir, { recursive: true });
+      const path = join(this.#traceDir, `${attempt.execution_id}_${attempt.attempt_id}_${Date.now()}.zip`);
+      await page.context().tracing.stop({ path });
+      return [path];
+    } catch {
+      await page.context().tracing.stop().catch(() => undefined);
+      return [];
+    }
+  }
+
+  /**
    * Runs a plan's semantic interaction steps in order, before the final
    * assertion. Each step re-captures and cleans the DOM first so the
    * target is checked against the Semantic UI pipeline's current view of
@@ -463,7 +611,9 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       if (!cleaned.ok) {
         return { ok: false, stepIndex: index, message: `Interaction step ${index} DOM capture failed: ${cleaned.failure.message}` };
       }
-      if (!nodeExists(cleaned.value.sanitized_tree, step.target)) {
+      // wait_for intentionally skips the pre-existence check — the step's job
+      // is to wait until the target appears in the live page.
+      if (step.kind !== "wait_for" && !nodeExists(cleaned.value.sanitized_tree, step.target)) {
         return {
           ok: false,
           stepIndex: index,
@@ -484,6 +634,19 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
           // the very next step (or the final assertion capture) can race
           // ahead of that handler and observe stale DOM/no dialog at all.
           await page.waitForTimeout(200);
+        } else if (step.kind === "select") {
+          const selectLocator = step.target.accessible_role
+            ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], {
+                name: step.target.accessible_name,
+              })
+            : page.getByRole("combobox", { name: step.target.accessible_name }).or(
+                page.getByLabel(step.target.accessible_name),
+              );
+          await selectLocator.selectOption({ label: step.option_label });
+          await page.waitForTimeout(200);
+        } else if (step.kind === "wait_for") {
+          const timeout = step.timeout_ms ?? 5_000;
+          await locator.first().waitFor({ state: "visible", timeout });
         } else {
           let text = step.text ?? "";
           if (step.secret_ref !== undefined) {
@@ -603,7 +766,7 @@ function nodeExists(
   node: import("../../dom-cleaner/public.js").CleanedDomNode,
   target: PlaywrightInteractionTarget,
 ): boolean {
-  const nameMatches = node.accessible_name === target.accessible_name;
+  const nameMatches = accessibleNamesMatch(node.accessible_name, target.accessible_name);
   const roleMatches = target.accessible_role === undefined || node.accessible_role === target.accessible_role;
   if (nameMatches && roleMatches) return true;
   return node.children.some((child) => nodeExists(child, target));

@@ -9,12 +9,10 @@
  * Runtime executor wiring in `runtime-executor.ts` can follow the same
  * pattern `RequirementReviewRuntimeExecutor` already established.
  *
- * Scope note (docs/proposals/SPEC-512-mcp-test-execution-tool.md): the
- * underlying engine only navigates and asserts against the Semantic UI
- * tree (ADR-022 §4, ADR-003) — it does not type, click, or authenticate.
- * A flow requiring login is out of scope until a governed interaction
- * capability is accepted; this Skill SHALL NOT attempt to work around that
- * by reaching past the engine into raw Playwright.
+ * Scope note: the engine navigates and asserts against the Semantic UI
+ * tree (ADR-022 §4, ADR-003) and runs semantic interaction steps
+ * (`type` / `click` / `select` / `wait_for`) plus Workspace-scoped
+ * `secret_ref` resolution — never raw CSS/XPath selectors.
  */
 import type {
   ExecutionEngine,
@@ -50,6 +48,28 @@ export type ExecuteBrowserTestDependencies = Readonly<{
   provider_ref: string;
 }>;
 
+/**
+ * SPEC-210 §4/§7: up to this many independent trials of the same case,
+ * version, and environment are run before a `passed`/`failed` disagreement
+ * is recorded as `flaky` rather than retried forever. Not budget-gated by
+ * `AgentRunBudgets.max_retries` — that budgets Agent Run-level retries
+ * across any executor, a distinct concept from a single Skill call's
+ * internal flake-detection trials (see `run()`'s doc comment).
+ */
+export const MAX_FLAKE_TRIALS = 3;
+
+type TrialOutcome = Readonly<{
+  ok: true;
+  attempt: ExecutionAttemptIdentity;
+  outcome: ExecutionOutcome;
+  evidence: readonly string[];
+  timing: Readonly<{ started_at: string; completed_at: string; duration_seconds: number }>;
+  resource_usage: import("../requirement-review/public.js").JsonObject;
+}> | Readonly<{
+  ok: false;
+  failure: ExecuteBrowserTestFailure;
+}>;
+
 /** Deep module: callers see one `run()` operation, not the engine's six-step lifecycle. */
 export class ExecuteBrowserTest {
   readonly #dependencies: ExecuteBrowserTestDependencies;
@@ -58,20 +78,61 @@ export class ExecuteBrowserTest {
     this.#dependencies = dependencies;
   }
 
+  /**
+   * Runs up to `MAX_FLAKE_TRIALS` independent trials of `request` (each its
+   * own validate->prepare->start->finalize sequence against a distinct
+   * `attempt_id`, per SPEC-602 §4's "retries create distinct attempts under
+   * one execution") and reconciles them into one `ExecutionRecord` —
+   * `passed`/`failed` immediately on the first trial when trial 1 alone is
+   * conclusive (a pass, or an infra/cancelled/blocked/skipped stop), else
+   * `flaky` when trials disagree with no evidence of an infra fault (SPEC-210
+   * §4). Callers whose seeded plans only cover the base `attempt_id` (never
+   * needing a retry, e.g. an immediate pass) are unaffected — trial 2/3 keys
+   * are only looked up when trial 1 actually fails.
+   */
   async run(request: ExecuteBrowserTestRequest): Promise<ExecuteBrowserTestResult> {
+    const trials: TrialOutcome[] = [];
+
+    for (let trialNumber = 1; trialNumber <= MAX_FLAKE_TRIALS; trialNumber++) {
+      const trialAttempt: ExecutionAttemptIdentity = {
+        execution_id: request.execution.execution_id,
+        attempt_id: trialNumber === 1 ? request.execution.attempt_id : `${request.execution.attempt_id}:trial-${trialNumber}`,
+      };
+      const trial = await this.#runOneTrial(request, trialAttempt);
+      trials.push(trial);
+
+      if (!trial.ok) {
+        // Engine-level failure (validate/prepare/start/finalize) stops the
+        // loop immediately — an infra fault is never retried into a flaky
+        // verdict (SPEC-210 §4: "infrastructure errors ... SHALL NOT be
+        // reported" as a product outcome), and a non-infra engine failure
+        // (e.g. an unregistered plan) is a configuration problem a retry
+        // cannot fix either.
+        break;
+      }
+      if (trial.outcome === "passed" && trialNumber === 1) break; // immediate pass, no retry needed
+      if (trial.outcome !== "passed" && trial.outcome !== "failed") break; // blocked/skipped/cancelled/infrastructure_error/indeterminate: not a flake signal, stop as-is.
+      if (trialNumber === 2 && trial.outcome === (trials[0] as TrialOutcome & { ok: true }).outcome) break; // 2 consistent trials, done (no tie-break needed)
+      if (trialNumber === MAX_FLAKE_TRIALS) break; // tie-break trial ran, reconcile whatever we have
+    }
+
+    return this.#reconcile(request, trials);
+  }
+
+  async #runOneTrial(request: ExecuteBrowserTestRequest, attempt: ExecutionAttemptIdentity): Promise<TrialOutcome> {
     const engine = this.#dependencies.engine;
     const version = { contract: "1.0.0", operation_schema: "1.0.0" } as const;
     const deadline = { at: request.deadline, time_standard: "UTC" } as const;
     const idempotency = (scope: string) => ({
-      key: `${scope}:${request.execution.attempt_id}`,
+      key: `${scope}:${attempt.attempt_id}`,
       scope,
       request_digest: "",
     });
 
     const validated = await engine.validate({
       operation: "validate",
-      operationId: `${request.operation_id}:validate`,
-      attempt: request.execution,
+      operationId: `${request.operation_id}:validate:${attempt.attempt_id}`,
+      attempt,
       workspace: request.workspace,
       idempotency: idempotency("validate"),
       deadline,
@@ -93,7 +154,7 @@ export class ExecuteBrowserTest {
         ok: false,
         failure: {
           class: "configuration",
-          message: `Execution plan is not registered for attempt ${request.execution.attempt_id}: ${validated.value.incompatibility_reasons.join("; ")}`,
+          message: `Execution plan is not registered for attempt ${attempt.attempt_id}: ${validated.value.incompatibility_reasons.join("; ")}`,
           retryable: false,
           evidence: [],
         },
@@ -102,8 +163,8 @@ export class ExecuteBrowserTest {
 
     const prepared = await engine.prepare({
       operation: "prepare",
-      operationId: `${request.operation_id}:prepare`,
-      attempt: request.execution,
+      operationId: `${request.operation_id}:prepare:${attempt.attempt_id}`,
+      attempt,
       workspace: request.workspace,
       idempotency: idempotency("prepare"),
       deadline,
@@ -123,15 +184,15 @@ export class ExecuteBrowserTest {
     const started = await engine.start(
       {
         operation: "start",
-        operationId: `${request.operation_id}:start`,
-        attempt: request.execution,
+        operationId: `${request.operation_id}:start:${attempt.attempt_id}`,
+        attempt,
         workspace: request.workspace,
         idempotency: idempotency("start"),
         deadline,
         version,
         payload: {
           environment_lease: prepared.value.environment_lease,
-          execution_plan_ref: request.test_case_ref,
+          execution_plan_ref: attempt.attempt_id,
           authorized_input_refs: [],
         },
       },
@@ -144,8 +205,8 @@ export class ExecuteBrowserTest {
 
     await engine.finalize({
       operation: "finalize",
-      operationId: `${request.operation_id}:finalize`,
-      attempt: request.execution,
+      operationId: `${request.operation_id}:finalize:${attempt.attempt_id}`,
+      attempt,
       workspace: request.workspace,
       idempotency: idempotency("finalize"),
       deadline,
@@ -154,20 +215,14 @@ export class ExecuteBrowserTest {
     });
 
     if (!started.ok) {
-      return { ok: false, failure: engineFailure("engine", started.failure) };
+      const failureClass = started.failure.responsible_domain === "infrastructure" ? "infrastructure" : "engine";
+      return { ok: false, failure: engineFailure(failureClass, started.failure) };
     }
 
-    const now = this.#dependencies.clock.now().toISOString();
-    const record: ExecutionRecord = {
-      id: `execution:${request.execution.execution_id}:${request.execution.attempt_id}`,
-      workspace_id: request.workspace.workspace_id,
-      actor_id: request.workspace.actor_id,
-      test_case_ref: request.test_case_ref,
-      automation_asset_ref: request.test_case_ref,
-      engine_ref: this.#dependencies.provider_ref,
-      environment_ref: request.environment_ref,
-      state: "completed",
-      outcome: started.value.outcome as ExecutionOutcome,
+    return {
+      ok: true,
+      attempt,
+      outcome: started.value.outcome,
       evidence: started.value.evidence,
       timing: {
         started_at: started.value.timing.started_at,
@@ -176,7 +231,53 @@ export class ExecuteBrowserTest {
       },
       resource_usage: started.value.resource_usage,
     };
-    void now;
+  }
+
+  #reconcile(request: ExecuteBrowserTestRequest, trials: readonly TrialOutcome[]): ExecuteBrowserTestResult {
+    const last = trials[trials.length - 1]!;
+
+    if (!last.ok) {
+      // An engine-level failure on any trial (including retries) reports
+      // that failure directly — a configuration/authorization failure
+      // never becomes a `flaky` product verdict.
+      return { ok: false, failure: last.failure };
+    }
+
+    const passFailTrials = trials.filter((t): t is TrialOutcome & { ok: true } => t.ok && (t.outcome === "passed" || t.outcome === "failed"));
+    const passCount = passFailTrials.filter((t) => t.outcome === "passed").length;
+    const failCount = passFailTrials.filter((t) => t.outcome === "failed").length;
+
+    let outcome: ExecutionOutcome = last.outcome;
+    if (passFailTrials.length > 1 && passCount > 0 && failCount > 0) {
+      outcome = "flaky";
+    }
+
+    const first = trials[0]!;
+    const retryOfRef = trials.length > 1 && first.ok
+      ? `execution:${request.execution.execution_id}:${first.attempt.attempt_id}`
+      : undefined;
+
+    const evidence = trials.flatMap((t) => (t.ok ? t.evidence : []));
+
+    const record: ExecutionRecord = {
+      id: `execution:${request.execution.execution_id}:${last.attempt.attempt_id}`,
+      workspace_id: request.workspace.workspace_id,
+      actor_id: request.workspace.actor_id,
+      test_case_ref: request.test_case_ref,
+      automation_asset_ref: request.test_case_ref,
+      engine_ref: this.#dependencies.provider_ref,
+      environment_ref: request.environment_ref,
+      state: "completed",
+      outcome,
+      evidence,
+      timing: {
+        started_at: last.timing.started_at,
+        completed_at: last.timing.completed_at,
+        duration_seconds: last.timing.duration_seconds,
+      },
+      resource_usage: last.resource_usage,
+      ...(retryOfRef !== undefined ? { retry_of_ref: retryOfRef } : {}),
+    };
     return { ok: true, value: record };
   }
 }

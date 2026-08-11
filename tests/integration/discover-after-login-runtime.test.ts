@@ -208,3 +208,379 @@ test("discovers a session-gated screen by logging in first, on the exact same br
     await fixture.close();
   }
 });
+
+test("logs in even when the field/action names are supplied with different case and surrounding whitespace than the discovered accessible names", async () => {
+  const fixture = await startFixtureServer();
+  try {
+    const permissions = ["agent:execute", "agent:read", "discovery:observe", "execution:execute"];
+    const authorizer = new DeterministicWorkspaceAuthorizer({
+      clock,
+      expected_issuer: "https://identity.test.invalid",
+      expected_audience: "qa-intelligence-test",
+      workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+      policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+      integrity_proof_verifier: {
+        verify({ canonical_claims, integrity_proof }): boolean {
+          return integrity_proof === fixtureProof(canonical_claims);
+        },
+      },
+    });
+
+    const skill = new DiscoverAfterLogin({ clock, authorizer });
+    const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+      new Map([[AGENT.id, new DiscoverAfterLoginRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL, engine_ref: "playwright-dom-pipeline@0.1.0" })]]),
+    );
+    const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+    const workspaceContext = context(permissions);
+
+    const started = await runtime.start({
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-start",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      workspace_context: workspaceContext,
+      agent: AGENT,
+      purpose: "Discover the session-gated dashboard using case/whitespace-varied field names.",
+      consequence_class: "reversible",
+      input: {
+        login_url: `${fixture.url}/login`,
+        // Discovered accessible names are "Username"/"Password"/"Sign in" —
+        // deliberately supplied here with different case and surrounding
+        // whitespace to prove the lookup no longer requires an exact match.
+        username_field_name: " USERNAME ",
+        username: "real-user",
+        password_field_name: "password",
+        password: "real-pass",
+        submit_action_name: "SIGN IN",
+        target_url: `${fixture.url}/dashboard`,
+      },
+      allowed_skills: [SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      policy_version: workspaceContext.policy_version,
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+      deadline: "2030-01-01T00:00:00.000Z",
+      idempotency_key: "discover-after-login-case-insensitive-start-001",
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    if (!started.ok) return;
+
+    const executed = await runtime.execute(started.value, {
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-execute",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      policy_version: workspaceContext.policy_version,
+      workspace_context: workspaceContext,
+      expected_revision: 3,
+      idempotency_key: "discover-after-login-case-insensitive-execute-001",
+    });
+    assert.equal(executed.ok, true, JSON.stringify(executed));
+    if (!executed.ok) return;
+    assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
+
+    const output = executed.value.output as { source_url: string; elements: Array<{ accessible_name: string | null; kind: string }> } | null;
+    assert.ok(output, "expected a Semantic UI Map output");
+    assert.equal(output!.source_url, `${fixture.url}/dashboard`);
+  } finally {
+    await fixture.close();
+  }
+});
+
+// A site that sits behind BOTH a browser-native HTTP Basic Auth prompt AND
+// its own in-page session login form — every route 401s without the right
+// `Authorization` header, regardless of cookie state, which is exactly the
+// two-layer shape a production reverse proxy + app login combination
+// produces.
+function startBasicAuthGatedFixtureServer(basicAuthUsername: string, basicAuthPassword: string): Promise<{ url: string; close: () => Promise<void> }> {
+  const expectedAuthHeader = `Basic ${Buffer.from(`${basicAuthUsername}:${basicAuthPassword}`).toString("base64")}`;
+
+  const server = http.createServer((req, res) => {
+    if (req.headers.authorization !== expectedAuthHeader) {
+      res.writeHead(401, { "WWW-Authenticate": 'Basic realm="fixture"', "Content-Type": "text/plain" });
+      res.end("basic auth required");
+      return;
+    }
+
+    const cookie = req.headers.cookie ?? "";
+    const loggedIn = cookie.includes("session=valid");
+
+    if (req.url === "/login" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`
+        <html><body>
+          <h1>Sign in</h1>
+          <label for="u">Username</label><input id="u" name="u"/>
+          <label for="p">Password</label><input id="p" name="p" type="password"/>
+          <form method="POST" action="/login">
+            <button aria-label="Sign in" onclick="
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', '/login', false);
+              xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+              xhr.send('u=' + encodeURIComponent(document.getElementById('u').value) + '&p=' + encodeURIComponent(document.getElementById('p').value));
+              if (xhr.status === 200) { window.location.href = '/dashboard'; }
+              return false;
+            ">Sign in</button>
+          </form>
+        </body></html>
+      `);
+      return;
+    }
+    if (req.url === "/login" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const valid = body.includes("u=real-user") && body.includes("p=real-pass");
+        if (valid) {
+          res.writeHead(200, { "Set-Cookie": "session=valid; Path=/", "Content-Type": "text/plain" });
+          res.end("ok");
+        } else {
+          res.writeHead(401, { "Content-Type": "text/plain" });
+          res.end("denied");
+        }
+      });
+      return;
+    }
+    if (req.url === "/dashboard") {
+      if (!loggedIn) {
+        res.writeHead(302, { Location: "/login" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<html><body><h1>Job Management</h1><input aria-label="Job Title Filter"/><button aria-label="Search Jobs">Search Jobs</button></body></html>`);
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  return new Promise((resolvePromise) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      resolvePromise({
+        url: `http://127.0.0.1:${port}`,
+        close: () => new Promise<void>((res) => server.close(() => res())),
+      });
+    });
+  });
+}
+
+test("discovers a screen gated by both HTTP Basic Auth and an in-page session login, when basic_auth credentials are supplied", async () => {
+  const fixture = await startBasicAuthGatedFixtureServer("basic-user", "basic-pass");
+  try {
+    const permissions = ["agent:execute", "agent:read", "discovery:observe", "execution:execute"];
+    const authorizer = new DeterministicWorkspaceAuthorizer({
+      clock,
+      expected_issuer: "https://identity.test.invalid",
+      expected_audience: "qa-intelligence-test",
+      workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+      policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+      integrity_proof_verifier: {
+        verify({ canonical_claims, integrity_proof }): boolean {
+          return integrity_proof === fixtureProof(canonical_claims);
+        },
+      },
+    });
+
+    const skill = new DiscoverAfterLogin({ clock, authorizer });
+    const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+      new Map([[AGENT.id, new DiscoverAfterLoginRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL, engine_ref: "playwright-dom-pipeline@0.1.0" })]]),
+    );
+    const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+    const workspaceContext = context(permissions);
+
+    const started = await runtime.start({
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-start",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      workspace_context: workspaceContext,
+      agent: AGENT,
+      purpose: "Discover a screen behind both HTTP Basic Auth and an in-page login form.",
+      consequence_class: "reversible",
+      input: {
+        login_url: `${fixture.url}/login`,
+        username_field_name: "Username",
+        username: "real-user",
+        password_field_name: "Password",
+        password: "real-pass",
+        submit_action_name: "Sign in",
+        target_url: `${fixture.url}/dashboard`,
+        basic_auth_username: "basic-user",
+        basic_auth_password: "basic-pass",
+      },
+      allowed_skills: [SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      policy_version: workspaceContext.policy_version,
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+      deadline: "2030-01-01T00:00:00.000Z",
+      idempotency_key: "discover-after-login-basic-auth-start-001",
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    if (!started.ok) return;
+
+    const executed = await runtime.execute(started.value, {
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-execute",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      policy_version: workspaceContext.policy_version,
+      workspace_context: workspaceContext,
+      expected_revision: 3,
+      idempotency_key: "discover-after-login-basic-auth-execute-001",
+    });
+    assert.equal(executed.ok, true, JSON.stringify(executed));
+    if (!executed.ok) return;
+    assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
+
+    const output = executed.value.output as { source_url: string; elements: Array<{ accessible_name: string | null; kind: string }> } | null;
+    assert.ok(output, "expected a Semantic UI Map output");
+    assert.equal(output!.source_url, `${fixture.url}/dashboard`);
+
+    const searchAction = output!.elements.find((element) => element.accessible_name === "Search Jobs");
+    assert.ok(searchAction, "expected to discover the post-login dashboard despite the HTTP Basic Auth layer in front of every route");
+    assert.equal(searchAction!.kind, "action");
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("fails closed instead of hanging when the target is behind HTTP Basic Auth and no basic_auth credentials are supplied", async () => {
+  const fixture = await startBasicAuthGatedFixtureServer("basic-user", "basic-pass");
+  try {
+    const permissions = ["agent:execute", "agent:read", "discovery:observe", "execution:execute"];
+    const authorizer = new DeterministicWorkspaceAuthorizer({
+      clock,
+      expected_issuer: "https://identity.test.invalid",
+      expected_audience: "qa-intelligence-test",
+      workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+      policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+      integrity_proof_verifier: {
+        verify({ canonical_claims, integrity_proof }): boolean {
+          return integrity_proof === fixtureProof(canonical_claims);
+        },
+      },
+    });
+
+    const skill = new DiscoverAfterLogin({ clock, authorizer });
+    const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+      new Map([[AGENT.id, new DiscoverAfterLoginRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL, engine_ref: "playwright-dom-pipeline@0.1.0" })]]),
+    );
+    const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+    const workspaceContext = context(permissions);
+
+    const started = await runtime.start({
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-start",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      workspace_context: workspaceContext,
+      agent: AGENT,
+      purpose: "Attempt discovery without the required HTTP Basic Auth credentials.",
+      consequence_class: "reversible",
+      input: {
+        login_url: `${fixture.url}/login`,
+        username_field_name: "Username",
+        username: "real-user",
+        password_field_name: "Password",
+        password: "real-pass",
+        submit_action_name: "Sign in",
+        target_url: `${fixture.url}/dashboard`,
+      },
+      allowed_skills: [SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      policy_version: workspaceContext.policy_version,
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+      deadline: "2030-01-01T00:00:00.000Z",
+      idempotency_key: "discover-after-login-no-basic-auth-start-001",
+    });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    if (!started.ok) return;
+
+    const executed = await runtime.execute(started.value, {
+      schema_version: "1.0.0",
+      operation_id: "operation-runtime-execute",
+      workspace_id: WORKSPACE_ID,
+      actor_id: workspaceContext.actor_id,
+      policy_version: workspaceContext.policy_version,
+      workspace_context: workspaceContext,
+      expected_revision: 3,
+      idempotency_key: "discover-after-login-no-basic-auth-execute-001",
+    });
+    assert.equal(executed.ok, true, JSON.stringify(executed));
+    if (!executed.ok) return;
+    // Without the header every route 401s, so the login page itself never
+    // renders — Discovery correctly reports a failure rather than
+    // fabricating a Semantic UI Map from a 401 response body.
+    assert.equal(executed.value.outcome, "failed", JSON.stringify(executed.value, null, 2));
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("rejects a partial basic_auth_username/basic_auth_password pair as a configuration error", async () => {
+  const permissions = ["agent:execute", "agent:read", "discovery:observe", "execution:execute"];
+  const authorizer = new DeterministicWorkspaceAuthorizer({
+    clock,
+    expected_issuer: "https://identity.test.invalid",
+    expected_audience: "qa-intelligence-test",
+    workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+    policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+    integrity_proof_verifier: {
+      verify({ canonical_claims, integrity_proof }): boolean {
+        return integrity_proof === fixtureProof(canonical_claims);
+      },
+    },
+  });
+
+  const skill = new DiscoverAfterLogin({ clock, authorizer });
+  const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+    new Map([[AGENT.id, new DiscoverAfterLoginRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL, engine_ref: "playwright-dom-pipeline@0.1.0" })]]),
+  );
+  const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+  const workspaceContext = context(permissions);
+
+  const started = await runtime.start({
+    schema_version: "1.0.0",
+    operation_id: "operation-runtime-start",
+    workspace_id: WORKSPACE_ID,
+    actor_id: workspaceContext.actor_id,
+    workspace_context: workspaceContext,
+    agent: AGENT,
+    purpose: "Attempt discovery with only basic_auth_username supplied.",
+    consequence_class: "reversible",
+    input: {
+      login_url: "http://127.0.0.1:1/login",
+      username_field_name: "Username",
+      username: "real-user",
+      password_field_name: "Password",
+      password: "real-pass",
+      submit_action_name: "Sign in",
+      target_url: "http://127.0.0.1:1/dashboard",
+      basic_auth_username: "basic-user",
+    },
+    allowed_skills: [SKILL],
+    allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+    policy_version: workspaceContext.policy_version,
+    budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+    deadline: "2030-01-01T00:00:00.000Z",
+    idempotency_key: "discover-after-login-partial-basic-auth-start-001",
+  });
+  assert.equal(started.ok, true, JSON.stringify(started));
+  if (!started.ok) return;
+
+  const executed = await runtime.execute(started.value, {
+    schema_version: "1.0.0",
+    operation_id: "operation-runtime-execute",
+    workspace_id: WORKSPACE_ID,
+    actor_id: workspaceContext.actor_id,
+    policy_version: workspaceContext.policy_version,
+    workspace_context: workspaceContext,
+    expected_revision: 3,
+    idempotency_key: "discover-after-login-partial-basic-auth-execute-001",
+  });
+  assert.equal(executed.ok, true, JSON.stringify(executed));
+  if (!executed.ok) return;
+  assert.equal(executed.value.outcome, "failed", JSON.stringify(executed.value, null, 2));
+});

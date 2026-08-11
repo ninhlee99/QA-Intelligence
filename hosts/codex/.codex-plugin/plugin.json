@@ -1,7 +1,7 @@
 {
   "name": "qa-intelligence",
   "version": "0.1.0-dev",
-  "description": "QA Intelligence: governed requirement review via the QA Intelligence Agent Runtime (development slice — see hosts/README.md). This package carries no business logic; it only connects Codex to the QA Intelligence MCP server (ADR-016).",
+  "description": "QA Intelligence MCP (0.1.0-dev): Senior QA catalog — UI auto-QA, API smoke, depth smokes, document assessors, credentials, exploratory session. Development slice only (ADR-016 §8). See hosts/README.md.",
   "mcp": {
     "servers": {
       "qa-intelligence": {

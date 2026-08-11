@@ -1,38 +1,28 @@
 /**
- * Composes the four Skills a caller previously had to invoke as separate
- * MCP calls — Discovery (`DiscoverUiSurface`/`DiscoverAfterLogin`), Test
- * Design (`GenerateTestCases`), Execution (`testCaseToExecutionPlan` +
- * `PlaywrightExecutionEngine`), and Reporting (`QaRunReport`) — behind one
- * `run()` call, so "here is a URL and what it should do" produces a
- * generated-and-executed report without the caller composing
- * discover_ui_surface -> generate_test_cases -> execute_generated_test_case
- * itself (docs/proposals/professional-qa-mcp-roadmap.md's stated Phase 3
- * goal, extended to close the execute+report loop this roadmap left open).
- *
- * Each inner Skill still runs its own authorization independently — this
- * module adds no authority of its own, exactly like
- * `GenerateTestCasesRuntimeExecutor` it extends the same pattern from. A
- * test case with no generated assertion (SPEC-207 §6: the generator never
- * fabricates one) or whose execution plan cannot be built is reported as
- * `not_executed`, never silently skipped or given a fabricated outcome
- * (SPEC-210 §4). A non-`passed`/`failed` `ExecutionOutcome` (`blocked`,
- * `skipped`, `flaky`, `infrastructure_error`, `indeterminate`) is likewise
- * never rounded up to `passed` or down to `failed` — it is reported as
- * `not_executed` with the outcome preserved in `skip_reason`, so a real
- * infrastructure failure never reads as a test failure or a pass.
+ * Composes Discovery -> Test Design -> Execution -> Reporting behind one
+ * `run()` call. Each inner Skill still runs its own authorization
+ * independently; this module adds no authority of its own. A test case with
+ * no generated assertion, an unbuildable execution plan, or a non-`passed`/
+ * `failed` `ExecutionOutcome` is reported as `not_executed` with the real
+ * reason preserved in `skip_reason` — never rounded up to a fabricated pass
+ * or down to a fail (SPEC-207 §6, SPEC-210 §4).
  */
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
+import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
+import { assessUiAccessibilitySmoke, type AccessibilitySmokeReport } from "../discovery/assess-ui-accessibility-smoke.js";
+import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-browser-test.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
 import type { SemanticUiDiscoveryResult } from "../discovery/public.js";
+import { buildProfessionalQaAnalysis } from "../reporting/qa-professional-analysis.js";
+import { summarizeQaRunTestCases, withProfessionalAnalysis, type QaRunReport, type QaRunTestCaseResult } from "../reporting/qa-run-report.js";
 import { testCaseToExecutionPlan } from "./to-execution-plan.js";
-import { summarizeQaRunTestCases, type QaRunReport, type QaRunTestCaseResult } from "../reporting/qa-run-report.js";
 import type { GenerateTestCasesResult, JsonObject, TestCase, TestCaseGeneratedAssertion } from "./public.js";
 
 export interface Clock {
   now(): Date;
 }
 
-/** Matches `DiscoverUiSurface.discover`/`DiscoverAfterLogin.discover`'s own signature — accepted as a plain function so either can be injected (already bound to its own `url` vs. `login_url`+`target_url` request) without this module depending on both concrete classes. */
+/** Accepted as a plain function (matching both Skills' `discover` signature) so either can be injected without depending on both concrete classes. */
 export type QaPipelineDiscover = (operationId: string, context: WorkspaceContext) => Promise<SemanticUiDiscoveryResult>;
 
 export interface QaPipelineGenerator {
@@ -54,7 +44,7 @@ export type RunAutoQaPipelineRequest = Readonly<{
   context: WorkspaceContext;
   requirement_ref: string;
   requirement_title: string;
-  /** The page Discovery observes and Test Design binds criteria against — used only for the report's `target_url` field; the actual navigation target is whatever `discover` (already bound to the right request) resolves. */
+  /** Report's `target_url` field only — actual navigation target is whatever `discover` (already bound to its own request) resolves. */
   url: string;
   acceptance_criteria: readonly JsonObject[];
 }>;
@@ -77,6 +67,10 @@ type Dependencies = Readonly<{
   discover: QaPipelineDiscover;
   generator: QaPipelineGenerator;
   launchBrowser?: () => Promise<import("playwright").Browser>;
+  /** Directory failure screenshots are written under (forwarded to `PlaywrightExecutionEngine`). Screenshot capture is skipped when omitted. */
+  screenshotDir?: string;
+  /** Directory failure Playwright traces are written under. Trace capture is skipped when omitted. */
+  traceDir?: string;
 }>;
 
 /** Deep module: one `run()` call hides discovery, generation, per-case execution, and report assembly. */
@@ -130,18 +124,45 @@ export class RunAutoQaPipeline {
       testCaseResults.push(await this.#executeOne(testCase, generated.value.generated_assertions, request));
     }
 
-    const report: QaRunReport = {
-      schema_version: "1.0.0",
+    // Senior QA default: naming a11y smoke on the same discovery capture —
+    // no second browser navigate. Full WCAG remains out of scope.
+    const accessibilitySmoke: AccessibilitySmokeReport = assessUiAccessibilitySmoke({
+      elements: discovered.value.elements,
+      source_url: discovered.value.source_url,
+    });
+
+    const summary = summarizeQaRunTestCases(testCaseResults);
+    const draftDefects = draftDefectsFromQaRun({
       workspace_id: request.workspace_id,
-      target_url: request.url,
-      generated_at: this.#dependencies.clock.now().toISOString(),
       requirement_ref: request.requirement_ref,
-      discovery_capture_id: discovered.value.capture_id,
-      discovery_element_count: discovered.value.elements.length,
+      target_url: request.url,
+      environment_ref: `environment:${request.operation_id}`,
+      test_cases: testCaseResults,
+    });
+    const analysis = buildProfessionalQaAnalysis({
       test_cases: testCaseResults,
       generation_findings: generated.value.findings,
-      summary: summarizeQaRunTestCases(testCaseResults),
-    };
+      draft_defects: draftDefects,
+      summary,
+      accessibility_smoke: accessibilitySmoke,
+    });
+    const report = withProfessionalAnalysis(
+      {
+        schema_version: "1.1.0",
+        workspace_id: request.workspace_id,
+        target_url: request.url,
+        generated_at: this.#dependencies.clock.now().toISOString(),
+        requirement_ref: request.requirement_ref,
+        discovery_capture_id: discovered.value.capture_id,
+        discovery_element_count: discovered.value.elements.length,
+        test_cases: testCaseResults,
+        generation_findings: generated.value.findings,
+        summary,
+        draft_defects: draftDefects,
+        accessibility_smoke: accessibilitySmoke,
+      },
+      analysis,
+    );
 
     return { ok: true, value: report };
   }
@@ -164,37 +185,49 @@ export class RunAutoQaPipeline {
       };
     }
 
-    const plans = new Map<string, PlaywrightExecutionPlan>([[testCase.id, converted.value]]);
+    // Seed one plan entry per flake-detection trial `ExecuteBrowserTest`
+    // will internally construct/look up (`${testCase.id}:trial-N`) — the
+    // request itself still carries the base (unsuffixed) attempt_id,
+    // exactly as `BrowserTestRuntimeExecutor` already does for
+    // `execute_browser_test`, so the two callers' request-construction
+    // stays symmetric (see ExecuteBrowserTest.run()'s own trial-suffixing).
+    const plans = new Map<string, PlaywrightExecutionPlan>(
+      Array.from({ length: MAX_FLAKE_TRIALS }, (_, i) => {
+        const key = i === 0 ? testCase.id : `${testCase.id}:trial-${i + 1}`;
+        return [key, converted.value] as const;
+      }),
+    );
     const engine = new PlaywrightExecutionEngine({
       clock: this.#dependencies.clock,
       authorizer: this.#dependencies.authorizer,
       provider: { id: "playwright-execution-engine", version: "0.1.0" },
       plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
+      ...(this.#dependencies.screenshotDir !== undefined ? { screenshotDir: this.#dependencies.screenshotDir } : {}),
+      ...(this.#dependencies.traceDir !== undefined ? { traceDir: this.#dependencies.traceDir } : {}),
+    });
+    const skill = new ExecuteBrowserTest({
+      engine,
+      clock: this.#dependencies.clock,
+      provider_ref: "playwright-execution-engine@0.1.0",
     });
 
-    const attempt = { execution_id: `${request.operation_id}:auto-qa`, attempt_id: testCase.id };
-    const startResult = await engine.start(
-      {
-        operation: "start",
-        operationId: `${request.operation_id}:${testCase.id}:start`,
-        attempt,
-        workspace: request.context,
-        idempotency: { key: `start:${testCase.id}`, scope: "start", request_digest: "" },
-        deadline: { at: new Date(this.#dependencies.clock.now().valueOf() + 60_000).toISOString(), time_standard: "UTC" },
-        version: { contract: "1.0.0", operation_schema: "1.0.0" },
-        payload: { environment_lease: `lease:${request.operation_id}`, execution_plan_ref: `plan:${testCase.id}`, authorized_input_refs: [] },
-      },
-      () => {},
-    );
+    const run = await skill.run({
+      operation_id: `${request.operation_id}:${testCase.id}`,
+      workspace: request.context,
+      execution: { execution_id: `${request.operation_id}:auto-qa`, attempt_id: testCase.id },
+      test_case_ref: testCase.id,
+      environment_ref: `environment:${request.operation_id}`,
+      deadline: new Date(this.#dependencies.clock.now().valueOf() + 60_000).toISOString(),
+    });
 
-    if (!startResult.ok) {
+    if (!run.ok) {
       return {
         test_case_id: testCase.id,
         purpose: testCase.purpose,
         variant,
         outcome: "not_executed",
-        skip_reason: `${startResult.failure.code}: ${startResult.failure.message}`,
+        skip_reason: `${run.failure.class}: ${run.failure.message}`,
         evidence: [],
       };
     }
@@ -203,26 +236,18 @@ export class RunAutoQaPipeline {
       test_case_id: testCase.id,
       purpose: testCase.purpose,
       variant,
-      ...mapExecutionOutcome(startResult.value.outcome, startResult.value.skip_reason),
-      evidence: startResult.value.evidence,
+      ...mapExecutionOutcome(run.value.outcome ?? "indeterminate", run.value.skip_reason),
+      evidence: run.value.evidence ?? [],
     };
   }
 }
 
-/**
- * `ExecutionOutcome` has more states than `QaRunTestCaseOutcome` — only
- * `passed`/`failed`/`cancelled` map straight across. Every other state
- * (`blocked`, `skipped`, `flaky`, `infrastructure_error`, `indeterminate`)
- * is infrastructure/process noise, not a real pass or fail verdict on the
- * test case's assertion, so it is reported as `not_executed` with the real
- * outcome preserved in `skip_reason` rather than rounded to a verdict the
- * execution engine never actually reached.
- */
+/** Non-`passed`/`failed`/`cancelled`/`flaky` outcomes are infrastructure noise, not a verdict — reported as `not_executed` with the real outcome kept in `skip_reason`. `infrastructure_error` is deliberately excluded: it is never a product-level verdict (SPEC-210 §4), unlike `flaky`, which IS real information about the test/product. */
 function mapExecutionOutcome(
   outcome: string,
   engineSkipReason: string | undefined,
 ): Pick<QaRunTestCaseResult, "outcome" | "skip_reason"> {
-  if (outcome === "passed" || outcome === "failed" || outcome === "cancelled") {
+  if (outcome === "passed" || outcome === "failed" || outcome === "cancelled" || outcome === "flaky") {
     return { outcome };
   }
   return {

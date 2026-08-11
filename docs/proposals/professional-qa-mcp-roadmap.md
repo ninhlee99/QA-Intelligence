@@ -1,6 +1,6 @@
 ---
 status: proposal — not governed, not a SPEC
-last_updated: 2026-08-07
+last_updated: 2026-08-11
 ---
 
 # Roadmap: MCP as a professional QA test engineer
@@ -45,25 +45,34 @@ platform still can't perceive or touch.
 
 ## Ground truth already in the repo (read, not assumed)
 
-- `PlaywrightExecutionEngine` (`src/adapters/playwright/`) navigates a URL
-  and runs one boolean assertion against a cleaned Semantic UI tree. It does
-  not type, click, or hold session state across steps (ADR-022 §4, by
-  design — raw selector interaction was explicitly rejected to keep
-  assertions selector-independent).
-- `extractRawDom` + `DeterministicDomCleaner` (`src/dom-cleaner/`) already
-  turn a live page into `CleanedDomNode` (role, accessible_name, text,
-  children) — this is the raw material Discovery needs, but nothing calls
-  it for discovery purposes today.
-- `src/discovery/public.ts` line 60 says outright: *"Semantic UI Map/Product
-  Surface Map are out of scope for this slice — no browser/Platform Plugin
-  adapter exists yet."* `DiscoverProductContext` only searches the Knowledge
-  Store's existing text; it has never looked at a live page.
-- SPEC-206 (Test Strategy), SPEC-207 (Test Design) are accepted specs with
-  no corresponding `src/` implementation directories at all — pure paper
-  today.
-- The Requirement Review Agent (`src/requirement-review/`) is the only
-  capability wired end-to-end (Skill -> Runtime Executor -> MCP tool). It is
-  the template every phase below copies.
+> **Refresh (2026-08-11):** Phase 1–2 tracers and much of the Senior QA MCP
+> catalog are **implemented** in `src/` + `src/mcp/dev-fixture.ts`. Treat the
+> bullets below as historical “before Phase 1” notes unless marked current.
+
+### Current (dev MCP / `0.1.0-dev`)
+
+- `PlaywrightExecutionEngine` supports semantic `type` / `click` / `select` /
+  `wait_for`, multi-step plans, URL/title/network oracles, flake detection,
+  and screenshots — not navigate+boolean-only anymore.
+- `discover_ui_surface` (+ after-login / workflow crawl) emits live Semantic
+  UI Maps; `generate_test_cases` / `run_auto_qa` / regression suites /
+  journey generator / exploratory session (bounded probes) are wired as MCP
+  tools. Still **not** production: GOV-012 G2–G6 / Vault / full pen-test
+  remain out of scope for honesty claims.
+- Requirement Review remains the template Skill→Runtime→MCP path; many
+  assessors/stubs reuse that pattern with varying depth (stubs ≠ professional
+  BA/strategy docs).
+
+### Historical (pre–Phase 1 tracer — do not re-assume)
+
+- Early `PlaywrightExecutionEngine` navigated a URL and ran one boolean
+  assertion against a cleaned Semantic UI tree without type/click/session
+  (ADR-022 §4 at the time).
+- `src/discovery/public.ts` once said Semantic UI Map was out of scope —
+  superseded by `DiscoverUiSurface`.
+- SPEC-206 / SPEC-207 had no `src/` dirs — now have thin stubs + generators;
+  not full professional strategy/design engines.
+- Requirement Review was once the only end-to-end capability.
 
 ## Phase 1 — Discovery: let the platform see a real page
 
@@ -200,8 +209,178 @@ carries evidence, and nothing here fabricates a passing result it didn't
 observe (SPEC-210 §4's `indeterminate`/`infrastructure_error` exist
 precisely so the system never claims false confidence).
 
+## Phase 4 — Close the professional loop: defects + release gate
+
+**Status: tracer bullet done (2026-08-10).** After Phase 3's discover→generate→execute loop, a Senior QA still needs (a) structured defect drafts from failures and (b) an explicit release recommendation that refuses to hide critical/security outcomes behind a green-looking pass count. This phase wires both into `run_auto_qa` without inventing product intent.
+
+**Implements / extends:** SPEC-211 (Bug Analysis — draft path only), SPEC-206 §6 (residual risk articulation), SPEC-212 §6 (critical failures stay visible).
+
+**Delivered:**
+- `src/bug-analysis/draft-defects-from-qa-run.ts` — pure: failed/flaky `QaRunTestCaseResult` → governed `Defect` drafts. Severity/priority/classification keyed by variant (adversarial → `security_incident`/`critical`/`p0`). Never sets `confirmed_cause`.
+- `src/reporting/qa-professional-analysis.ts` — variant coverage matrix, residual-risk notes, `release_recommendation` (`recommend_release` | `pass_with_gaps` | `investigate_flakes` | `changes_required` | `do_not_release`).
+- `QaRunReport` + HTML/JSON export include the new surfaces; host Skills (`test` / `dev`) summarize gate → defects → gaps first.
+
+**Definition of done:** one `run_auto_qa` call returns executable evidence *and* Senior-QA triage artifacts (draft defects + residual risk + release gate) a human can act on without re-deriving severity by hand.
+
+**Explicitly not in Phase 4:** Jira/defect-system filing, confirmed root-cause analysis, API/a11y/perf portfolio, exploratory charters, real credential registry (still open from Phase 3), GOV-012 production enablement.
+
+## Phase 5 — Broader Senior QA MCP surface (naming a11y, exploratory, defect triage)
+
+**Status: tracer bullet done (2026-08-10).** Extends the MCP catalog beyond the UI auto-QA pipeline:
+
+- `assess_ui_accessibility_smoke` — deterministic naming smoke on a Semantic UI Map (missing/duplicate names, unlabeled editables). Explicitly not WCAG/axe.
+- `generate_exploratory_charter` — SPEC-206 time-boxed charter from Discovery (focus areas, oracles, risks, out-of-scope).
+- `assess_defect_quality` — MCP wire-up of existing SPEC-211 `AssessDefectQuality` for drafts from `run_auto_qa`.
+- Session Memory failure-avoidance retain after `run_auto_qa` draft defects (SPEC-108 §7.3 write side).
+
+**Explicitly not in Phase 5:** full WCAG audit, automated exploratory execution, Learning Engine promotion of high-consequence security facts, API/perf tools, production OIDC membership store.
+
+## Phase 6 — Credential & environment registry
+
+**Status: tracer bullet done (2026-08-10).** Real targets can use named Workspace secrets; MCP callers need not put passwords on the wire after one `register_workspace_secret`. Environment allowlist closes SPEC-512 §12 half (2026-08-10 follow-up).
+
+**Delivered:**
+- `src/credentials/workspace-credential-registry.ts` — in-memory registry implementing Playwright `SecretResolver`
+- MCP `register_workspace_secret` / `list_workspace_secrets` (metadata only)
+- `password_secret_ref` / `basic_auth_password_secret_ref` on discover-after-login + `run_auto_qa`
+- `field_secret_refs` on `execute_generated_test_case`
+- Demo seed `workspace-secret:demo-password` pre-registered in `dev-fixture`
+- `src/environments/workspace-environment-registry.ts` — allowlist + `environment_ref` resolve
+- MCP `register_workspace_environment` / `list_workspace_environments`; `discover_ui_surface` accepts `environment_ref` (non-loopback http(s) must match; `data:`/loopback are fixture escapes)
+
+**DoD:** login via `password_secret_ref` only; list never returns values; unregistered external URLs denied.
+
+**Explicitly not in Phase 6:** Vault/KMS, GOV-012, multi-browser.
+
+---
+
+## Phase 7 — Wire document assessors → MCP
+
+**Status: tracer bullet done (2026-08-10).** Existing SPEC-204→212 document-quality Skills are callable as MCP tools (same pattern as requirement/defect). Generate stubs added 2026-08-10 follow-up.
+
+**Delivered:**
+- `src/mcp/document-assessor-runtime-executor.ts` — shared MCP adapter
+- MCP tools: `assess_business_analysis_quality`, `assess_risk_quality`, `assess_test_strategy_quality`, `assess_test_case_quality`, `assess_test_dataset_quality`, `assess_automation_asset_quality`, `assess_report_quality`
+- Permissions wired on stdio + remote entrypoints
+- Generate stubs: `generate_business_analysis_stub`, `generate_risk_stub`, `generate_test_strategy` (UI-map grounded drafts)
+- SPEC-208/209 create path: `register_test_dataset` / `list_test_datasets`, `create_automation_asset`
+- SPEC-213 dogfood MCP: `evaluate_test_case_quality_skill`; SPEC-105 §9a MCP: `raise_mistake_recurrence_candidate` (never promotes)
+- Playwright `select` / `wait_for` semantic steps (SPEC-407)
+
+**DoD:** each tool returns governed findings via MCP when given a document object.
+
+**Explicitly not in Phase 7:** Learning promote; Jira; inventing business rules beyond the UI map.
+
+---
+
+## Phase 8 — API testing tracer
+
+**Status: tracer bullet done (2026-08-10).** HTTP smoke/contract checks with SPEC-210 outcomes.
+
+**Delivered:**
+- `src/api-testing/` — `ExecuteApiSmoke` Skill + `FetchHttpClient` + MCP runtime executor
+- MCP `execute_api_smoke` (`base_url` + `cases[]` with status/body/header asserts)
+- Bearer / Basic auth via secret_ref (Phase 6 registry)
+- Infrastructure faults → `infrastructure_error` (never product `failed`)
+
+**DoD:** base URL + cases → suite outcome + evidence; infra ≠ product pass.
+
+**Explicitly not in Phase 8:** invent OpenAPI from UI; load test; full authz matrix.
+
+---
+
+## Phase 9 — Exploratory execute + multi-browser
+
+**Status: tracer bullet done (2026-08-10).** Charter can be *run* as a session; Chromium/Firefox/WebKit selectable.
+
+**Delivered:**
+- `src/adapters/playwright/browser-launcher.ts` — `chromium|firefox|webkit`
+- `DiscoverUiSurface` / `run_auto_qa` accept `browser`
+- MCP `execute_exploratory_session` — capture per browser, auto-check leak/naming oracles, manual_follow_up for the rest, multi-browser field/action parity note
+
+**DoD:** charter/session → observation log; same URL on ≥2 browsers yields parity observation.
+
+**Explicitly not in Phase 9:** full free-form click exploration automation; WCAG full; OIDC production.
+
+---
+
+## Phase 10 — Depth portfolio (a11y / perf / security)
+
+**Status: tracer bullet done (2026-08-10).** Heuristic depth smokes beyond naming-only a11y.
+
+**Delivered:**
+- `src/depth-smokes/run-depth-smokes.ts` — WCAG-subset (lang/title/img alt), nav timing vs threshold, security heuristics
+- MCP `run_depth_smokes` with explicit `has_critical` (critical never hidden by green counts)
+
+**DoD:** findings carry evidence; critical surfaced via `has_critical`.
+
+**Explicitly not in Phase 10:** axe-core full conformance; load platform; auto-confirm RCA / pen-test.
+
+---
+
+## Phase 11 — Learning read-side + GOV-012 path notes
+
+**Status: tracer bullet done (2026-08-10) — development only; production gates still open.**
+
+**Delivered:**
+- `SessionMemory.list(workspaceId, keyPrefix?)` — fail-safe read of unexpired entries
+- MCP `list_failure_avoidance_hints` — lists `avoid:*` retained after `run_auto_qa` drafts
+- `run_auto_qa` output includes `prior_failure_avoidance_hints` from the same shared Session Memory instance
+- Entrypoints share one `SessionMemory` between fixture + `AgentRuntimeToolRegistry`
+
+**GOV-012 path (honest):** see `governance/reviews/requirement-review-tracer-bullet/GOV-012_GATE_RECORD.yaml` — G2–G4 still `pending_*` / partial. This phase does **not** claim production enablement. Owner still signs enablement after G2–G4 evidence.
+
+**DoD:** second `run_auto_qa` / `list_failure_avoidance_hints` can see prior avoidable draft hints in-process.
+
+**Explicitly not in Phase 11:** silent promote high-consequence; real LLM ReasoningProvider beyond scripted; G5–G6 public marketing; fake GOV pass.
+
+---
+
+---
+
+## Expert QA Upgrade — Post Phase 11
+
+**Status: done (2026-08-11).** Elevates the agent from "runs a script" to "thinks like a Senior/Expert QA". These changes are additive to existing phases — no phase was broken or removed.
+
+### Group A — Thinking layer
+
+- **A1:** Rewrote `test/SKILL.md` + `dev/SKILL.md` — risk-first triage, 3 strategies (Full/Regression/Exploratory), 5 pre-task assessment questions, tool map by purpose. No more step-by-step checklist.
+- **A2:** `run_auto_qa` output includes `coverage_gaps` — explicitly states what was NOT tested (not-executed cases, unbindable AC, unlabeled fields, scope limits). Expert QA rule: never claim pass by silence.
+- **A3:** `run_auto_qa` output includes `smart_retest_suggestion` — exact `case_ids`/`related_defect_ids` for targeted retest after a fix. Never re-run full suite when only subset failed.
+
+### Group B — Evidence & feedback quality
+
+- **B1:** HTML report renders trace `.zip` as clickable link with `npx playwright show-trace` hint.
+- **B2:** `discover_ui_workflow` persists `network_hints` to `SessionMemory` cross-run; subsequent runs expose `prior_network_hints` for AC authoring without re-discovering.
+- **B3:** `export_defects_for_tracker` includes `quality_warnings` pre-export gate — flags `confirmed_cause` set (pipeline never confirms cause), no evidence, non-draft status.
+
+### Group C — Multi-host coverage
+
+- **C1+C2:** Added `hosts/cursor/skills/` and `hosts/codex/skills/` with `test/SKILL.md` + `dev/SKILL.md` for each.
+
+### Current state (as of 2026-08-11)
+
+The MCP server covers the full expert QA loop end-to-end:
+- UI discovery (single page, multi-page workflow, dual-role comparison)
+- Risk-based test design (positive/negative/boundary/adversarial variants)
+- Execution with Playwright (flake detection, screenshots, trace-on-fail)
+- API contract testing (OpenAPI → smoke + authz negatives)
+- Defect drafting with evidence (no fabricated root cause)
+- Release gate (do_not_release / changes_required / recommend_release)
+- Coverage gap reporting (explicit — never silent)
+- Smart retest suggestions (targeted subset, not full suite)
+- Durable learning (avoidance hints, candidates, mistake occurrences across restarts)
+- Visual/surface baselines for regression comparison
+- Quality gates on documents (BA, risk, strategy, test case, dataset, automation, report)
+- Multi-host Skills (Claude Code, Cursor, Codex)
+
+**What remains blocked:** production deployment (GOV-012 G2–G6), real OIDC IdP (ADR-014), Vault/KMS, axe-core full WCAG, load testing, pen-testing.
+
+---
+
 ## Sequencing notes for whoever picks this up next
 
+- **Pro-tester follow-up (2026-08-10):** requirement ingest, `discover_ui_workflow`, regression suites, OpenAPI→API smoke, defect tracker export text, UI surface compare, URL/title oracles — still Explicitly not: SSO/MFA, axe-core full, load/pen-test, Jira API filing, Vault, GOV-012 production.
 - Each phase is a vertical slice like Requirement Review — Skill, Runtime
   Executor, MCP tool, integration test — not a horizontal layer across all
   three phases at once.

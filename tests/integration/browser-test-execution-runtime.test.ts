@@ -157,6 +157,97 @@ test("executes a Browser Test through the runtime, dispatched by Agent id, drivi
   assert.deepEqual(executed.value.skill_usage, ["execute-browser-test@0.1.0"]);
 });
 
+test("a flaky ExecutionRecord.outcome round-trips through the runtime executor's JSON output unchanged, with usage.retries staying 0", async () => {
+  const permissions = [
+    "agent:execute",
+    "agent:read",
+    "execution:read",
+    "execution:execute",
+    "execution:cancel",
+    "execution:cleanup",
+  ];
+  const authorizer = new DeterministicWorkspaceAuthorizer({
+    clock,
+    expected_issuer: "https://identity.test.invalid",
+    expected_audience: "qa-intelligence-test",
+    workspace: { workspace_id: WORKSPACE_ID, status: "active" },
+    policy: { workspace_id: WORKSPACE_ID, version: "test-policy@0.1.0", permissions },
+    integrity_proof_verifier: {
+      verify({ canonical_claims, integrity_proof }): boolean {
+        return integrity_proof === fixtureProof(canonical_claims);
+      },
+    },
+  });
+
+  const fixtureUrl = `data:text/html,${encodeURIComponent("<html><body><h1>Runtime fixture</h1></body></html>")}`;
+  let call = 0;
+  const sequence = [false, true, true]; // 2 passes + 1 fail across 3 trials -> flaky
+  const flakyPlan: PlaywrightExecutionPlan = {
+    url: fixtureUrl,
+    assert: () => sequence[Math.min(call++, sequence.length - 1)] ?? false,
+  };
+  const plans: ReadonlyMap<string, PlaywrightExecutionPlan> = new Map([
+    [TEST_CASE_REF, flakyPlan],
+    [`${TEST_CASE_REF}:trial-2`, flakyPlan],
+    [`${TEST_CASE_REF}:trial-3`, flakyPlan],
+  ]);
+  const engine = new PlaywrightExecutionEngine({
+    clock,
+    authorizer,
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans,
+  });
+  const skill = new ExecuteBrowserTest({ engine, clock, provider_ref: "playwright-execution-engine@0.1.0" });
+
+  const executor: AgentRunExecutor = new CompositeAgentRunExecutor(
+    new Map([
+      [
+        AGENT.id,
+        new BrowserTestRuntimeExecutor({ skill, expected_agent: AGENT, expected_skill: SKILL }),
+      ],
+    ]),
+  );
+  const runtime = new InMemoryAgentRuntime(clock, new RuntimeSequenceIds(), authorizer, executor);
+
+  const workspaceContext = context();
+  const started = await runtime.start({
+    schema_version: "1.0.0",
+    operation_id: "operation-runtime-start",
+    workspace_id: WORKSPACE_ID,
+    actor_id: workspaceContext.actor_id,
+    workspace_context: workspaceContext,
+    agent: AGENT,
+    purpose: "Exercise a flaky ExecutionRecord.outcome round-trip.",
+    consequence_class: "reversible",
+    input: { test_case_ref: TEST_CASE_REF, environment_ref: "dev-fixture" },
+    allowed_skills: [SKILL],
+    allowed_tools: [{ id: "playwright-execution-engine", version: "0.1.0" }],
+    policy_version: workspaceContext.policy_version,
+    budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
+    deadline: "2026-08-07T09:00:00.000Z",
+    idempotency_key: "browser-test-flaky-start-001",
+  });
+  assert.equal(started.ok, true, JSON.stringify(started));
+  if (!started.ok) return;
+
+  const executed = await runtime.execute(started.value, {
+    schema_version: "1.0.0",
+    operation_id: "operation-runtime-execute",
+    workspace_id: WORKSPACE_ID,
+    actor_id: workspaceContext.actor_id,
+    policy_version: workspaceContext.policy_version,
+    workspace_context: workspaceContext,
+    expected_revision: 3,
+    idempotency_key: "browser-test-flaky-execute-001",
+  });
+
+  assert.equal(executed.ok, true, JSON.stringify(executed));
+  if (!executed.ok) return;
+  assert.equal(executed.value.outcome, "completed");
+  assert.equal(executed.value.output?.outcome, "flaky");
+  assert.equal(executed.value.usage.retries, 0, "flake-detection trials are internal to the Skill, not surfaced as Runtime-level retries");
+});
+
 test("an unregistered Agent id fails closed instead of silently dispatching to the wrong executor", async () => {
   const authorizer = new DeterministicWorkspaceAuthorizer({
     clock,

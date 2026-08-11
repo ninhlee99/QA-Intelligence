@@ -23,3 +23,16 @@ export function failure(
 export function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
+
+export type BasicAuthCredentials = Readonly<{ username: string; password: string }>;
+
+/** Both `basic_auth_username`/`basic_auth_password` required together or neither — a partial pair is a caller configuration error, not "no basic auth." */
+export function readBasicAuthFields(input: Readonly<Record<string, unknown>>): BasicAuthCredentials | "partial" | undefined {
+  const username = input["basic_auth_username"];
+  const password = input["basic_auth_password"];
+  const hasUsername = typeof username === "string" && username.length > 0;
+  const hasPassword = typeof password === "string" && password.length > 0;
+  if (!hasUsername && !hasPassword) return undefined;
+  if (!hasUsername || !hasPassword) return "partial";
+  return { username: username as string, password: password as string };
+}
