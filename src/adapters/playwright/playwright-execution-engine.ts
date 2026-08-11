@@ -122,6 +122,12 @@ type Dependencies = Readonly<{
   secrets?: SecretResolver;
   /** Directory failure screenshots are written under. Screenshot capture is skipped (evidence stays capture_id-only) when omitted. */
   screenshotDir?: string;
+  /**
+   * Directory failure Playwright traces (`.zip`) are written under.
+   * Trace capture is fail-only and best-effort — skipped when omitted.
+   * Video / full HAR remain out of scope.
+   */
+  traceDir?: string;
 }>;
 
 type AttemptRecord = Readonly<{
@@ -160,6 +166,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #launchBrowser: () => Promise<Browser>;
   readonly #secrets: SecretResolver | undefined;
   readonly #screenshotDir: string | undefined;
+  readonly #traceDir: string | undefined;
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
   readonly #cancelled = new Set<string>();
@@ -172,6 +179,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
     this.#secrets = dependencies.secrets;
     this.#screenshotDir = dependencies.screenshotDir;
+    this.#traceDir = dependencies.traceDir;
   }
 
   async descriptor(request: DescriptorRequest): Promise<ExecutionEngineResult<"descriptor">> {
@@ -315,6 +323,15 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
         result = this.#cancelledResult(request, startedAt);
       } else {
         const page = await newFullSizePage(browser);
+        let tracingActive = false;
+        if (this.#traceDir !== undefined) {
+          try {
+            await page.context().tracing.start({ screenshots: true, snapshots: true });
+            tracingActive = true;
+          } catch {
+            tracingActive = false;
+          }
+        }
         let dialogTriggered = false;
         page.on("dialog", (dialog) => {
           dialogTriggered = true;
@@ -337,6 +354,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             })(),
           );
         });
+        try {
         await page.goto(plan.url);
         // See DiscoverUiSurface for why: a single-page app's real content
         // often renders after `load` fires, and Phase 2's interaction
@@ -426,6 +444,15 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
               if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });
 
+              let traceEvidence: readonly string[] = [];
+              if (!passed && tracingActive) {
+                traceEvidence = await this.#captureFailureTrace(page, request.attempt);
+                if (traceEvidence.length > 0) {
+                  emit("evidence_created", { kind: "trace", ref: traceEvidence[0]! });
+                  tracingActive = false;
+                }
+              }
+
               emit("completed");
 
               const completedAt = this.#clock.now();
@@ -436,6 +463,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                   evidence: [
                     cleaned.value.capture_id,
                     ...screenshotEvidence,
+                    ...traceEvidence,
                     ...(network.length > 0 ? [`network-obs:${network.length}`] : []),
                   ],
                   assertion_results: [{ assertion: "plan.assert", result: passed ? "pass" : "fail" }],
@@ -450,7 +478,12 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             }
           }
         }
-        await page.close();
+        } finally {
+          if (tracingActive) {
+            await page.context().tracing.stop().catch(() => undefined);
+          }
+          await page.close();
+        }
       }
     } catch (error) {
       emit("failed", { reason: "engine_error" });
@@ -520,6 +553,27 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       await page.screenshot({ path });
       return [path];
     } catch {
+      return [];
+    }
+  }
+
+  /**
+   * SPEC-407 §3 trace slice: stop active Playwright tracing into a zip under
+   * `traceDir`. Fail-only + best-effort — never fails the run. Callers that
+   * omit `traceDir` keep screenshot-only behavior.
+   */
+  async #captureFailureTrace(
+    page: import("playwright").Page,
+    attempt: ExecutionAttemptIdentity,
+  ): Promise<readonly string[]> {
+    if (this.#traceDir === undefined) return [];
+    try {
+      await mkdir(this.#traceDir, { recursive: true });
+      const path = join(this.#traceDir, `${attempt.execution_id}_${attempt.attempt_id}_${Date.now()}.zip`);
+      await page.context().tracing.stop({ path });
+      return [path];
+    } catch {
+      await page.context().tracing.stop().catch(() => undefined);
       return [];
     }
   }

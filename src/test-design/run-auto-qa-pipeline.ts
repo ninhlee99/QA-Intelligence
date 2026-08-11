@@ -69,6 +69,8 @@ type Dependencies = Readonly<{
   launchBrowser?: () => Promise<import("playwright").Browser>;
   /** Directory failure screenshots are written under (forwarded to `PlaywrightExecutionEngine`). Screenshot capture is skipped when omitted. */
   screenshotDir?: string;
+  /** Directory failure Playwright traces are written under. Trace capture is skipped when omitted. */
+  traceDir?: string;
 }>;
 
 /** Deep module: one `run()` call hides discovery, generation, per-case execution, and report assembly. */
@@ -202,6 +204,7 @@ export class RunAutoQaPipeline {
       plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
       ...(this.#dependencies.screenshotDir !== undefined ? { screenshotDir: this.#dependencies.screenshotDir } : {}),
+      ...(this.#dependencies.traceDir !== undefined ? { traceDir: this.#dependencies.traceDir } : {}),
     });
     const skill = new ExecuteBrowserTest({
       engine,

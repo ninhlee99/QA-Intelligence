@@ -59,7 +59,8 @@ import { EvaluateTestCaseQualitySkillRuntimeExecutor } from "../agent-skill-qual
 import { RaiseMistakeRecurrenceCandidateRuntimeExecutor } from "../learning-engine/raise-mistake-recurrence-candidate-runtime-executor.js";
 import { ListLearningCandidatesRuntimeExecutor } from "../learning-engine/list-learning-candidates-runtime-executor.js";
 import { MistakeRecurrenceTracker } from "../learning-engine/mistake-recurrence.js";
-import { InMemoryCandidateRepository } from "../adapters/memory/in-memory-candidate-repository.js";
+import { FileBackedCandidateRepository } from "../adapters/memory/file-backed-candidate-repository.js";
+import type { CandidateRepository } from "../candidate-repository/public.js";
 import { UiBaselineRuntimeExecutor } from "../visual-testing/ui-baseline-runtime-executor.js";
 import { SurfaceBaselineRuntimeExecutor } from "../discovery/surface-baseline-runtime-executor.js";
 import {
@@ -324,7 +325,7 @@ export type DevFixtureBuild = Readonly<{
   runtime: InMemoryAgentRuntime;
   tools: readonly AgentRuntimeToolDefinition[];
   mistakeRecurrenceTracker: MistakeRecurrenceTracker;
-  candidateRepository: InMemoryCandidateRepository;
+  candidateRepository: CandidateRepository;
 }>;
 
 /**
@@ -414,8 +415,13 @@ export function buildDevFixture(options: {
     clock,
     join(process.cwd(), ".qa-test-datasets"),
   );
-  const candidateRepository = new InMemoryCandidateRepository(clock);
-  const mistakeRecurrenceTracker = new MistakeRecurrenceTracker(clock);
+  const candidateRepository: CandidateRepository = new FileBackedCandidateRepository(
+    clock,
+    join(process.cwd(), ".qa-learning-candidates"),
+  );
+  const mistakeRecurrenceTracker = new MistakeRecurrenceTracker(clock, {
+    persistRootDir: join(process.cwd(), ".qa-mistake-occurrences"),
+  });
 
   // Tracer bullet (docs/proposals/SPEC-512-mcp-test-execution-tool.md).
   // TC-DEMO-001: navigate + assert only. TC-DEMO-002 (Phase 2,

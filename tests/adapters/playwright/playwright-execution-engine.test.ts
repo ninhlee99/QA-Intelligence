@@ -158,6 +158,47 @@ test("start writes a real screenshot file to disk when screenshotDir is configur
   assert.ok(result.value.evidence.length >= 2, "evidence SHALL include both capture_id and the screenshot path");
 });
 
+test("start writes a Playwright trace zip when traceDir is configured and assertion fails", async () => {
+  const traceDir = mkdtempSync(join(tmpdir(), "qa-trace-test-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-trace-failed", planFor("failed")]]),
+    traceDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-trace", attempt_id: "attempt-trace-failed" };
+
+  const result = await engine.start(startRequestFor(attempt, "failed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.equal(result.value.outcome, "failed");
+  const tracePath = result.value.evidence.find((e) => e.endsWith(".zip"));
+  assert.ok(tracePath, "failed run with traceDir SHALL attach a Playwright trace zip");
+  assert.ok(existsSync(tracePath!), "trace path SHALL exist on disk");
+  assert.ok(statSync(tracePath!).size > 0, "trace zip SHALL be non-empty");
+});
+
+test("start does not write a trace zip when assertion passes even with traceDir configured", async () => {
+  const traceDir = mkdtempSync(join(tmpdir(), "qa-trace-pass-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-trace-passed", planFor("passed")]]),
+    traceDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-trace-pass", attempt_id: "attempt-trace-passed" };
+
+  const result = await engine.start(startRequestFor(attempt, "passed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.equal(result.value.outcome, "passed");
+  assert.equal(result.value.evidence.some((e) => e.endsWith(".zip")), false);
+});
+
 test("start does not capture a screenshot when the plan assertion passes, even with screenshotDir configured", async () => {
   const screenshotDir = mkdtempSync(join(tmpdir(), "qa-screenshot-test-"));
   const engine = new PlaywrightExecutionEngine({

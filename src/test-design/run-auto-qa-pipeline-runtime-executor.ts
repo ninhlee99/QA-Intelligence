@@ -181,13 +181,23 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       outputPath !== undefined
         ? join(dirname(outputPath), ".qa-screenshots", input.execution.operation_id)
         : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-screenshots", input.execution.operation_id);
+    const traceDir =
+      outputPath !== undefined
+        ? join(dirname(outputPath), ".qa-traces", input.execution.operation_id)
+        : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-traces", input.execution.operation_id);
     let screenshotDirReady = true;
+    let traceDirReady = true;
     try {
       await mkdir(screenshotDir, { recursive: true });
     } catch {
       // Best-effort: screenshot capture is optional evidence, never a
       // reason to fail the whole run_auto_qa call.
       screenshotDirReady = false;
+    }
+    try {
+      await mkdir(traceDir, { recursive: true });
+    } catch {
+      traceDirReady = false;
     }
 
     const pipeline = new RunAutoQaPipeline({
@@ -197,6 +207,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       generator: this.#dependencies.generator,
       launchBrowser,
       ...(screenshotDirReady ? { screenshotDir } : {}),
+      ...(traceDirReady ? { traceDir } : {}),
     });
 
     const result = await pipeline.run({

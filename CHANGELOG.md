@@ -4,6 +4,7 @@
 
 ### Added
 
+- P6: Playwright fail-only traces → `.qa-traces/` (+ evidence pack `trace`); durable `avoid:*` (`.qa-avoidance-hints/`), learning candidates (`.qa-learning-candidates/`), mistake occurrences (`.qa-mistake-occurrences/`) across MCP restart
 - P5: visual baselines (`capture_ui_baseline` / `compare_ui_baseline` → `.qa-baselines/`, exact PNG hash+dims, observation only); surface baselines (`register_ui_surface_baseline` / `compare_ui_surface_to_baseline`); stable `avoid:<classification>:<test_ref>` recurrence keys + auto-raise Learning candidate on repeat; `list_learning_candidates` (never promotes)
 - P4.5: synthetic `field_samples` on `register_test_dataset` (credential-shape reject); durable `.qa-test-datasets/`; `resolve_test_dataset_fields` → `field_values` for execute/regression
 - P4 slices: `run_regression_suite` subset (`case_ids` / `related_defect_ids`) + `field_values` + draft defects / release gate; workflow `network_hints`; `discover_and_compare_role_ui_surfaces`; defect evidence pack on tracker export

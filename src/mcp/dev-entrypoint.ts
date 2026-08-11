@@ -18,6 +18,7 @@
  * development, exactly as ADR-016 §8 anticipates.
  */
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 
 import {
   canonicalWorkspaceIntegrityClaims,
@@ -132,7 +133,9 @@ function main(): void {
     },
   });
 
-  const sessionMemory = new SessionMemory(clock);
+  const sessionMemory = new SessionMemory(clock, {
+    persistRootDir: join(process.cwd(), ".qa-avoidance-hints"),
+  });
   const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,

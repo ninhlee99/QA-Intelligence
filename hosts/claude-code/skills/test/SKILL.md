@@ -128,7 +128,10 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 - Surface baseline: after discover, `register_ui_surface_baseline` then
   `compare_ui_surface_to_baseline` for named-control drift.
 - Learning: `list_learning_candidates` after repeated `run_auto_qa` drafts —
-  never auto-promote.
+  never auto-promote. Hints/candidates survive MCP restart under
+  `.qa-avoidance-hints/` / `.qa-learning-candidates/`.
+- Fail evidence: screenshots + Playwright `.qa-traces/*.zip` (fail-only;
+  open with `npx playwright show-trace`).
 
 ## Triage rules
 

@@ -258,7 +258,9 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       }
 
       const screenshotDir = join(process.cwd(), ".qa-screenshots", input.execution.operation_id, item.test_case.id);
+      const traceDir = join(process.cwd(), ".qa-traces", input.execution.operation_id, item.test_case.id);
       await mkdir(screenshotDir, { recursive: true }).catch(() => undefined);
+      await mkdir(traceDir, { recursive: true }).catch(() => undefined);
       const plans = new Map<string, PlaywrightExecutionPlan>(
         Array.from({ length: MAX_FLAKE_TRIALS }, (_, i) => {
           const key = i === 0 ? item.test_case.id : `${item.test_case.id}:trial-${i + 1}`;
@@ -272,6 +274,7 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
         plans,
         ...(this.#dependencies.credentials !== undefined ? { secrets: this.#dependencies.credentials } : {}),
         screenshotDir,
+        traceDir,
       });
       const skill = new ExecuteBrowserTest({
         engine,

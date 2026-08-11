@@ -20,6 +20,7 @@
  * `stdio`'s remote counterpart.
  */
 import { SignJWT } from "jose";
+import { join } from "node:path";
 
 import { generateSigningKey, startJwksServer } from "../adapters/oidc/jwks-fixture-server.js";
 import { JwksWorkspaceIntegrityProofVerifier } from "../adapters/oidc/jwks-integrity-proof-verifier.js";
@@ -113,7 +114,9 @@ async function main(): Promise<void> {
     context_issuer: CONTEXT_ISSUER,
   });
 
-  const sessionMemory = new SessionMemory(clock);
+  const sessionMemory = new SessionMemory(clock, {
+    persistRootDir: join(process.cwd(), ".qa-avoidance-hints"),
+  });
   const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,

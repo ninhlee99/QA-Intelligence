@@ -6,6 +6,7 @@ import type { Defect } from "./public.js";
 
 export type DefectEvidenceKind =
   | "screenshot"
+  | "trace"
   | "capture"
   | "outcome"
   | "test_case"
@@ -46,6 +47,9 @@ function classifyEvidence(ref: string): DefectEvidenceEntry {
   const lower = ref.toLowerCase();
   if (lower.endsWith(".png") || lower.includes("screenshot") || lower.includes(".qa-screenshots/")) {
     return { kind: "screenshot", ref, readable_label: "Failure screenshot" };
+  }
+  if (lower.endsWith(".zip") || lower.includes(".qa-traces/")) {
+    return { kind: "trace", ref, readable_label: "Playwright failure trace (zip)" };
   }
   if (ref.startsWith("capture:") || lower.includes("capture:")) {
     return { kind: "capture", ref, readable_label: "DOM / Semantic UI capture id" };

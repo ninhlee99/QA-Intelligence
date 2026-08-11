@@ -9,3 +9,7 @@ node_modules/
 .qa-screenshots/
 .qa-baselines/
 .qa-surface-baselines/
+.qa-traces/
+.qa-avoidance-hints/
+.qa-learning-candidates/
+.qa-mistake-occurrences/

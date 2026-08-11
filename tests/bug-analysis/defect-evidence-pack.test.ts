@@ -45,6 +45,15 @@ test("buildDefectEvidencePack classifies screenshot/capture/outcome", () => {
   assert.ok(pack.markdown_attachment_section.includes("confirmed_cause"));
 });
 
+test("buildDefectEvidencePack classifies .qa-traces zip as trace", () => {
+  const pack = buildDefectEvidencePack(
+    sampleDefect({
+      evidence: ["/tmp/.qa-traces/op/run_attempt_1.zip", "capture:x"],
+    }),
+  );
+  assert.ok(pack.entries.some((e) => e.kind === "trace"));
+});
+
 test("formatDefectsForTracker includes evidence pack section", () => {
   const text = formatDefectsForTracker([sampleDefect()], "markdown");
   assert.ok(text.includes("Evidence pack"));

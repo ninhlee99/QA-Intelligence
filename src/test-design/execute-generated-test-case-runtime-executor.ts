@@ -85,11 +85,22 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       ".qa-screenshots",
       input.execution.operation_id,
     );
+    const traceDir = join(
+      this.#dependencies.screenshotBaseDir ?? process.cwd(),
+      ".qa-traces",
+      input.execution.operation_id,
+    );
     let screenshotDirReady = true;
+    let traceDirReady = true;
     try {
       await mkdir(screenshotDir, { recursive: true });
     } catch {
       screenshotDirReady = false;
+    }
+    try {
+      await mkdir(traceDir, { recursive: true });
+    } catch {
+      traceDirReady = false;
     }
 
     const plans = new Map<string, PlaywrightExecutionPlan>(
@@ -105,6 +116,7 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
       ...(screenshotDirReady ? { screenshotDir } : {}),
+      ...(traceDirReady ? { traceDir } : {}),
     });
     const skill = new ExecuteBrowserTest({
       engine,
