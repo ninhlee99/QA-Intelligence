@@ -127,6 +127,7 @@ import {
   KnowledgeRegisterRuntimeExecutor,
   OpenApiSmokeRuntimeExecutor,
   RegressionSuiteRuntimeExecutor,
+  RoleSurfaceCompareRuntimeExecutor,
 } from "../test-design/pro-tester-runtime-executors.js";
 
 import { compactMcpInput } from "./mcp-input.js";
@@ -231,6 +232,8 @@ export const JOURNEY_GEN_AGENT = { id: "generate-journey-test-cases-agent", vers
 export const JOURNEY_GEN_SKILL = { id: "generate-journey-test-cases", version: "0.1.0" } as const;
 export const COMPARE_UI_AGENT = { id: "compare-ui-surfaces-agent", version: "0.1.0" } as const;
 export const COMPARE_UI_SKILL = { id: "compare-ui-surfaces", version: "0.1.0" } as const;
+export const ROLE_COMPARE_AGENT = { id: "discover-compare-role-surfaces-agent", version: "0.1.0" } as const;
+export const ROLE_COMPARE_SKILL = { id: "discover-compare-role-surfaces", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
 export const DEMO_PASSWORD_SECRET_REF = "workspace-secret:demo-password";
 export const DEMO_PAGE_ENVIRONMENT_REF = "environment:dev-fixture-page";
@@ -1280,6 +1283,15 @@ export function buildDevFixture(options: {
     new CompareUiSurfacesRuntimeExecutor({
       expected_agent: COMPARE_UI_AGENT,
       expected_skill: COMPARE_UI_SKILL,
+    }),
+  );
+  executorMap.set(
+    ROLE_COMPARE_AGENT.id,
+    new RoleSurfaceCompareRuntimeExecutor({
+      expected_agent: ROLE_COMPARE_AGENT,
+      expected_skill: ROLE_COMPARE_SKILL,
+      discoverAfterLogin: discoverAfterLoginSkill,
+      credentials,
     }),
   );
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
@@ -2332,7 +2344,7 @@ export function buildDevFixture(options: {
     {
       name: "discover_ui_workflow",
       description:
-        "SPEC-201 Navigation thin slice: same-origin multi-page crawl from url (max_pages default 3, cap 8). Returns pages + link edges + start_page_map. Not full Region/State/Permission.",
+        "SPEC-201 Navigation thin slice: same-origin multi-page crawl from url (max_pages default 3, cap 8). Returns pages (+ optional network_hints from xhr/fetch — candidates not oracles) + link edges + start_page_map. Not full Region/State/Permission.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2399,10 +2411,23 @@ export function buildDevFixture(options: {
     },
     {
       name: "run_regression_suite",
-      description: "Re-run a registered regression suite (browser + API cases). Pass base_url for API cases if not stored on suite.",
+      description:
+        "Re-run a registered regression suite (browser + API). Optional case_ids / related_defect_ids (DEF-DRAFT:<id>) for subset retest; field_values for browser fills. Returns draft_defects + release_recommendation (not pass-count-only).",
       inputSchema: {
         type: "object",
-        properties: { suite_id: { type: "string" }, base_url: { type: "string" } },
+        properties: {
+          suite_id: { type: "string" },
+          base_url: { type: "string" },
+          case_ids: { type: "array", items: { type: "string" }, description: "Subset of test_case / api case ids." },
+          related_defect_ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "DEF-DRAFT:<test_case_id> or raw case ids to retest.",
+          },
+          field_values: { type: "object", description: "Map accessible_name → fill value for browser cases." },
+          requirement_ref: { type: "string" },
+          target_url: { type: "string" },
+        },
         required: ["suite_id"],
       },
       agent: REGRESSION_RUN_AGENT,
@@ -2415,6 +2440,11 @@ export function buildDevFixture(options: {
         compactMcpInput({
           suite_id: (args["suite_id"] as string | undefined) ?? "",
           base_url: (args["base_url"] as string | undefined) ?? "",
+          case_ids: (args["case_ids"] as JsonValue | undefined) ?? [],
+          related_defect_ids: (args["related_defect_ids"] as JsonValue | undefined) ?? [],
+          field_values: (args["field_values"] as JsonValue | undefined) ?? {},
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+          target_url: (args["target_url"] as string | undefined) ?? "",
         }),
     },
     {
@@ -2598,6 +2628,31 @@ export function buildDevFixture(options: {
           elements_b: (args["elements_b"] as JsonValue | undefined) ?? [],
           label_a: (args["label_a"] as string | undefined) ?? "",
           label_b: (args["label_b"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "discover_and_compare_role_ui_surfaces",
+      description:
+        "Orchestrate two discover_ui_surface_after_login sessions (role_a / role_b) then compare named controls. Prefer password_secret_ref. Not a permission model — Host interprets only_in_a / only_in_b.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          role_a: { type: "object" },
+          role_b: { type: "object" },
+        },
+        required: ["role_a", "role_b"],
+      },
+      agent: ROLE_COMPARE_AGENT,
+      purpose: "Dual-role after-login discovery + surface compare",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [ROLE_COMPARE_SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      budgets: { max_steps: 16, max_duration_seconds: 240, max_tool_calls: 8, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          role_a: (args["role_a"] as JsonValue | undefined) ?? {},
+          role_b: (args["role_b"] as JsonValue | undefined) ?? {},
         }),
     },
   ];

@@ -63,10 +63,13 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
 ## After deploy / on staging
 
 1. `register_workspace_environment` for staging base URL if required.
-2. `run_regression_suite` (update `base_url` / field values as needed) **or**
+2. `run_regression_suite` (update `base_url` / `field_values` as needed) **or**
    regenerate with `run_auto_qa` when UI/AC changed.
-3. Role-sensitive change → two discoveries + `compare_ui_surfaces`.
-4. Retest loop: fix → `run_regression_suite` → only then claim green.
+3. Role-sensitive change → `discover_and_compare_role_ui_surfaces` (or two
+   discoveries + `compare_ui_surfaces`).
+4. Retest loop: fix → `run_regression_suite` with `case_ids` /
+   `related_defect_ids` → only claim green when `release_recommendation`
+   allows (not pass-count alone).
 
 ## Non-goals
 

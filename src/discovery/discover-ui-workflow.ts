@@ -7,9 +7,22 @@ import { chromium, type Browser, type Page } from "playwright";
 
 import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
+import {
+  pushNetworkObservation,
+  readBodySnippet,
+  shouldCaptureNetworkResponse,
+  type PlaywrightNetworkObservation,
+} from "../adapters/playwright/network-oracle.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
 import { DiscoverUiSurface } from "./discover-ui-surface.js";
 import type { SemanticUiMap } from "./public.js";
+
+export type WorkflowNetworkHint = Readonly<{
+  url_includes: string;
+  method: string;
+  status: number;
+  body_snippet_truncated: string;
+}>;
 
 export type WorkflowPageCapture = Readonly<{
   url: string;
@@ -19,6 +32,8 @@ export type WorkflowPageCapture = Readonly<{
   named_fields: readonly string[];
   named_actions: readonly string[];
   limitations: readonly string[];
+  /** Observed xhr/fetch during this page visit — hints only, not oracles. */
+  network_hints?: readonly WorkflowNetworkHint[];
 }>;
 
 export type WorkflowEdge = Readonly<{
@@ -137,12 +152,37 @@ export class DiscoverUiWorkflow {
           if (visited.has(current)) continue;
           visited.add(current);
 
+          const networkObservations: PlaywrightNetworkObservation[] = [];
+          const pendingNetworkReads: Promise<void>[] = [];
+          const onResponse = (response: import("playwright").Response): void => {
+            const request = response.request();
+            if (!shouldCaptureNetworkResponse(request.resourceType(), response.url())) return;
+            pendingNetworkReads.push(
+              (async () => {
+                const body_snippet = await readBodySnippet(response.headers()["content-type"], () =>
+                  response.text(),
+                );
+                pushNetworkObservation(networkObservations, {
+                  method: request.method(),
+                  url: response.url(),
+                  status: response.status(),
+                  body_snippet,
+                });
+              })(),
+            );
+          };
+          page.on("response", onResponse);
+
           try {
             await page.goto(current, { waitUntil: "domcontentloaded", timeout: 20_000 });
+            await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+            await Promise.all(pendingNetworkReads);
           } catch (error) {
+            page.off("response", onResponse);
             limitations.push(`navigation_failed:${current}:${(error as Error).message}`);
             continue;
           }
+          page.off("response", onResponse);
 
           const captured = await this.#discover.captureSemanticUiMap(page, {
             context: request.context,
@@ -167,6 +207,7 @@ export class DiscoverUiWorkflow {
             .map((el) => el.accessible_name!)
             .slice(0, 20);
 
+          const network_hints = toNetworkHints(networkObservations);
           pages.push({
             url: current,
             title,
@@ -175,6 +216,7 @@ export class DiscoverUiWorkflow {
             named_fields: namedFields,
             named_actions: namedActions,
             limitations: [...map.limitations],
+            ...(network_hints.length > 0 ? { network_hints } : {}),
           });
 
           if (pages.length >= maxPages) break;
@@ -222,6 +264,9 @@ export class DiscoverUiWorkflow {
       limitations.push(`truncated_crawl_max_pages_${maxPages}`);
     }
     limitations.push("Region/State/Permission concepts not mapped — Navigation link graph only.");
+    limitations.push(
+      "network_hints are observed xhr/fetch only — not oracles; confirm before binding expected_network.",
+    );
 
     return {
       ok: true,
@@ -297,4 +342,31 @@ function dedupeEdges(edges: readonly WorkflowEdge[]): readonly WorkflowEdge[] {
     out.push(edge);
   }
   return out.slice(0, 40);
+}
+
+function toNetworkHints(
+  observations: readonly PlaywrightNetworkObservation[],
+): readonly WorkflowNetworkHint[] {
+  const out: WorkflowNetworkHint[] = [];
+  const seen = new Set<string>();
+  for (const obs of observations) {
+    let urlIncludes = obs.url;
+    try {
+      const parsed = new URL(obs.url);
+      urlIncludes = parsed.pathname.length > 1 ? parsed.pathname : parsed.host;
+    } catch {
+      /* keep full url */
+    }
+    const key = `${obs.method}|${urlIncludes}|${obs.status}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      url_includes: urlIncludes.slice(0, 120),
+      method: obs.method,
+      status: obs.status,
+      body_snippet_truncated: obs.body_snippet.slice(0, 160),
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
 }

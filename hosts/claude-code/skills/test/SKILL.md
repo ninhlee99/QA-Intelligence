@@ -92,8 +92,10 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
     `file_defects_to_tracker` is dry-run by default — only live-file with
     `confirm_file=true` + `bearer_token_secret_ref`. Do **not** invent
     `confirmed_cause`. Do not claim auto-filed without confirm.
-12. **Retest loop after a fix.** Re-run `run_regression_suite` for the
-    saved suite (or subset via fresh register). Only then soften release gate.
+12. **Retest loop after a fix.** Re-run `run_regression_suite` with
+    `case_ids` or `related_defect_ids` (`DEF-DRAFT:<test_case_id>`) for
+    subset — check `release_recommendation` + `draft_defects`, not pass
+    count alone. Pass `field_values` when positives need fills.
     Optional: `create_automation_asset` with `regression_suite_id` binds
     governance metadata to that suite (still not a compiled script pack).
 
@@ -112,7 +114,12 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
   (+ optional MFA wait) — no invented IdP credentials.
 - Journeys: pass caller-observed `expected_network` into
   `generate_journey_test_cases` when hops trigger a known API — never invent
-  routes.
+  routes. Prefer `network_hints` from `discover_ui_workflow` as candidates
+  only (confirm before bind).
+- Role dual-session: `discover_and_compare_role_ui_surfaces` (role_a/role_b)
+  or manual two discoveries + `compare_ui_surfaces`.
+- Tracker export: `export_defects_for_tracker` includes evidence pack
+  (screenshot/capture/outcome) — still paste-only unless `file_defects_to_tracker`.
 
 ## Triage rules
 

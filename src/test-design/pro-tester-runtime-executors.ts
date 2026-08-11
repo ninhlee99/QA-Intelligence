@@ -10,14 +10,21 @@ import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-brows
 import { ExecuteApiSmoke } from "../api-testing/execute-api-smoke.js";
 import { openApiToApiSmokeCases } from "../api-testing/openapi-to-smoke-cases.js";
 import type { ApiSmokeCase } from "../api-testing/public.js";
+import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
 import { formatDefectsForTracker, type DefectExportFormat } from "../bug-analysis/format-defects-for-tracker.js";
 import { fileDefectsToTracker, type DefectTrackerProvider } from "../bug-analysis/file-defects-to-tracker.js";
 import type { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
-import { resolveBearerToken } from "../credentials/resolve-secret-input.js";
+import { resolveBearerToken, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import type { Defect } from "../bug-analysis/public.js";
 import { compareUiSurfaces } from "../discovery/compare-ui-surfaces.js";
+import {
+  discoverAndCompareRoleSurfaces,
+  type RoleSessionLogin,
+} from "../discovery/discover-and-compare-role-surfaces.js";
 import type { SemanticUiElement } from "../discovery/public.js";
+import { buildProfessionalQaAnalysis } from "../reporting/qa-professional-analysis.js";
+import type { QaRunTestCaseOutcome, QaRunTestCaseResult } from "../reporting/qa-run-report.js";
 import type {
   JsonObject,
   JsonValue,
@@ -38,6 +45,8 @@ import {
   type RegressionCase,
 } from "./regression-suite-registry.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
+import type { DiscoverAfterLogin } from "../discovery/discover-after-login.js";
+import { buildDefectEvidencePack } from "../bug-analysis/defect-evidence-pack.js";
 
 export type RegressionSuiteRegistry = InMemoryRegressionSuiteRegistry | FileBackedRegressionSuiteRegistry;
 
@@ -163,21 +172,42 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
+    const caseIds = readStringArray(input.start_request.input["case_ids"]);
+    const relatedDefectIds = readStringArray(input.start_request.input["related_defect_ids"]);
+    const fieldValues = readFieldValuesMap(input.start_request.input["field_values"]);
+    const casesToRun = filterRegressionCases(suite.cases, caseIds, relatedDefectIds);
+    if (casesToRun.length === 0) {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "run_regression_suite: no cases matched case_ids / related_defect_ids filters (or suite empty).",
+        ),
+      };
+    }
+
     const results: JsonObject[] = [];
-    let failed = 0;
-    for (const item of suite.cases) {
+    const qaResults: QaRunTestCaseResult[] = [];
+    let nonPassed = 0;
+
+    for (const item of casesToRun) {
       if (item.kind === "api") {
         if (this.#dependencies.apiSmoke === undefined) {
-          results.push({ kind: "api", case_id: item.case.id, outcome: "not_executed", message: "API smoke skill not wired." });
-          failed += 1;
+          const row = regressionRow("api", item.case.id, "not_executed", "API smoke skill not wired.", []);
+          results.push(row.json);
+          qaResults.push(row.qa);
+          nonPassed += 1;
           continue;
         }
         const baseUrl =
           readString(input.start_request.input["base_url"]) ??
           suite.base_url;
         if (baseUrl === undefined) {
-          results.push({ kind: "api", case_id: item.case.id, outcome: "not_executed", message: "base_url required for API cases." });
-          failed += 1;
+          const row = regressionRow("api", item.case.id, "not_executed", "base_url required for API cases.", []);
+          results.push(row.json);
+          qaResults.push(row.qa);
+          nonPassed += 1;
           continue;
         }
         const run = await this.#dependencies.apiSmoke.run({
@@ -188,30 +218,42 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
           cases: [item.case],
         });
         if (!run.ok) {
-          results.push({ kind: "api", case_id: item.case.id, outcome: "failed", message: run.failure.message });
-          failed += 1;
+          const row = regressionRow("api", item.case.id, "failed", run.failure.message, [
+            `api-failure:${run.failure.message}`,
+          ]);
+          results.push(row.json);
+          qaResults.push(row.qa);
+          nonPassed += 1;
           continue;
         }
         const caseResult = run.value.cases[0];
-        results.push({
-          kind: "api",
-          case_id: item.case.id,
-          outcome: caseResult?.outcome ?? run.value.outcome,
-          message: caseResult?.message ?? "",
-        });
-        if ((caseResult?.outcome ?? run.value.outcome) !== "passed") failed += 1;
+        const rawOutcome = String(caseResult?.outcome ?? run.value.outcome);
+        const outcome = mapQaOutcome(rawOutcome);
+        const row = regressionRow(
+          "api",
+          item.case.id,
+          outcome,
+          caseResult?.message ?? "",
+          [`api-outcome:${rawOutcome}`],
+        );
+        results.push(row.json);
+        qaResults.push(row.qa);
+        if (outcome !== "passed") nonPassed += 1;
         continue;
       }
 
-      const converted = testCaseToExecutionPlan(item.test_case, [item.generated_assertion]);
+      const converted = testCaseToExecutionPlan(
+        item.test_case,
+        [item.generated_assertion],
+        fieldValues,
+      );
       if (!converted.ok) {
-        results.push({
-          kind: "browser",
-          case_id: item.test_case.id,
-          outcome: "not_executed",
-          message: converted.failure.message,
-        });
-        failed += 1;
+        const row = regressionRow("browser", item.test_case.id, "not_executed", converted.failure.message, [
+          `plan:${converted.failure.message}`,
+        ]);
+        results.push(row.json);
+        qaResults.push(row.qa);
+        nonPassed += 1;
         continue;
       }
 
@@ -245,23 +287,57 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
         deadline: input.start_request.deadline,
       });
       if (!executed.ok) {
-        results.push({
-          kind: "browser",
-          case_id: item.test_case.id,
-          outcome: "failed",
-          message: executed.failure.message,
-        });
-        failed += 1;
+        const row = regressionRow("browser", item.test_case.id, "failed", executed.failure.message, [
+          ...executed.failure.evidence,
+        ]);
+        results.push(row.json);
+        qaResults.push(row.qa);
+        nonPassed += 1;
         continue;
       }
-      results.push({
-        kind: "browser",
-        case_id: item.test_case.id,
-        outcome: executed.value.outcome ?? "indeterminate",
-        message: `evidence:${executed.value.evidence?.length ?? 0}`,
-      });
-      if (executed.value.outcome !== "passed") failed += 1;
+      const outcome = mapQaOutcome(String(executed.value.outcome ?? "indeterminate"));
+      const evidence = [...(executed.value.evidence ?? [])];
+      const row = regressionRow(
+        "browser",
+        item.test_case.id,
+        outcome,
+        `evidence:${evidence.length}`,
+        evidence,
+        item.test_case.purpose,
+      );
+      results.push(row.json);
+      qaResults.push(row.qa);
+      if (outcome !== "passed") nonPassed += 1;
     }
+
+    const requirementRef =
+      readString(input.start_request.input["requirement_ref"]) ?? `regression-suite:${suite.id}`;
+    const targetUrl =
+      readString(input.start_request.input["target_url"]) ??
+      suite.base_url ??
+      `suite:${suite.id}`;
+    const environmentRef = suite.environment_ref ?? "regression";
+    const draft_defects = draftDefectsFromQaRun({
+      workspace_id: workspaceId,
+      requirement_ref: requirementRef,
+      target_url: targetUrl,
+      environment_ref: environmentRef,
+      test_cases: qaResults,
+    });
+    const summary = {
+      generated: qaResults.length,
+      executed: qaResults.filter((r) => r.outcome !== "not_executed").length,
+      passed: qaResults.filter((r) => r.outcome === "passed").length,
+      failed: qaResults.filter((r) => r.outcome === "failed").length,
+      flaky: qaResults.filter((r) => r.outcome === "flaky").length,
+      not_executed: qaResults.filter((r) => r.outcome === "not_executed").length,
+    };
+    const analysis = buildProfessionalQaAnalysis({
+      test_cases: qaResults,
+      generation_findings: [],
+      draft_defects,
+      summary,
+    });
 
     return success(
       this.#dependencies,
@@ -269,11 +345,24 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       {
         suite_id: suite.id,
         label: suite.label,
-        outcome: failed === 0 ? "passed" : "failed",
-        failed_count: failed,
+        outcome: nonPassed === 0 ? "passed" : "failed",
+        failed_count: nonPassed,
+        case_count_run: casesToRun.length,
+        case_count_suite: suite.cases.length,
         results,
+        draft_defects: draft_defects.map((d) => ({ ...d })),
+        release_recommendation: analysis.release_recommendation,
+        release_recommendation_rationale: analysis.release_recommendation_rationale,
+        residual_risks: analysis.residual_risks.map((r) => ({ ...r })),
+        variant_coverage: analysis.variant_coverage.map((r) => ({ ...r })),
+        summary,
       },
-      [`suite:${suite.id}`, `failed:${failed}`],
+      [
+        `suite:${suite.id}`,
+        `failed:${nonPassed}`,
+        `release:${analysis.release_recommendation}`,
+        `draft-defects:${draft_defects.length}`,
+      ],
     );
   }
 }
@@ -365,11 +454,16 @@ export class DefectExportRuntimeExecutor implements AgentRunExecutor {
     }
     const formatRaw = readString(input.start_request.input["format"]) ?? "markdown";
     const format: DefectExportFormat = formatRaw === "jira_description" ? "jira_description" : "markdown";
-    const text = formatDefectsForTracker(raw as unknown as Defect[], format);
+    const defects = raw as unknown as Defect[];
+    const text = formatDefectsForTracker(defects, format);
+    const evidence_packs = defects.map((defect) => ({
+      defect_id: defect.id,
+      ...buildDefectEvidencePack(defect),
+    }));
     return {
       ok: true,
       value: {
-        output: { format, text, defect_count: raw.length },
+        output: { format, text, defect_count: raw.length, evidence_packs },
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -383,11 +477,11 @@ export class DefectExportRuntimeExecutor implements AgentRunExecutor {
         citations: [`defect-count:${raw.length}`],
         uncertainty: {
           level: "low",
-          reasons: ["Export text only — does not file to Jira/Linear; Host pastes or integrates."],
+          reasons: ["Export text + evidence pack — does not file to Jira/Linear; Host pastes or integrates."],
         },
         policy_events: [],
         usage: { steps: 1, duration_seconds: 0, tool_calls: 0, retries: 0 },
-        evidence: [`defect-count:${raw.length}`, `format:${format}`],
+        evidence: [`defect-count:${raw.length}`, `format:${format}`, `evidence-packs:${evidence_packs.length}`],
         cleanup_status: "not_required",
         knowledge_candidates: [],
       },
@@ -670,6 +764,175 @@ export class CompareUiSurfacesRuntimeExecutor implements AgentRunExecutor {
   }
 }
 
+export type RoleSurfaceCompareRuntimeExecutorDependencies = Readonly<{
+  expected_agent: VersionReference;
+  expected_skill: VersionReference;
+  discoverAfterLogin: DiscoverAfterLogin;
+  credentials?: WorkspaceCredentialRegistry;
+}>;
+
+export class RoleSurfaceCompareRuntimeExecutor implements AgentRunExecutor {
+  readonly #dependencies: RoleSurfaceCompareRuntimeExecutorDependencies;
+
+  constructor(dependencies: RoleSurfaceCompareRuntimeExecutorDependencies) {
+    this.#dependencies = dependencies;
+  }
+
+  async execute(input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    const configurationFailure = validateConfiguration(input, this.#dependencies);
+    if (configurationFailure) return { ok: false, failure: configurationFailure };
+
+    const roleA = parseRoleSession(input.start_request.input["role_a"], "role_a");
+    const roleB = parseRoleSession(input.start_request.input["role_b"], "role_b");
+    if (!roleA.ok) return { ok: false, failure: failure("orchestration", "invalid_request", roleA.message) };
+    if (!roleB.ok) return { ok: false, failure: failure("orchestration", "invalid_request", roleB.message) };
+
+    const resolvedA = resolveRolePassword(roleA.value, this.#dependencies.credentials, input.reference.workspace_id);
+    if (!resolvedA.ok) return { ok: false, failure: failure("orchestration", "invalid_request", resolvedA.message) };
+    const resolvedB = resolveRolePassword(roleB.value, this.#dependencies.credentials, input.reference.workspace_id);
+    if (!resolvedB.ok) return { ok: false, failure: failure("orchestration", "invalid_request", resolvedB.message) };
+
+    const compared = await discoverAndCompareRoleSurfaces(
+      { discoverAfterLogin: this.#dependencies.discoverAfterLogin },
+      {
+        operation_id: input.execution.operation_id,
+        context: input.execution.workspace_context,
+        role_a: resolvedA.value,
+        role_b: resolvedB.value,
+      },
+    );
+    if (!compared.ok) {
+      return {
+        ok: false,
+        failure: failure(
+          compared.failure.class === "authorization" ? "policy" : "infrastructure",
+          compared.failure.class === "authorization" ? "authorization_denied" : "infrastructure_failure",
+          compared.failure.message,
+          compared.failure.retryable,
+          compared.failure.evidence,
+        ),
+      };
+    }
+
+    const { value } = compared;
+    return {
+      ok: true,
+      value: {
+        output: {
+          label_a: value.label_a,
+          label_b: value.label_b,
+          map_a: { ...value.map_a, elements: value.map_a.elements.map((el) => ({ ...el })) },
+          map_b: { ...value.map_b, elements: value.map_b.elements.map((el) => ({ ...el })) },
+          diff: { ...value.diff },
+          note: "Orchestrated dual after-login capture + named-control diff — not a permission model.",
+        },
+        output_validated: true,
+        satisfied_evidence_requirements: [],
+        resolved_versions: {
+          agent: `${this.#dependencies.expected_agent.id}@${this.#dependencies.expected_agent.version}`,
+          policy: input.start_request.policy_version,
+          skill: `${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`,
+        },
+        rule_results: [],
+        skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
+        tool_usage: ["discover_ui_surface_after_login×2"],
+        citations: [value.diff.summary],
+        uncertainty: {
+          level: "low",
+          reasons: ["Diff is named-control only; Host interprets authz meaning."],
+        },
+        policy_events: [],
+        usage: { steps: 2, duration_seconds: 0, tool_calls: 2, retries: 0 },
+        evidence: [
+          `only-a:${value.diff.only_in_a.length}`,
+          `only-b:${value.diff.only_in_b.length}`,
+          `shared:${value.diff.shared.length}`,
+        ],
+        cleanup_status: "not_required",
+        knowledge_candidates: [],
+      },
+    };
+  }
+}
+
+type RoleSessionWithSecret = RoleSessionLogin & { password_secret_ref?: string };
+
+function parseRoleSession(
+  value: JsonValue | undefined,
+  label: string,
+): Readonly<{ ok: true; value: RoleSessionWithSecret }> | Readonly<{ ok: false; message: string }> {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, message: `${label} must be an object.` };
+  }
+  const obj = value as JsonObject;
+  const roleLabel = readString(obj["label"]) ?? label;
+  const loginUrl = readString(obj["login_url"]);
+  const targetUrl = readString(obj["target_url"]);
+  if (loginUrl === undefined || targetUrl === undefined) {
+    return { ok: false, message: `${label} requires login_url and target_url.` };
+  }
+  return {
+    ok: true,
+    value: {
+      label: roleLabel,
+      login_url: loginUrl,
+      target_url: targetUrl,
+      ...(readString(obj["username_field_name"]) !== undefined
+        ? { username_field_name: readString(obj["username_field_name"])! }
+        : {}),
+      ...(readString(obj["username"]) !== undefined ? { username: readString(obj["username"])! } : {}),
+      ...(readString(obj["password_field_name"]) !== undefined
+        ? { password_field_name: readString(obj["password_field_name"])! }
+        : {}),
+      ...(readString(obj["password"]) !== undefined ? { password: readString(obj["password"])! } : {}),
+      ...(readString(obj["password_secret_ref"]) !== undefined
+        ? { password_secret_ref: readString(obj["password_secret_ref"])! }
+        : {}),
+      ...(readString(obj["submit_action_name"]) !== undefined
+        ? { submit_action_name: readString(obj["submit_action_name"])! }
+        : {}),
+      ...(readString(obj["sso_action_name"]) !== undefined
+        ? { sso_action_name: readString(obj["sso_action_name"])! }
+        : {}),
+      ...(readString(obj["sso_wait_url_includes"]) !== undefined
+        ? { sso_wait_url_includes: readString(obj["sso_wait_url_includes"])! }
+        : {}),
+      ...(readString(obj["basic_auth_username"]) !== undefined
+        ? { basic_auth_username: readString(obj["basic_auth_username"])! }
+        : {}),
+      ...(readString(obj["basic_auth_password"]) !== undefined
+        ? { basic_auth_password: readString(obj["basic_auth_password"])! }
+        : {}),
+    },
+  };
+}
+
+function resolveRolePassword(
+  role: RoleSessionWithSecret,
+  credentials: WorkspaceCredentialRegistry | undefined,
+  workspaceId: string,
+): Readonly<{ ok: true; value: RoleSessionLogin }> | Readonly<{ ok: false; message: string }> {
+  if (role.sso_action_name) {
+    const { password_secret_ref: _drop, ...rest } = role;
+    return { ok: true, value: rest };
+  }
+  const passwordResolved = resolvePasswordInput({
+    registry: credentials,
+    workspaceId,
+    ...(role.password !== undefined ? { password: role.password } : {}),
+    ...(role.password_secret_ref !== undefined ? { password_secret_ref: role.password_secret_ref } : {}),
+  });
+  if (!passwordResolved.ok) return { ok: false, message: passwordResolved.message };
+  const { password_secret_ref: _drop, ...rest } = role;
+  return {
+    ok: true,
+    value: {
+      ...rest,
+      password: passwordResolved.value,
+    },
+  };
+}
+
 function success(
   dependencies: RegressionSuiteRuntimeExecutorDependencies,
   input: AgentRunExecutorInput,
@@ -783,4 +1046,78 @@ function readElements(value: JsonValue | undefined): readonly SemanticUiElement[
     });
   }
   return elements;
+}
+
+function readFieldValuesMap(value: JsonValue | undefined): ReadonlyMap<string, string> | undefined {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const map = new Map<string, string>();
+  for (const [key, raw] of Object.entries(value as JsonObject)) {
+    if (typeof raw === "string" && key.trim().length > 0) map.set(key.trim(), raw);
+  }
+  return map.size > 0 ? map : undefined;
+}
+
+function filterRegressionCases(
+  cases: readonly RegressionCase[],
+  caseIds: readonly string[] | undefined,
+  relatedDefectIds: readonly string[] | undefined,
+): readonly RegressionCase[] {
+  let filtered = [...cases];
+  if (caseIds !== undefined && caseIds.length > 0) {
+    const wanted = new Set(caseIds);
+    filtered = filtered.filter((item) => {
+      const id = item.kind === "api" ? item.case.id : item.test_case.id;
+      return wanted.has(id);
+    });
+  }
+  if (relatedDefectIds !== undefined && relatedDefectIds.length > 0) {
+    // DEF-DRAFT:<test_case_id> → extract suffix; also accept raw test ids.
+    const wanted = new Set<string>();
+    for (const ref of relatedDefectIds) {
+      const trimmed = ref.trim();
+      wanted.add(trimmed);
+      const draftPrefix = "DEF-DRAFT:";
+      if (trimmed.startsWith(draftPrefix)) wanted.add(trimmed.slice(draftPrefix.length));
+    }
+    filtered = filtered.filter((item) => {
+      const id = item.kind === "api" ? item.case.id : item.test_case.id;
+      return wanted.has(id);
+    });
+  }
+  return filtered;
+}
+
+function mapQaOutcome(raw: string): QaRunTestCaseOutcome {
+  if (raw === "passed" || raw === "failed" || raw === "flaky" || raw === "not_executed") return raw;
+  if (raw === "cancelled" || raw === "skipped" || raw === "blocked") return "not_executed";
+  return "failed";
+}
+
+function regressionRow(
+  kind: "browser" | "api",
+  caseId: string,
+  outcome: QaRunTestCaseOutcome,
+  message: string,
+  evidence: readonly string[],
+  purpose?: string,
+): Readonly<{ json: JsonObject; qa: QaRunTestCaseResult }> {
+  return {
+    json: {
+      kind,
+      case_id: caseId,
+      outcome,
+      message,
+      evidence: [...evidence],
+    },
+    qa: {
+      test_case_id: caseId,
+      purpose: purpose ?? `Regression ${kind} case ${caseId}`,
+      variant: "regression",
+      outcome,
+      ...(outcome === "not_executed" && message ? { skip_reason: message } : {}),
+      evidence,
+    },
+  };
 }

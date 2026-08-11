@@ -112,8 +112,15 @@ export function generateJourneyTestCases(input: GenerateJourneyInput): GenerateJ
   findings.push(
     input.expected_network?.url_includes
       ? "Journeys assert final URL substring + optional expected_network from caller."
-      : "Journeys assert final URL substring only — pass expected_network on generate_journey_test_cases when UI hops trigger a known API.",
+      : "Journeys assert final URL substring only — pass expected_network on generate_journey_test_cases when UI hops trigger a known API (use discover_ui_workflow network_hints as candidates only).",
   );
+
+  const hintCount = input.pages.reduce((n, page) => n + (page.network_hints?.length ?? 0), 0);
+  if (hintCount > 0 && !input.expected_network?.url_includes) {
+    findings.push(
+      `Workflow pages carried ${hintCount} network_hint(s) — not auto-bound; confirm then pass expected_network.`,
+    );
+  }
 
   return {
     schema_version: "1.0.0",

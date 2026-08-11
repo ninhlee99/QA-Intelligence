@@ -152,11 +152,12 @@ on both stdio and remote transports:
 | `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
 | `compare_ui_surfaces` | Role/permission thin: diff two UI maps (admin vs viewer) |
 | `register_requirement` / `list_requirements` | SPEC-202 ingest real Requirements for generate/run_auto_qa |
-| `discover_ui_workflow` | Multi-page same-origin crawl (pages + edges) |
-| `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run browser/API packs |
+| `discover_ui_workflow` | Multi-page crawl (pages + edges + optional network_hints) |
+| `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run packs; run returns defects + release gate; subset via case_ids |
+| `discover_and_compare_role_ui_surfaces` | Dual after-login sessions + named-control diff |
 | `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status; optional authz negatives) |
 | `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges (+ optional `expected_network`) |
-| `export_defects_for_tracker` | Markdown/Jira text export (no tracker API call) |
+| `export_defects_for_tracker` | Markdown/Jira text + evidence pack (no tracker API call) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.
 Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.

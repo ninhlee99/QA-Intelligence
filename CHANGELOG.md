@@ -4,6 +4,7 @@
 
 ### Added
 
+- P4 slices: `run_regression_suite` subset (`case_ids` / `related_defect_ids`) + `field_values` + draft defects / release gate; workflow `network_hints`; `discover_and_compare_role_ui_surfaces`; defect evidence pack on tracker export
 - P3 slices: exploratory bounded live probes (`include_live_probes`); journey `expected_network` passthrough; `ScriptedReasoningProvider([])` fail-soft; `create_automation_asset` → `.qa-automation-assets/` + `mcp:run_regression_suite` bind; roadmap Ground truth refresh
 - P2 slices: `file_defects_to_tracker` (dry-run default / confirm_file); `generate_test_strategy_stub` rename; durable `.qa-knowledge/` + `register_knowledge_record`; SSO/MFA wait path on `discover_ui_surface_after_login`
 - P1 slices: generate `select`/`wait_for` from AC (`option_label`, `wait_for_*`); OpenAPI wrong-role negatives (`auth=alternate_bearer`); file-backed `.qa-credentials/`; optional axe-core stage in `run_depth_smokes`

@@ -112,6 +112,7 @@ const EXPECTED_TOOLS = [
   "file_defects_to_tracker",
   "register_knowledge_record",
   "compare_ui_surfaces",
+  "discover_and_compare_role_ui_surfaces",
   "generate_journey_test_cases",
 ] as const;
 

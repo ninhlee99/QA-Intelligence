@@ -4,6 +4,7 @@
  * files via its own integration.
  */
 import type { Defect } from "./public.js";
+import { buildDefectEvidencePack } from "./defect-evidence-pack.js";
 
 export type DefectExportFormat = "markdown" | "jira_description";
 
@@ -16,6 +17,17 @@ export function formatDefectsForTracker(
 }
 
 function formatOne(defect: Defect, format: DefectExportFormat, ordinal: number): string {
+  const pack = buildDefectEvidencePack(defect);
+  const evidenceLines =
+    format === "markdown"
+      ? pack.markdown_attachment_section.split("\n")
+      : [
+          "h3. Evidence pack",
+          ...pack.entries.map((entry) => `- *${entry.kind}:* ${entry.readable_label} (${entry.ref})`),
+          "",
+          "*confirmed_cause:* null",
+          `*suspected_cause (NOT confirmed):* ${defect.suspected_cause}`,
+        ];
   const lines = [
     format === "markdown" ? `## ${ordinal}. ${defect.summary}` : `h2. ${ordinal}. ${defect.summary}`,
     "",
@@ -37,11 +49,7 @@ function formatOne(defect: Defect, format: DefectExportFormat, ordinal: number):
     format === "markdown" ? "### Reproduction" : "h3. Reproduction",
     ...defect.reproduction_conditions.map((step, i) => `${i + 1}. ${step}`),
     "",
-    format === "markdown" ? "### Evidence" : "h3. Evidence",
-    ...defect.evidence.map((ref) => `- ${ref}`),
-    "",
-    format === "markdown" ? "### Suspected cause (NOT confirmed)" : "h3. Suspected cause (NOT confirmed)",
-    defect.suspected_cause,
+    ...evidenceLines,
     "",
     `Related tests: ${(defect.related_test_refs ?? []).join(", ") || "(none)"}`,
     `Related executions: ${(defect.related_execution_refs ?? []).join(", ") || "(none)"}`,
