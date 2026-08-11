@@ -1,12 +1,8 @@
 # docs/
 
-User-facing documentation for QA Intelligence.
-
 | File | Purpose |
 |------|---------|
-| [`GUIDE.md`](GUIDE.md) | Install + connect + expert QA workflows — **start here** |
-| [`proposals/professional-qa-mcp-roadmap.md`](proposals/professional-qa-mcp-roadmap.md) | Implementation roadmap, phase history, current state |
-| [`proposals/SPEC-512-mcp-test-execution-tool.md`](proposals/SPEC-512-mcp-test-execution-tool.md) | Draft contract spec for MCP test execution tool |
+| [`PRODUCT.md`](PRODUCT.md) | One-page product idea — **start here** |
+| [`GUIDE.md`](GUIDE.md) | Install, connect hosts, expert workflows |
 
-For architecture decisions and governance: see `adr/` and `governance/`.
-For the full tool catalog: see [`hosts/README.md`](../hosts/README.md).
+Historical SPECs / ADRs / roadmaps: [`../archive/`](../archive/).

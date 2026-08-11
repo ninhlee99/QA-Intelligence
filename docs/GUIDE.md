@@ -249,8 +249,9 @@ When ADR-014 lands, only the token source and URL change — config shape stays 
 
 ## 8. Reference
 
+- [`PRODUCT.md`](PRODUCT.md) — one-page idea
+- [`../RULES.md`](../RULES.md) — non-negotiables
 - [`hosts/README.md`](../hosts/README.md) — full tool catalog
 - [`hosts/claude-code/skills/test/SKILL.md`](../hosts/claude-code/skills/test/SKILL.md) — expert tester workflow
 - [`hosts/claude-code/skills/dev/SKILL.md`](../hosts/claude-code/skills/dev/SKILL.md) — developer QA workflow
-- [`ROADMAP.md`](../ROADMAP.md) — implementation sequence
-- `governance/AGENT_SKILL_QUALITY_GATES.md` — gates for production enablement
+- [`../archive/`](../archive/) — historical SPECs / ADRs (optional)

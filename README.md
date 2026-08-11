@@ -1,104 +1,94 @@
 # QA Intelligence
 
-An MCP server that acts as an **Expert QA Engineer** inside Claude Code, Cursor, and Codex. Point it at a live URL + spec, and it discovers the UI, generates risk-based test cases, executes them, drafts defects with evidence, and gives you a release gate — without you guiding it step by step.
+[![CI](https://github.com/ninhlee99/QA-Intelligence/actions/workflows/repository-validation.yml/badge.svg)](https://github.com/ninhlee99/QA-Intelligence/actions/workflows/repository-validation.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-24-green.svg)](.nvmrc)
+[![Status](https://img.shields.io/badge/status-0.1.0--dev-yellow.svg)](CHANGELOG.md)
 
-## Quick start (5 minutes)
+**MCP server that acts as an Expert QA Engineer** inside Claude Code, Cursor, and Codex.
+
+Point it at a live URL + spec. It discovers the UI, designs risk-based tests, executes with Playwright, drafts defects with evidence, and returns a **release gate** — not a green pass count.
+
+```text
+You:  /qa-intelligence:test  https://staging.example.com/login
+Agent:
+  discover → generate (pos/neg/boundary/adversarial)
+  → execute (flake-aware) → draft defects + traces
+  → release_recommendation + coverage_gaps + smart_retest
+```
+
+## Quick start
 
 ```sh
-git clone <repo-url> QA-Intelligence
+git clone https://github.com/ninhlee99/QA-Intelligence.git
 cd QA-Intelligence
 npm install && npm run build
 ```
 
-Then connect your host (pick one):
+Connect one host:
 
-| Host | Config |
+| Host | Setup |
 |------|--------|
-| **Claude Code** | Install plugin from `hosts/claude-code/` |
-| **Cursor** | Copy `hosts/cursor/mcp.json.example` → Cursor MCP settings, replace path |
-| **Codex** | Install plugin from `hosts/codex/` |
+| **Claude Code** | Plugin: `hosts/claude-code/` → `/qa-intelligence:test` |
+| **Cursor** | Copy `hosts/cursor/mcp.json.example` (absolute path) |
+| **Codex** | Plugin / config: `hosts/codex/` |
 
-Full install instructions: [`docs/GUIDE.md`](docs/GUIDE.md)
+Full install: **[docs/GUIDE.md](docs/GUIDE.md)**
 
-## What it does
+## Why this exists
 
-```
-You: "QA this staging URL against this spec"
+Most AI “QA” tools dump scripts or cheerlead green CI. This one behaves like a senior tester:
 
-QA Intelligence:
-  1. Discovers live UI  →  semantic element map
-  2. Reconciles spec AC  →  flags unbound criteria
-  3. Generates test cases  →  positive / negative / boundary / adversarial
-  4. Executes with Playwright  →  flake-aware, screenshots + traces on fail
-  5. Drafts defects  →  severity, evidence pack, no invented root cause
-  6. Gives release gate  →  recommend_release / changes_required / do_not_release
-  7. Reports coverage gaps  →  explicitly states what was NOT tested
-```
+| Always | Never |
+|--------|--------|
+| Surfaces `coverage_gaps` | Fabricates a pass |
+| Gives `smart_retest_suggestion` | Invents `confirmed_cause` |
+| Links fail traces in HTML report | Claims WCAG / load / pen-test not run |
+| Warns before defect export | Puts passwords on the MCP wire |
 
-Trigger inside any connected host:
-- `/qa-intelligence:test` — tester workflow (URL + spec)
-- `/qa-intelligence:dev` — developer workflow (read source → derive AC → test localhost)
+Rules: **[RULES.md](RULES.md)** · Idea: **[docs/PRODUCT.md](docs/PRODUCT.md)**
 
-## Expert QA principles
+## Core tools
 
-The agent **never**:
-- Fabricates a pass when the release gate says otherwise
-- Invents `confirmed_cause` — only `suspected_cause` + evidence
-- Silently drops unbound AC or `not_executed` cases
-- Claims WCAG/load/pen-test coverage it didn't perform
+| Tool | Use when |
+|------|----------|
+| `run_auto_qa` | Full pipeline on a URL + AC |
+| `run_regression_suite` | Retest after fix (`case_ids` / `related_defect_ids`) |
+| `discover_ui_workflow` | Multi-page product |
+| `discover_and_compare_role_ui_surfaces` | Permission / role gaps |
+| `execute_api_smoke` | HTTP contract checks |
+| `export_defects_for_tracker` | Paste-ready defects + quality warnings |
 
-The agent **always**:
-- Surfaces `coverage_gaps` in every run output
-- Provides `smart_retest_suggestion` (exact `case_ids` to re-run after fix)
-- Links trace `.zip` files in HTML reports for failed runs
-- Warns before export if defects have quality issues
+Full catalog: **[hosts/README.md](hosts/README.md)**
 
-## Core MCP tools
+## Repo layout
 
-| Tool | When to use |
-|------|-------------|
-| `run_auto_qa` | Full pipeline — discover → generate → execute → report |
-| `run_regression_suite` | Re-run after a fix (subset by `case_ids` / `related_defect_ids`) |
-| `discover_ui_workflow` | Multi-page product, builds page graph |
-| `discover_and_compare_role_ui_surfaces` | Auth/permission testing |
-| `execute_api_smoke` | HTTP API contract testing |
-| `generate_exploratory_charter` + `execute_exploratory_session` | No spec available |
-| `export_defects_for_tracker` | Markdown/Jira export with quality pre-check |
-| `compare_ui_baseline` + `compare_ui_surface_to_baseline` | Regression visual/structural diff |
-
-Full tool catalog: [`hosts/README.md`](hosts/README.md)
-
-## Requirements
-
-- Node.js `>=24 <25` (see `.nvmrc`)
-- npm
-- Playwright browsers installed automatically via `npm install`
-
-## Project status
-
-`0.1.0-dev` — development only. The MCP server runs today against real targets.
-Production deployment (OIDC auth, governed membership, Vault) is blocked on
-GOV-012 G2–G6. See [`docs/GUIDE.md`](docs/GUIDE.md) for what's live vs. pending.
-
-## Repository structure
-
-```
-src/           TypeScript source
-  adapters/    Playwright execution engine
-  discovery/   UI surface + workflow discovery
-  test-design/ Test generation + run_auto_qa pipeline
-  reporting/   HTML report + coverage gap analysis
-  memory/      Session memory + durable learning
-  bug-analysis/ Defect drafting + quality assessment
-hosts/         MCP integration packages (Claude Code, Cursor, Codex)
-  claude-code/skills/dev/   Developer QA workflow
-  claude-code/skills/test/  Tester QA workflow
-  cursor/                   Cursor-specific configs
-  codex/                    Codex-specific configs
-docs/          Install guide + proposals
-specs/         Governance specifications (SPEC-001 … SPEC-213)
-adr/           Architecture decisions (ADR-001 … ADR-023)
+```text
+src/           Expert QA MCP implementation
+hosts/         Claude Code / Cursor / Codex packages + Skills
+docs/          PRODUCT + GUIDE
+tests/         Automated tests
+archive/       Historical SPECs/ADRs/GOV (not required to run)
+ontology/      Runtime semantic vocabulary
+schemas/       Optional JSON Schema examples
 ```
 
-For governance, spec reading order, and architecture decisions:
-see `governance/READING_ORDER.md` and `governance/ARCHITECTURE_PRINCIPLES.md`.
+## Develop
+
+```sh
+npm run typecheck
+npm test
+npm run mcp:dev      # stdio MCP
+npm run mcp:remote   # HTTP MCP + demo token on stderr
+```
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+## Status
+
+`0.1.0-dev` — usable against real targets in development hosts.  
+Production IdP / Vault / GOV production gates are not claimed yet.
+
+## License
+
+[MIT](LICENSE)

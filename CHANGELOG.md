@@ -7,7 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.0-dev] — Unreleased
 
-> Development release. Production blocked on GOV-012 G2–G6.
+> Development release. Usable as Expert QA MCP in Claude Code / Cursor / Codex.
+
+### Project reshape — product-first GitHub (2026-08-11)
+
+- Moved historical SPECs / ADRs / GOV / playbooks / stub package roots → `archive/governance-baseline/`
+- Added `RULES.md` (10 non-negotiables), `LICENSE` (MIT), `docs/PRODUCT.md`
+- CI slimmed to typecheck + test + audit (+ optional schema examples); dropped SPEC-index gate from default `validate`
+- README rewritten for GitHub: badges, quick start, core tools, clear status
 
 ### Expert QA upgrade (2026-08-11)
 

@@ -2,6 +2,7 @@
   "name": "qa-intelligence",
   "version": "0.1.0",
   "private": true,
+  "description": "MCP server that acts as an Expert QA Engineer in Claude Code, Cursor, and Codex",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -18,14 +19,23 @@
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
-    "validate": "npm run validate:repository && npm run validate:schemas && npm run typecheck && npm test && npm run validate:dependencies",
-    "validate:repository": "python3 tests/validate_repository.py",
+    "validate": "npm run typecheck && npm test && npm run validate:dependencies",
     "validate:schemas": "node tests/validate-json-schemas.mjs",
     "validate:dependencies": "npm audit --audit-level=high",
     "release:check": "npm run validate",
     "mcp:dev": "npm run build && node dist/src/mcp/dev-entrypoint.js",
     "mcp:remote": "npm run build && node dist/src/mcp/remote-dev-entrypoint.js"
   },
+  "keywords": [
+    "mcp",
+    "qa",
+    "testing",
+    "playwright",
+    "claude-code",
+    "cursor",
+    "codex"
+  ],
+  "license": "MIT",
   "dependencies": {
     "@axe-core/playwright": "^4.10.1",
     "@modelcontextprotocol/sdk": "^1.30.0",

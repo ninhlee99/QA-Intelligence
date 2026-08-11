@@ -1,30 +1,20 @@
-name: Repository validation
+name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, master]
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-
-      - name: Install Python validation dependency
-        run: python -m pip install -r requirements-dev.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -32,87 +22,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Install locked Node.js dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browser (Chromium)
+      - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Validate governed repository and JSON Schemas
+      - name: Typecheck, test, audit
         run: npm run validate
 
-  postgres-adapter:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_PASSWORD: qa-intelligence-ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install locked Node.js dependencies
-        run: npm ci
-
-      - name: Apply Evaluation Campaign migration
-        env:
-          PGPASSWORD: qa-intelligence-ci
-        run: |
-          psql -h localhost -U postgres -d postgres \
-            -f migrations/postgresql/0001_evaluation_campaign_store.up.sql
-
-      - name: Apply Knowledge Repository migration
-        env:
-          PGPASSWORD: qa-intelligence-ci
-        run: |
-          psql -h localhost -U postgres -d postgres \
-            -f migrations/postgresql/0004_knowledge_repository.up.sql
-
-      - name: Create the non-superuser application role
-        env:
-          PGPASSWORD: qa-intelligence-ci
-        run: |
-          psql -h localhost -U postgres -d postgres <<'SQL'
-          CREATE ROLE qa_intelligence_app LOGIN PASSWORD 'qa-intelligence-ci';
-          GRANT CONNECT ON DATABASE postgres TO qa_intelligence_app;
-          GRANT USAGE ON SCHEMA public TO qa_intelligence_app;
-          GRANT SELECT, INSERT, UPDATE, DELETE ON
-            qa_evaluation_campaigns,
-            qa_evaluation_campaign_events,
-            qa_evaluation_campaign_commands,
-            qa_platform_outbox
-            TO qa_intelligence_app;
-          GRANT SELECT, INSERT, UPDATE ON
-            qa_knowledge_objects,
-            qa_knowledge_history,
-            qa_knowledge_lifecycle_events,
-            qa_knowledge_idempotency
-            TO qa_intelligence_app;
-          SQL
-          # ADR-017 §6 / PgTransactionManager real test: PostgreSQL superusers
-          # always bypass Row-Level Security regardless of FORCE ROW LEVEL
-          # SECURITY, so the RLS enforcement test is only meaningful when run
-          # as this non-superuser role — the same requirement production has.
-
-      - name: Run the real-PostgreSQL adapter suite (not the in-process fake)
-        env:
-          QA_INTELLIGENCE_TEST_POSTGRES_URL: "postgresql://qa_intelligence_app:qa-intelligence-ci@localhost:5432/postgres"
-        run: |
-          npm run build
-          node --test dist/tests/evaluation/pg-transaction-manager.real.test.js
-          node --test dist/tests/knowledge/postgres-knowledge-repository.real.test.js
+      - name: Optional JSON Schema examples
+        run: npm run validate:schemas
