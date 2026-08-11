@@ -28,6 +28,10 @@ import {
   deriveExpertMandateBlockers,
   hookCoverageFromExtensions,
 } from "../reporting/expert-risk-signals.js";
+import {
+  draftExpertSessionReport,
+  expertSessionReportJson,
+} from "../reporting/expert-session-report.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
 import type { InMemoryRegressionSuiteRegistry, RegressionCase } from "./regression-suite-registry.js";
@@ -343,14 +347,43 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       acceptanceCriteria,
     );
     const mandateBlockers = deriveExpertMandateBlockers(riskSignals, hookCoverage);
-    const checklistOptions = {
+    const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
+    const gapExtras: CoverageGapExtras = {
+      mandate_blockers: mandateBlockers,
+      domain_pack: domainPack,
+      journey_cases_registered_not_executed: hookCoverage.journey_cases_added,
+      openapi_cases_registered_not_executed: hookCoverage.openapi_cases_added,
+    };
+    const gaps = deriveCoverageGaps(report, gapExtras);
+    const retest = deriveSmartRetestSuggestion(report);
+    const checklistOptions: ExpertChecklistFromReportOptions = {
       domainPack,
       e2MandateBlockers: mandateBlockers.map((b) => b.code),
-      context: "run_auto_qa" as const,
-      suiteIdPresent: autoSuite !== undefined && "suite_id" in autoSuite,
+      context: "run_auto_qa",
+      suiteIdPresent: suitePresent,
     };
+    const expertChecklist = expertChecklistFromQaRunReport(
+      report,
+      gaps.length,
+      String(retest["action"] ?? "unknown"),
+      checklistOptions,
+    );
+    const sessionReport = draftExpertSessionReport({
+      report,
+      claim_pass_allowed: expertChecklist["claim_pass_allowed"] === true,
+      blockers: Array.isArray(expertChecklist["blockers"])
+        ? (expertChecklist["blockers"] as unknown[]).map(String)
+        : [],
+      coverage_gaps: gaps,
+      risk_signals: riskSignals,
+      hook_coverage: hookCoverage,
+      mandate_blockers: mandateBlockers,
+      domain_pack: domainPack,
+      flake_taxonomy: flakeTaxonomy,
+      ...(suitePresent && autoSuite && "suite_id" in autoSuite ? { suite_id: autoSuite.suite_id } : {}),
+    });
 
-    const html = renderQaRunReportHtml(report, flakeTaxonomy, checklistOptions);
+    const html = renderQaRunReportHtml(report, flakeTaxonomy, checklistOptions, sessionReport);
     let writtenPath: string | undefined;
     if (outputPath !== undefined) {
       try {
@@ -411,6 +444,9 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       autoSuite,
       flakeTaxonomy,
       checklistOptions,
+      gaps,
+      retest,
+      expertChecklist,
     );
     return {
       ok: true,
@@ -419,6 +455,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
           ...reportJson,
           expert_extensions: hooks.extensions,
           expert_observations: expertObservations,
+          expert_session_report: expertSessionReportJson(sessionReport),
           learning: {
             failure_avoidance_hints: priorHints.map((entry) => ({
               key: entry.key,
@@ -561,10 +598,11 @@ function qaRunReportJson(
     | Readonly<{ skipped: true; reason: string }>
     | undefined,
   flakeTaxonomy: ReturnType<typeof deriveFlakeTaxonomy>,
-  checklistOptions?: ExpertChecklistFromReportOptions,
+  checklistOptions: ExpertChecklistFromReportOptions | undefined,
+  gaps: readonly JsonObject[],
+  retest: JsonObject,
+  expertChecklist: JsonObject,
 ): JsonObject {
-  const gaps = deriveCoverageGaps(report);
-  const retest = deriveSmartRetestSuggestion(report);
   const suitePresent =
     checklistOptions?.suiteIdPresent === true ||
     (autoSuite !== undefined && "suite_id" in autoSuite);
@@ -651,19 +689,7 @@ function qaRunReportJson(
       : retest,
     auto_registered_suite: autoSuite ?? null,
     flake_taxonomy: flakeTaxonomyJson(flakeTaxonomy),
-    expert_checklist: expertChecklistFromQaRunReport(
-      report,
-      gaps.length,
-      String(retest["action"] ?? "unknown"),
-      {
-        suiteIdPresent: suitePresent,
-        ...(checklistOptions?.domainPack !== undefined ? { domainPack: checklistOptions.domainPack } : {}),
-        ...(checklistOptions?.e2MandateBlockers !== undefined
-          ? { e2MandateBlockers: checklistOptions.e2MandateBlockers }
-          : {}),
-        context: checklistOptions?.context ?? "run_auto_qa",
-      },
-    ),
+    expert_checklist: expertChecklist,
     report_html: html,
     report_path: writtenPath ?? null,
   };
@@ -689,7 +715,8 @@ function assessDomainPackFromInput(raw: Readonly<Record<string, JsonValue | unde
 function deriveSmartRetestSuggestion(report: QaRunReport): JsonObject {
   const failedCases = report.test_cases.filter((tc) => tc.outcome === "failed" || tc.outcome === "cancelled");
   const flakyCases = report.test_cases.filter((tc) => tc.outcome === "flaky");
-  const relatedDefectIds = report.draft_defects.map((d) => `DEF-DRAFT:${d.id}`);
+  // Defect ids are already `DEF-DRAFT:<caseId>` — do not double-prefix.
+  const relatedDefectIds = report.draft_defects.map((d) => d.id);
 
   if (failedCases.length === 0 && flakyCases.length === 0) {
     return {
@@ -713,11 +740,18 @@ function deriveSmartRetestSuggestion(report: QaRunReport): JsonObject {
   };
 }
 
+type CoverageGapExtras = Readonly<{
+  mandate_blockers?: readonly { code: string; message: string }[];
+  domain_pack?: DomainPackGateInput;
+  journey_cases_registered_not_executed?: boolean;
+  openapi_cases_registered_not_executed?: boolean;
+}>;
+
 /**
  * Derives an explicit "what was NOT tested" summary from run data.
  * Expert QA rule: never claim pass by silence — surface gaps proactively.
  */
-function deriveCoverageGaps(report: QaRunReport): readonly JsonObject[] {
+function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): readonly JsonObject[] {
   const gaps: JsonObject[] = [];
 
   const notExecuted = report.test_cases.filter((tc) => tc.outcome === "not_executed");
@@ -727,6 +761,7 @@ function deriveCoverageGaps(report: QaRunReport): readonly JsonObject[] {
       count: notExecuted.length,
       message: `${notExecuted.length} test case(s) were not executed — AC may be unbound or execution was skipped.`,
       test_case_ids: notExecuted.map((tc) => tc.test_case_id),
+      expert_note: "A human Expert never counts not_executed as silent pass.",
     });
   }
 
@@ -735,6 +770,7 @@ function deriveCoverageGaps(report: QaRunReport): readonly JsonObject[] {
       gap: "unbindable_acceptance_criteria",
       count: report.generation_findings.length,
       message: `${report.generation_findings.length} acceptance criterion/criteria could not be bound to any discovered UI element.`,
+      expert_note: "Push back on AC quality or enrich discovery — do not invent bindings.",
     });
   }
 
@@ -747,10 +783,55 @@ function deriveCoverageGaps(report: QaRunReport): readonly JsonObject[] {
     });
   }
 
+  for (const mandate of extras?.mandate_blockers ?? []) {
+    gaps.push({
+      gap: mandate.code,
+      message: mandate.message,
+      expert_note: "E2 smell not exercised — Senior Expert would block 'done' until closed or explicitly waived with reason.",
+    });
+  }
+
+  if (extras?.journey_cases_registered_not_executed === true) {
+    gaps.push({
+      gap: "journey_cases_registered_not_executed",
+      message: "Multi-page journey cases were added to the suite but not executed in this pass — run_regression_suite required.",
+      expert_note: "Registering journeys ≠ testing journeys.",
+    });
+  }
+
+  if (extras?.openapi_cases_registered_not_executed === true) {
+    gaps.push({
+      gap: "api_smoke_registered_not_executed",
+      message: "OpenAPI smoke cases were merged into the suite but not executed in this pass — run_regression_suite / execute_api_smoke required.",
+    });
+  }
+
+  if (extras?.domain_pack && !extras.domain_pack.present) {
+    gaps.push({
+      gap: "domain_pack_absent",
+      message: "No product domain-knowledge pack — money/permission/legacy risks may be invisible.",
+    });
+  } else if (extras?.domain_pack?.high_risk_unconfirmed) {
+    gaps.push({
+      gap: "domain_high_risk_unconfirmed",
+      message: "Domain pack still has money/permission/legacy stubs or TODOs awaiting human confirm.",
+      ...(extras.domain_pack.pack_path !== undefined ? { pack_path: extras.domain_pack.pack_path } : {}),
+    });
+  }
+
   gaps.push({
     gap: "scope_limits",
-    message: "This run covers UI naming smoke and generated AC variants only. Not covered: full WCAG audit, load testing, penetration testing, API authorization matrix, cross-browser parity.",
-    not_covered: ["full_wcag", "load_test", "pen_test", "api_authz_matrix", "cross_browser"],
+    message:
+      "This run covers UI naming smoke + generated AC variants (+ optional E2 hooks). Not covered unless separately evidenced: full WCAG/axe, load/perf, penetration testing, complete API authz matrix, cross-browser parity, stateful data cleanup, blast-radius regression from code diff.",
+    not_covered: [
+      "full_wcag",
+      "load_test",
+      "pen_test",
+      "api_authz_matrix_complete",
+      "cross_browser",
+      "stateful_data_lifecycle",
+      "diff_blast_radius",
+    ],
   });
 
   return gaps;

@@ -30,7 +30,7 @@ No pass unless MCP `expert_checklist.claim_pass_allowed` is true **and** `valida
 6. **G4 Strategy A:** Prefer `run_expert_qa` when product workspace path known. Else `run_auto_qa` with `product_root` when possible. Optional: `role_b`, `openapi`, `include_workflow_journeys`.  
 7. **G4 B:** targeted retest via `run_regression_suite` + `smart_retest_suggestion`  
 8. **G5–G8:** Output contract; honor `expert_checklist`  
-9. Paste `expert_observations` (senior-tester session notes) into the user result.  
+9. Paste **`expert_session_report.markdown`** (Senior Expert voice) as the primary user-facing write-up; also honor `expert_observations`.  
 10. **Before any pass/ready/ship sentence:** `validate_expert_claim({ proposed_claim, expert_checklist })` — if `allowed=false`, rewrite as blocked/incomplete.  
 
 If G0 smells roles/API/money/journey → must exercise hooks (`role_b`, `openapi`+authz, `expected_network`, `include_workflow_journeys`) or accept E2 blockers (no pass).  

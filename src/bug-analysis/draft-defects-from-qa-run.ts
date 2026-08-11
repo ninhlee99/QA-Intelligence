@@ -52,11 +52,7 @@ export function draftDefectsFromQaRun(input: DraftDefectsFromQaRunInput): readon
       affected_requirement_refs: [input.requirement_ref],
       workspace_scope: input.workspace_id,
       environment_ref: input.environment_ref,
-      reproduction_conditions: [
-        `Navigate to ${input.target_url}`,
-        `Replay test case ${result.test_case_id} (${result.variant} variant)`,
-        result.purpose,
-      ],
+      reproduction_conditions: buildReproduction(result, input.target_url),
       evidence,
       severity: profile.severity,
       severity_rationale: profile.severity_rationale,
@@ -69,6 +65,32 @@ export function draftDefectsFromQaRun(input: DraftDefectsFromQaRunInput): readon
     });
   }
   return drafts;
+}
+
+function buildReproduction(result: QaRunTestCaseResult, targetUrl: string): string[] {
+  const steps = [
+    `Open ${targetUrl} in the same browser/engine used by the run.`,
+    `Locate case ${result.test_case_id} (${result.variant}).`,
+    `Intent under test: ${result.purpose}`,
+  ];
+  const screenshots = result.evidence.filter((e) => e.endsWith(".png") || e.includes("screenshot"));
+  const traces = result.evidence.filter((e) => e.endsWith(".zip") || e.includes(".qa-traces/"));
+  const network = result.evidence.filter((e) => e.includes("network"));
+  if (screenshots.length > 0) {
+    steps.push(`Inspect failure screenshot(s): ${screenshots.slice(0, 2).join(", ")}`);
+  }
+  if (traces.length > 0) {
+    steps.push(`Open Playwright trace(s): ${traces.slice(0, 2).join(", ")}`);
+  }
+  if (network.length > 0) {
+    steps.push(`Review network evidence: ${network.slice(0, 2).join(", ")}`);
+  }
+  steps.push(
+    result.outcome === "flaky"
+      ? "Re-run the same case at least twice — Expert expects intermittency confirmation before filing as product bug."
+      : "Re-run once to confirm stability; if still fail, attach fresh evidence before escalating.",
+  );
+  return steps;
 }
 
 function profileFor(result: QaRunTestCaseResult): SeverityProfile {
@@ -142,14 +164,29 @@ function summarize(result: QaRunTestCaseResult): string {
 }
 
 function observed(result: QaRunTestCaseResult): string {
+  const evidenceBit = evidenceSummary(result);
   if (result.outcome === "flaky") {
-    return `Test case ${result.test_case_id} (${result.variant}) produced inconsistent pass/fail across flake-detection trials. Evidence: ${evidenceSummary(result)}.`;
+    return [
+      `Case ${result.test_case_id} (${result.variant}) flipped pass/fail across flake trials.`,
+      `What the tester intended to verify: ${result.purpose}`,
+      `Evidence anchors: ${evidenceBit}`,
+      "Senior note: do not mark as confirmed product defect until a stable reproduction exists.",
+    ].join(" ");
   }
-  return `Test case ${result.test_case_id} (${result.variant}) failed. Purpose: ${result.purpose}. Evidence: ${evidenceSummary(result)}.`;
+  return [
+    `Case ${result.test_case_id} (${result.variant}) failed its executable assertion.`,
+    `What the tester intended to verify: ${result.purpose}`,
+    `Evidence anchors: ${evidenceBit}`,
+    "Senior note: suspected_cause below is a hypothesis only — confirmed_cause stays unset.",
+  ].join(" ");
 }
 
 function expected(result: QaRunTestCaseResult): string {
-  return `Test case ${result.test_case_id} (${result.variant}) SHALL pass under its generated assertion derived from the acceptance-criteria authority. Purpose: ${result.purpose}`;
+  return [
+    `Under the acceptance-criteria authority bound to this case, variant "${result.variant}" SHALL satisfy its generated assertion.`,
+    `Purpose under test: ${result.purpose}`,
+    "If the AC itself is wrong, update the requirement — do not silently reinterpret the failure as pass.",
+  ].join(" ");
 }
 
 function evidenceSummary(result: QaRunTestCaseResult): string {

@@ -107,6 +107,7 @@ export function withProfessionalAnalysis(
 }
 
 import { expertChecklistHtml, expertChecklistFromQaRunReport, type ExpertChecklistFromReportOptions } from "./expert-checklist.js";
+import type { ExpertSessionReport } from "./expert-session-report.js";
 
 function flakeTaxonomyHtml(taxonomy: FlakeTaxonomy): string {
   if (taxonomy.flaky_count === 0) {
@@ -183,9 +184,26 @@ export function renderQaRunReportHtml(
   report: QaRunReport,
   flakeTaxonomy?: FlakeTaxonomy,
   checklistOptions?: ExpertChecklistFromReportOptions,
+  sessionReport?: ExpertSessionReport,
 ): string {
   const taxonomy = flakeTaxonomy ?? deriveFlakeTaxonomy(report);
   const rows = report.test_cases.map(testCaseRow).join("\n");
+  const sessionHtml = sessionReport
+    ? `<h2>Senior Expert session notes</h2>
+<div class="gate ${sessionReport.headline.includes("NOT ready") ? "gate-changes_required" : "gate-recommend_release"}">
+  <div class="label">${escapeHtml(sessionReport.headline)}</div>
+  <p>${escapeHtml(sessionReport.verdict_paragraph)}</p>
+</div>
+<h3>Critical findings</h3>
+<ul>${sessionReport.critical_findings.map((line) => `<li>${escapeHtml(line)}</li>`).join("\n")}</ul>
+<h3>What was tested</h3>
+<ul>${sessionReport.what_was_tested.map((line) => `<li>${escapeHtml(line)}</li>`).join("\n")}</ul>
+<h3>What was NOT tested</h3>
+<ul>${sessionReport.what_was_not_tested.map((line) => `<li>${escapeHtml(line)}</li>`).join("\n")}</ul>
+<h3>Next actions</h3>
+<ul>${sessionReport.next_actions.map((line) => `<li>${escapeHtml(line)}</li>`).join("\n")}</ul>
+<p class="meta">Human still required: ${escapeHtml(sessionReport.human_must.join(", "))}</p>`
+    : "";
   const findings =
     report.generation_findings.length > 0
       ? `<h2>Unbindable acceptance criteria</h2><ul>${report.generation_findings
@@ -285,6 +303,7 @@ ${report.draft_defects.map(defectRow).join("\n")}
   <div class="label">Release gate: ${escapeHtml(report.release_recommendation.replace(/_/g, " "))}</div>
   <p>${escapeHtml(report.release_recommendation_rationale)}</p>
 </div>
+${sessionHtml}
 <div class="summary">
   <div class="stat"><span class="n">${report.summary.generated}</span>generated</div>
   <div class="stat"><span class="n">${report.summary.executed}</span>executed</div>
