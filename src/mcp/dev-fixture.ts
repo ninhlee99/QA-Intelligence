@@ -772,6 +772,7 @@ export function buildDevFixture(options: {
     credentials,
     regressionRegistry: regressionSuites,
     discoverUiWorkflow: uiWorkflowSkill,
+    apiSmoke: apiSmokeSkill,
     candidateRepository,
     ...(sessionMemory !== undefined ? { sessionMemory } : {}),
   });
@@ -1717,11 +1718,29 @@ export function buildDevFixture(options: {
           include_workflow_journeys: {
             type: "boolean",
             description:
-              "When true, discover multi-page workflow from url, generate journey cases, merge into auto-registered suite (journeys not executed in this pass).",
+              "When true, discover multi-page workflow from url, generate journey cases, merge into suite, and execute a capped subset in this Expert pass (default).",
+          },
+          execute_extension_cases: {
+            type: "boolean",
+            description:
+              "Default true. When false, skip same-pass execution of OpenAPI/journey extension cases (still register into suite).",
+          },
+          api_base_url: {
+            type: "string",
+            description: "HTTP origin for OpenAPI smoke execution (defaults to url). Use when API host differs from UI url.",
+          },
+          max_extension_api: {
+            type: "number",
+            description: "Cap API smoke cases executed this pass (default 5, max 10).",
+          },
+          max_extension_browser: {
+            type: "number",
+            description: "Cap journey browser cases executed this pass (default 3, max 8).",
           },
           product_root: {
             type: "string",
-            description: "Absolute product workspace path — used to assess domain-knowledge/ for claim_pass gate.",
+            description:
+              "Absolute product workspace path — domain-knowledge/ gate + optional git blast-radius scan.",
           },
           acknowledge_domain_pack_absent: {
             type: "boolean",
@@ -1770,6 +1789,13 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
           role_b: (args["role_b"] as JsonValue | undefined) ?? {},
           include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
+          execute_extension_cases:
+            typeof args["execute_extension_cases"] === "boolean" ? args["execute_extension_cases"] : undefined,
+          api_base_url: (args["api_base_url"] as string | undefined) ?? "",
+          max_extension_api:
+            typeof args["max_extension_api"] === "number" ? args["max_extension_api"] : undefined,
+          max_extension_browser:
+            typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
           product_root: (args["product_root"] as string | undefined) ?? "",
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
@@ -1847,6 +1873,10 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: { type: "boolean" },
           role_b: { type: "object" },
           include_workflow_journeys: { type: "boolean" },
+          execute_extension_cases: { type: "boolean" },
+          api_base_url: { type: "string" },
+          max_extension_api: { type: "number" },
+          max_extension_browser: { type: "number" },
           acknowledge_domain_pack_absent: { type: "boolean" },
           domain_high_risk_confirmed: { type: "boolean" },
         },
@@ -1892,6 +1922,13 @@ export function buildDevFixture(options: {
           include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
           role_b: (args["role_b"] as JsonValue | undefined) ?? {},
           include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
+          execute_extension_cases:
+            typeof args["execute_extension_cases"] === "boolean" ? args["execute_extension_cases"] : undefined,
+          api_base_url: (args["api_base_url"] as string | undefined) ?? "",
+          max_extension_api:
+            typeof args["max_extension_api"] === "number" ? args["max_extension_api"] : undefined,
+          max_extension_browser:
+            typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
         }),

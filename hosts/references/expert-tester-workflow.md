@@ -114,11 +114,13 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 | Signal | MUST |
 |--------|------|
 | ≥2 roles matter | Prefer `run_auto_qa` with `role_b` (auto role compare in `expert_extensions`) **or** `discover_and_compare_role_ui_surfaces` — authz gaps in G6 |
-| OpenAPI / HTTP API in scope | Prefer `run_auto_qa` with `openapi`/`openapi_path` + `include_authz_negatives: true` (cases merge into suite) **or** `generate_api_smoke_from_openapi` + `execute_api_smoke` |
-| Multi-page journey | Prefer `run_auto_qa` with `include_workflow_journeys: true` **or** discover_ui_workflow → generate_journey_test_cases |
+| OpenAPI / HTTP API in scope | Prefer `run_auto_qa` with `openapi`/`openapi_path` + `include_authz_negatives: true` — capped subset **executes in same Expert pass** (`execute_extension_cases` default true; optional `api_base_url`) |
+| Multi-page journey | Prefer `run_auto_qa` with `include_workflow_journeys: true` — capped journey subset executes same pass |
 | AC has submit→API | Prefer `expected_network` on AC / assertion |
 | UI layout regression concern | `compare_ui_baseline` and/or `compare_ui_surface_to_baseline` |
 | Security-sensitive surface | Consider `run_depth_smokes`; never claim pen-test |
+| Code change in product_root | Read `git_blast_radius` in output — aim retest; filenames ≠ oracles |
+| Vague / oracle-less AC | Read `ac_quality_review` — push back; high findings block pass |
 
 Skip only with explicit reason in G6.
 

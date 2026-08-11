@@ -29,14 +29,33 @@ import {
   hookCoverageFromExtensions,
 } from "../reporting/expert-risk-signals.js";
 import {
+  buildExpertRiskMatrix,
+  expertRiskMatrixJson,
+  riskMatrixPassBlockers,
+} from "../reporting/expert-risk-matrix.js";
+import {
+  acQualityPassBlockers,
+  reviewAcceptanceCriteriaQuality,
+} from "../reporting/ac-quality-review.js";
+import {
   draftExpertSessionReport,
   expertSessionReportJson,
 } from "../reporting/expert-session-report.js";
-import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
+import {
+  renderQaRunReportHtml,
+  summarizeQaRunTestCases,
+  type QaRunReport,
+  type QaRunTestCaseResult,
+} from "../reporting/qa-run-report.js";
+import { buildProfessionalQaAnalysis } from "../reporting/qa-professional-analysis.js";
+import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
+import { assessGitBlastRadius, gitBlastRadiusJson } from "../discovery/git-blast-radius.js";
+import type { ExecuteApiSmoke } from "../api-testing/execute-api-smoke.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
 import type { InMemoryRegressionSuiteRegistry, RegressionCase } from "./regression-suite-registry.js";
 import type { GenerateTestCases } from "./generate-test-cases.js";
 import { runExpertHooks } from "./run-auto-qa-expert-hooks.js";
+import { executeExpertExtensionCases } from "./execute-expert-extension-cases.js";
 import type { CandidateRepository } from "../candidate-repository/public.js";
 import type { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
 import type {
@@ -68,6 +87,8 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   regressionRegistry?: RegressionSuiteRegistry;
   /** Optional: enable include_workflow_journeys hook. */
   discoverUiWorkflow?: DiscoverUiWorkflow;
+  /** When set, Expert pass can execute OpenAPI smoke subset in-loop. */
+  apiSmoke?: ExecuteApiSmoke;
   /** P5: surface learning candidates alongside failure-avoidance hints. */
   candidateRepository?: CandidateRepository;
 }>;
@@ -258,9 +279,6 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
-    const report = result.value.report;
-    const flakeTaxonomy = deriveFlakeTaxonomy(report);
-
     const hooks = await runExpertHooks({
       operation_id: input.execution.operation_id,
       workspace_id: input.reference.workspace_id,
@@ -334,6 +352,47 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       autoSuite = { skipped: true, reason: "regression_registry_not_configured" };
     }
 
+    const executeExtensions = input.start_request.input["execute_extension_cases"] !== false;
+    const apiBaseUrl =
+      readOptionalString(input.start_request.input["api_base_url"]) ?? url.trim();
+    const extensionExec = await executeExpertExtensionCases(
+      {
+        clock: this.#dependencies.clock,
+        authorizer: this.#dependencies.authorizer,
+        ...(this.#dependencies.apiSmoke !== undefined
+          ? { apiSmoke: this.#dependencies.apiSmoke }
+          : {}),
+        ...(this.#dependencies.credentials !== undefined
+          ? { credentials: this.#dependencies.credentials }
+          : {}),
+        ...(this.#dependencies.launchBrowser !== undefined
+          ? { launchBrowser: this.#dependencies.launchBrowser }
+          : {}),
+      },
+      {
+        operation_id: input.execution.operation_id,
+        workspace_id: input.reference.workspace_id,
+        context: input.execution.workspace_context,
+        api_base_url: apiBaseUrl,
+        deadline: input.start_request.deadline,
+        run_id: input.reference.run_id,
+        cases: hooks.extra_regression_cases,
+        enabled: executeExtensions,
+        ...(typeof input.start_request.input["max_extension_api"] === "number"
+          ? { max_api: input.start_request.input["max_extension_api"] as number }
+          : {}),
+        ...(typeof input.start_request.input["max_extension_browser"] === "number"
+          ? { max_browser: input.start_request.input["max_extension_browser"] as number }
+          : {}),
+      },
+    );
+
+    let report = result.value.report;
+    if (extensionExec.results.length > 0) {
+      report = mergeExtensionResultsIntoReport(report, extensionExec.results);
+    }
+    const flakeTaxonomy = deriveFlakeTaxonomy(report);
+
     const domainPack = assessDomainPackFromInput(input.start_request.input);
     const requestContext = readOptionalString(input.start_request.input["request_context"]);
     const riskSignals = detectExpertRiskSignals({
@@ -347,18 +406,40 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       acceptanceCriteria,
     );
     const mandateBlockers = deriveExpertMandateBlockers(riskSignals, hookCoverage);
+    const acQuality = reviewAcceptanceCriteriaQuality(acceptanceCriteria);
+    const riskMatrix = buildExpertRiskMatrix({
+      signals: riskSignals,
+      domain_pack: domainPack,
+      hook_coverage: hookCoverage,
+      extension_executed: {
+        api_ran: extensionExec.api_ran,
+        journey_ran: extensionExec.journey_ran,
+      },
+    });
+    const productRoot = readOptionalString(input.start_request.input["product_root"]);
+    const gitBlast = await assessGitBlastRadius(productRoot);
+    const extraPassBlockers = [
+      ...riskMatrixPassBlockers(riskMatrix),
+      ...acQualityPassBlockers(acQuality),
+    ];
     const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
     const gapExtras: CoverageGapExtras = {
       mandate_blockers: mandateBlockers,
       domain_pack: domainPack,
-      journey_cases_registered_not_executed: hookCoverage.journey_cases_added,
-      openapi_cases_registered_not_executed: hookCoverage.openapi_cases_added,
+      journey_cases_registered_not_executed:
+        hookCoverage.journey_cases_added && extensionExec.journey_attempted === 0,
+      openapi_cases_registered_not_executed:
+        hookCoverage.openapi_cases_added && extensionExec.api_attempted === 0,
+      stateful_lifecycle_uncovered: true,
+      git_blast_radius: gitBlast,
+      ac_quality_high_count: acQuality.findings.filter((f) => f.severity === "high").length,
     };
     const gaps = deriveCoverageGaps(report, gapExtras);
     const retest = deriveSmartRetestSuggestion(report);
     const checklistOptions: ExpertChecklistFromReportOptions = {
       domainPack,
       e2MandateBlockers: mandateBlockers.map((b) => b.code),
+      extraPassBlockers,
       context: "run_auto_qa",
       suiteIdPresent: suitePresent,
     };
@@ -380,6 +461,17 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       mandate_blockers: mandateBlockers,
       domain_pack: domainPack,
       flake_taxonomy: flakeTaxonomy,
+      risk_matrix: riskMatrix,
+      ac_quality: acQuality,
+      git_blast_radius: gitBlast,
+      extension_execution: {
+        skipped: extensionExec.skipped,
+        api_ran: extensionExec.api_ran,
+        journey_ran: extensionExec.journey_ran,
+        api_attempted: extensionExec.api_attempted,
+        journey_attempted: extensionExec.journey_attempted,
+        ...(extensionExec.reason !== undefined ? { reason: extensionExec.reason } : {}),
+      },
       ...(suitePresent && autoSuite && "suite_id" in autoSuite ? { suite_id: autoSuite.suite_id } : {}),
     });
 
@@ -456,6 +548,24 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
           expert_extensions: hooks.extensions,
           expert_observations: expertObservations,
           expert_session_report: expertSessionReportJson(sessionReport),
+          expert_risk_matrix: expertRiskMatrixJson(riskMatrix),
+          ac_quality_review: {
+            schema_version: acQuality.schema_version,
+            finding_count: acQuality.finding_count,
+            findings: acQuality.findings.map((f) => ({ ...f })),
+            note: acQuality.note,
+          },
+          git_blast_radius: gitBlastRadiusJson(gitBlast),
+          extension_execution: {
+            skipped: extensionExec.skipped,
+            ...(extensionExec.reason !== undefined ? { reason: extensionExec.reason } : {}),
+            api_ran: extensionExec.api_ran,
+            journey_ran: extensionExec.journey_ran,
+            api_attempted: extensionExec.api_attempted,
+            journey_attempted: extensionExec.journey_attempted,
+            failed_count: extensionExec.failed_count,
+            flaky_count: extensionExec.flaky_count,
+          },
           learning: {
             failure_avoidance_hints: priorHints.map((entry) => ({
               key: entry.key,
@@ -745,6 +855,9 @@ type CoverageGapExtras = Readonly<{
   domain_pack?: DomainPackGateInput;
   journey_cases_registered_not_executed?: boolean;
   openapi_cases_registered_not_executed?: boolean;
+  stateful_lifecycle_uncovered?: boolean;
+  git_blast_radius?: Awaited<ReturnType<typeof assessGitBlastRadius>>;
+  ac_quality_high_count?: number;
 }>;
 
 /**
@@ -794,7 +907,8 @@ function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): re
   if (extras?.journey_cases_registered_not_executed === true) {
     gaps.push({
       gap: "journey_cases_registered_not_executed",
-      message: "Multi-page journey cases were added to the suite but not executed in this pass — run_regression_suite required.",
+      message:
+        "Multi-page journey cases were added to the suite but not executed in this pass — set execute_extension_cases (default true) or run_regression_suite.",
       expert_note: "Registering journeys ≠ testing journeys.",
     });
   }
@@ -802,7 +916,37 @@ function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): re
   if (extras?.openapi_cases_registered_not_executed === true) {
     gaps.push({
       gap: "api_smoke_registered_not_executed",
-      message: "OpenAPI smoke cases were merged into the suite but not executed in this pass — run_regression_suite / execute_api_smoke required.",
+      message:
+        "OpenAPI smoke cases were merged into the suite but not executed in this pass — ensure apiSmoke is configured / api_base_url set, or run_regression_suite.",
+    });
+  }
+
+  if ((extras?.ac_quality_high_count ?? 0) > 0) {
+    const highCount = extras!.ac_quality_high_count ?? 0;
+    gaps.push({
+      gap: "ac_quality_high",
+      count: highCount,
+      message: `${highCount} high-severity AC quality finding(s) — Expert pushback required before pass claims.`,
+    });
+  }
+
+  if (extras?.stateful_lifecycle_uncovered === true) {
+    gaps.push({
+      gap: "stateful_data_lifecycle",
+      message:
+        "No durable fixture create→use→cleanup oracle in this loop — data pollution / orphan records may be invisible.",
+      expert_note: "Document setup/teardown or waive with reason; residual until evidenced.",
+    });
+  }
+
+  if (extras?.git_blast_radius?.available && extras.git_blast_radius.changed_files.length > 0) {
+    gaps.push({
+      gap: "diff_blast_radius",
+      count: extras.git_blast_radius.changed_files.length,
+      message: extras.git_blast_radius.message,
+      hotspots: [...extras.git_blast_radius.hotspots],
+      suggested_retest_focus: [...extras.git_blast_radius.suggested_retest_focus],
+      expert_note: "Filenames are hints, not oracles — map to screens/AC before claiming coverage.",
     });
   }
 
@@ -822,17 +966,48 @@ function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): re
   gaps.push({
     gap: "scope_limits",
     message:
-      "This run covers UI naming smoke + generated AC variants (+ optional E2 hooks). Not covered unless separately evidenced: full WCAG/axe, load/perf, penetration testing, complete API authz matrix, cross-browser parity, stateful data cleanup, blast-radius regression from code diff.",
+      "This run covers UI naming smoke + generated AC variants (+ optional E2 hooks/extension subset). Not covered unless separately evidenced: full WCAG/axe, load/perf, penetration testing, complete API authz matrix, cross-browser parity.",
     not_covered: [
       "full_wcag",
       "load_test",
       "pen_test",
       "api_authz_matrix_complete",
       "cross_browser",
-      "stateful_data_lifecycle",
-      "diff_blast_radius",
     ],
   });
 
   return gaps;
+}
+
+function mergeExtensionResultsIntoReport(
+  report: QaRunReport,
+  extensionResults: readonly QaRunTestCaseResult[],
+): QaRunReport {
+  const test_cases = [...report.test_cases, ...extensionResults];
+  const summary = summarizeQaRunTestCases(test_cases);
+  const extensionDefects = draftDefectsFromQaRun({
+    workspace_id: report.workspace_id,
+    requirement_ref: report.requirement_ref,
+    target_url: report.target_url,
+    environment_ref: `environment:${report.requirement_ref}`,
+    test_cases: extensionResults,
+  });
+  const draft_defects = [...report.draft_defects, ...extensionDefects];
+  const analysis = buildProfessionalQaAnalysis({
+    test_cases,
+    generation_findings: report.generation_findings,
+    draft_defects,
+    summary,
+    accessibility_smoke: report.accessibility_smoke,
+  });
+  return {
+    ...report,
+    test_cases,
+    summary,
+    draft_defects,
+    variant_coverage: analysis.variant_coverage,
+    residual_risks: analysis.residual_risks,
+    release_recommendation: analysis.release_recommendation,
+    release_recommendation_rationale: analysis.release_recommendation_rationale,
+  };
 }

@@ -114,7 +114,7 @@ async function attachOpenApi(
     ok: true,
     case_count: converted.cases.length,
     warnings: [...converted.warnings],
-    note: "API smoke cases merged into auto-registered suite when registry present. Execute via run_regression_suite or execute_api_smoke.",
+    note: "API smoke cases merged into auto-registered suite; a capped subset executes in this Expert pass when apiSmoke is configured (override with execute_extension_cases=false).",
   };
 }
 
@@ -277,7 +277,7 @@ async function attachJourneys(
       edge_count: discovered.value.edges.length,
       journey_cases_added: added,
       findings: [...journeys.findings],
-      note: "Journey cases merged into auto-registered suite; not executed in this run_auto_qa pass — retest via run_regression_suite.",
+      note: "Journey cases merged into auto-registered suite; a capped subset executes in this Expert pass by default (override with execute_extension_cases=false).",
     };
   } catch (error) {
     extensions["journey_hook"] = {

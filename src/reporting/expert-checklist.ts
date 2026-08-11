@@ -37,6 +37,8 @@ export type ExpertChecklistInput = Readonly<{
   domain_pack?: DomainPackGateInput;
   /** E2 smells not exercised — Expert would block "done". */
   e2_mandate_blockers?: readonly string[];
+  /** Extra pass blockers (risk_matrix_*, ac_quality:*, …). */
+  extra_pass_blockers?: readonly string[];
   context: "run_auto_qa" | "run_regression_suite" | "run_expert_qa";
 }>;
 
@@ -52,6 +54,8 @@ const PASS_BLOCKING_PREFIXES = [
   "domain_high_risk_unconfirmed",
   "suite_missing",
   "e2_",
+  "risk_matrix_",
+  "ac_quality:",
 ] as const;
 
 export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
@@ -122,6 +126,10 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
     const code = mandate.trim();
     if (code.length > 0) blockers.push(code.startsWith("e2_") ? code : `e2_${code}`);
   }
+  for (const extra of input.extra_pass_blockers ?? []) {
+    const code = extra.trim();
+    if (code.length > 0) blockers.push(code);
+  }
 
   const host_actions: string[] = [
     "State release_recommendation as the first verdict — never lead with pass-count.",
@@ -150,6 +158,16 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
   if (blockers.some((b) => b.startsWith("e2_"))) {
     host_actions.unshift(
       "E2 Expert mandate open — run role_b / openapi(+authz negatives) / include_workflow_journeys / expected_network before claiming done.",
+    );
+  }
+  if (blockers.some((b) => b.startsWith("risk_matrix_"))) {
+    host_actions.unshift(
+      "Risk matrix has open P0/P1 rows — exercise mitigation or record explicit waive with reason before pass language.",
+    );
+  }
+  if (blockers.some((b) => b.startsWith("ac_quality:"))) {
+    host_actions.unshift(
+      "AC quality findings are high — push back on vague/missing-oracle criteria before claiming pass.",
     );
   }
   if (input.smart_retest_action === "targeted_retest") {
@@ -202,6 +220,7 @@ export type ExpertChecklistFromReportOptions = Readonly<{
   suiteIdPresent?: boolean;
   domainPack?: DomainPackGateInput;
   e2MandateBlockers?: readonly string[];
+  extraPassBlockers?: readonly string[];
   context?: ExpertChecklistInput["context"];
 }>;
 
@@ -227,6 +246,9 @@ export function expertChecklistFromQaRunReport(
     ...(options.domainPack !== undefined ? { domain_pack: options.domainPack } : {}),
     ...(options.e2MandateBlockers !== undefined && options.e2MandateBlockers.length > 0
       ? { e2_mandate_blockers: options.e2MandateBlockers }
+      : {}),
+    ...(options.extraPassBlockers !== undefined && options.extraPassBlockers.length > 0
+      ? { extra_pass_blockers: options.extraPassBlockers }
       : {}),
     context: options.context ?? "run_auto_qa",
   });

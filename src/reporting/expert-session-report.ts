@@ -4,10 +4,13 @@
  * gaps, next actions. Never invents product intent or confirmed root cause.
  */
 import type { JsonObject } from "../requirement-review/public.js";
+import type { AcQualityReview } from "./ac-quality-review.js";
 import type { DomainPackGateInput } from "./expert-checklist.js";
+import type { ExpertRiskMatrix } from "./expert-risk-matrix.js";
 import type { ExpertMandateBlocker, ExpertRiskSignals, ExpertHookCoverage } from "./expert-risk-signals.js";
 import type { QaRunReport } from "./qa-run-report.js";
 import type { FlakeTaxonomy } from "./flake-taxonomy.js";
+import type { GitBlastRadius } from "../discovery/git-blast-radius.js";
 
 export type ExpertSessionReportInput = Readonly<{
   report: QaRunReport;
@@ -20,6 +23,17 @@ export type ExpertSessionReportInput = Readonly<{
   domain_pack?: DomainPackGateInput;
   flake_taxonomy?: FlakeTaxonomy;
   suite_id?: string;
+  risk_matrix?: ExpertRiskMatrix;
+  ac_quality?: AcQualityReview;
+  git_blast_radius?: GitBlastRadius;
+  extension_execution?: Readonly<{
+    skipped: boolean;
+    api_ran: boolean;
+    journey_ran: boolean;
+    api_attempted: number;
+    journey_attempted: number;
+    reason?: string;
+  }>;
 }>;
 
 export type ExpertSessionReport = Readonly<{
@@ -59,6 +73,17 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
   for (const blocker of input.mandate_blockers) {
     critical_findings.push(`MANDATE OPEN: ${blocker.message}`);
   }
+  if (input.risk_matrix && input.risk_matrix.p0_open + input.risk_matrix.p1_open > 0) {
+    const openRows = input.risk_matrix.rows.filter(
+      (r) => !r.exercised && (r.priority === "P0" || r.priority === "P1") && r.id !== "risk-scope-pen",
+    );
+    for (const row of openRows.slice(0, 5)) {
+      critical_findings.push(`RISK ${row.priority} ${row.id}: ${row.title} — ${row.mitigation}`);
+    }
+  }
+  for (const finding of (input.ac_quality?.findings ?? []).filter((f) => f.severity === "high").slice(0, 5)) {
+    critical_findings.push(`AC PUSHBACK: ${finding.message}`);
+  }
   if (flaky.length > 0) {
     critical_findings.push(
       `Flaky ${flaky.length} case(s): ${flaky.map((t) => t.test_case_id).join(", ")} — treat as investigate_flakes, not ignore.`,
@@ -81,11 +106,27 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
   if (input.hook_coverage.role_compare_ran) {
     what_was_tested.push("Dual-role UI surface compare ran (named controls only — not a full authz model).");
   }
-  if (input.hook_coverage.openapi_cases_added) {
-    what_was_tested.push("OpenAPI-derived API smoke cases registered into the regression suite.");
+  if (input.extension_execution?.api_ran) {
+    what_was_tested.push(
+      `OpenAPI/API smoke subset executed in this Expert pass (${input.extension_execution.api_attempted} case(s) attempted).`,
+    );
+  } else if (input.hook_coverage.openapi_cases_added) {
+    what_was_tested.push(
+      input.extension_execution?.api_attempted
+        ? "OpenAPI cases attempted this pass but no product verdict (see not_executed)."
+        : "OpenAPI-derived API smoke cases registered into the suite (execution skipped this pass).",
+    );
   }
-  if (input.hook_coverage.journey_cases_added) {
-    what_was_tested.push("Workflow journey cases registered into the suite (execution deferred to targeted retest / suite run).");
+  if (input.extension_execution?.journey_ran) {
+    what_was_tested.push(
+      `Workflow journey subset executed in this Expert pass (${input.extension_execution.journey_attempted} case(s) attempted).`,
+    );
+  } else if (input.hook_coverage.journey_cases_added) {
+    what_was_tested.push(
+      input.extension_execution?.journey_attempted
+        ? "Journey cases attempted this pass but no product verdict (see not_executed)."
+        : "Workflow journey cases registered into the suite (execution skipped this pass).",
+    );
   }
   if (input.hook_coverage.any_expected_network_on_ac) {
     what_was_tested.push("At least one AC carried expected_network (UI→API coupling).");
@@ -99,6 +140,11 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
         .filter(([, n]) => n > 0)
         .map(([k, n]) => `${k}=${n}`)
         .join(", ")}.`,
+    );
+  }
+  if (input.git_blast_radius?.available && input.git_blast_radius.changed_files.length > 0) {
+    what_was_tested.push(
+      `Git blast-radius scanned: ${input.git_blast_radius.changed_files.length} path(s), ${input.git_blast_radius.hotspots.length} hotspot(s).`,
     );
   }
 
@@ -128,6 +174,9 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
   for (const blocker of input.mandate_blockers) {
     next_actions.push(`Close mandate: ${blocker.code} — ${blocker.message}`);
   }
+  for (const focus of input.git_blast_radius?.suggested_retest_focus ?? []) {
+    next_actions.push(`Blast-radius: ${focus}`);
+  }
   if (input.domain_pack?.high_risk_unconfirmed) {
     next_actions.push("Walk money/permission TODOs with a human; then re-run with domain_high_risk_confirmed=true.");
   }
@@ -145,7 +194,31 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     "pen_test_if_security_sensitive",
     "novel_domain_judgment",
     "confirm_or_waive_money_permission_todos",
+    "stateful_data_lifecycle_or_waive",
   ];
+
+  const riskMatrixMd =
+    input.risk_matrix === undefined
+      ? []
+      : [
+          "",
+          `## Risk matrix (impact × likelihood)`,
+          "",
+          ...input.risk_matrix.rows.map(
+            (r) =>
+              `- ${r.priority} ${r.id}: ${r.title} [impact=${r.impact}, likelihood=${r.likelihood}, exercised=${r.exercised}] — ${r.rationale}`,
+          ),
+        ];
+
+  const acMd =
+    input.ac_quality === undefined || input.ac_quality.finding_count === 0
+      ? []
+      : [
+          "",
+          `## AC / spec pushback`,
+          "",
+          ...input.ac_quality.findings.map((f) => `- [${f.severity}] ${f.message}`),
+        ];
 
   const markdown = [
     `# Expert Tester session — ${report.target_url}`,
@@ -167,6 +240,8 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     `## What was NOT tested`,
     "",
     ...what_was_not_tested.map((line) => `- ${line}`),
+    ...riskMatrixMd,
+    ...acMd,
     "",
     `## Next actions`,
     "",
