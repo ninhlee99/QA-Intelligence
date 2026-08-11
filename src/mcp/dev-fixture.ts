@@ -12,7 +12,7 @@
 import { join } from "node:path";
 
 import type { WorkspaceAuthorizer } from "../requirement-review/public.js";
-import { InMemoryKnowledgeSearch } from "../adapters/memory/knowledge-search.js";
+import { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
 import { InMemoryRequirementResolver } from "../adapters/memory/requirement-resolver.js";
 import { ScriptedReasoningProvider } from "../adapters/replay/scripted-reasoning-provider.js";
 import {
@@ -122,6 +122,8 @@ import { GenerateJourneyRuntimeExecutor } from "../test-design/generate-journey-
 import {
   CompareUiSurfacesRuntimeExecutor,
   DefectExportRuntimeExecutor,
+  DefectFileRuntimeExecutor,
+  KnowledgeRegisterRuntimeExecutor,
   OpenApiSmokeRuntimeExecutor,
   RegressionSuiteRuntimeExecutor,
 } from "../test-design/pro-tester-runtime-executors.js";
@@ -193,7 +195,7 @@ export const WORKFLOW_STUB_SKILL = { id: "generate-business-analysis-stub", vers
 export const RISK_STUB_AGENT = { id: "generate-risk-stub-agent", version: "0.1.0" } as const;
 export const RISK_STUB_SKILL = { id: "generate-risk-stub", version: "0.1.0" } as const;
 export const STRATEGY_STUB_AGENT = { id: "generate-test-strategy-stub-agent", version: "0.1.0" } as const;
-export const STRATEGY_STUB_SKILL = { id: "generate-test-strategy", version: "0.1.0" } as const;
+export const STRATEGY_STUB_SKILL = { id: "generate-test-strategy-stub", version: "0.1.0" } as const;
 export const DATASET_REGISTER_AGENT = { id: "dataset-registry-agent", version: "0.1.0" } as const;
 export const DATASET_REGISTER_SKILL = { id: "register-test-dataset", version: "0.1.0" } as const;
 export const DATASET_LIST_AGENT = { id: "dataset-list-agent", version: "0.1.0" } as const;
@@ -220,6 +222,10 @@ export const OPENAPI_SMOKE_AGENT = { id: "openapi-to-api-smoke-agent", version: 
 export const OPENAPI_SMOKE_SKILL = { id: "generate-api-smoke-from-openapi", version: "0.1.0" } as const;
 export const DEFECT_EXPORT_AGENT = { id: "export-defects-agent", version: "0.1.0" } as const;
 export const DEFECT_EXPORT_SKILL = { id: "export-defects-for-tracker", version: "0.1.0" } as const;
+export const DEFECT_FILE_AGENT = { id: "file-defects-agent", version: "0.1.0" } as const;
+export const DEFECT_FILE_SKILL = { id: "file-defects-to-tracker", version: "0.1.0" } as const;
+export const KNOWLEDGE_REGISTER_AGENT = { id: "register-knowledge-record-agent", version: "0.1.0" } as const;
+export const KNOWLEDGE_REGISTER_SKILL = { id: "register-knowledge-record", version: "0.1.0" } as const;
 export const JOURNEY_GEN_AGENT = { id: "generate-journey-test-cases-agent", version: "0.1.0" } as const;
 export const JOURNEY_GEN_SKILL = { id: "generate-journey-test-cases", version: "0.1.0" } as const;
 export const COMPARE_UI_AGENT = { id: "compare-ui-surfaces-agent", version: "0.1.0" } as const;
@@ -319,11 +325,12 @@ export function buildDevFixture(options: {
   let reviewId = 0;
   const reviewer = new AssessRequirementQuality({
     authorizer,
-    knowledge: new InMemoryKnowledgeSearch({
+    knowledge: new FileBackedKnowledgeSearch({
+      rootDir: join(process.cwd(), ".qa-knowledge"),
       workspace_id: workspaceId,
       knowledge_snapshot: "0.1.0",
       projection_freshness: clock.now().toISOString(),
-      records: [],
+      seed_records: [],
     }),
     // SPEC-203 (quality: acceptance criteria, source, ambiguous terms) and
     // SPEC-202 (contract completeness: rationale, traceability-count-by-
@@ -445,11 +452,26 @@ export function buildDevFixture(options: {
 
   let defectAssessmentSequence = 0;
   let defectFindingSequence = 0;
-  const emptyKnowledge = new InMemoryKnowledgeSearch({
+  const emptyKnowledge = new FileBackedKnowledgeSearch({
+    rootDir: join(process.cwd(), ".qa-knowledge"),
     workspace_id: workspaceId,
     knowledge_snapshot: "0.1.0",
     projection_freshness: clock.now().toISOString(),
-    records: [],
+    seed_records: [
+      {
+        workspace_id: workspaceId,
+        knowledge_snapshot: "0.1.0",
+        knowledge_ref: "knowledge:product-context-seed",
+        title: "Product context seed",
+        excerpt:
+          "Dev MCP ships a durable Knowledge seed under .qa-knowledge/. Prefer register_knowledge_record for Workspace facts — never invent product truth.",
+        authority_status: "accepted",
+        scopes: ["product-context"],
+        applicability: { workspace_id: workspaceId },
+        provenance: ["dev-fixture-seed"],
+        evidence: ["source:dev-fixture"],
+      },
+    ],
   });
   const defectReviewer = new AssessDefectQuality({
     authorizer,
@@ -1078,7 +1100,7 @@ export function buildDevFixture(options: {
       discoverUiSurface: uiDiscoverySkill,
       expected_agent: STRATEGY_STUB_AGENT,
       expected_skill: STRATEGY_STUB_SKILL,
-      tool_name: "generate_test_strategy",
+      tool_name: "generate_test_strategy_stub",
       generate: ({ elements, source_url, workspace_id, input }) => {
         const objective =
           typeof input["objective"] === "string" && input["objective"].trim() ? input["objective"].trim() : undefined;
@@ -1228,6 +1250,22 @@ export function buildDevFixture(options: {
     }),
   );
   executorMap.set(
+    DEFECT_FILE_AGENT.id,
+    new DefectFileRuntimeExecutor({
+      expected_agent: DEFECT_FILE_AGENT,
+      expected_skill: DEFECT_FILE_SKILL,
+      credentials,
+    }),
+  );
+  executorMap.set(
+    KNOWLEDGE_REGISTER_AGENT.id,
+    new KnowledgeRegisterRuntimeExecutor({
+      knowledge: emptyKnowledge,
+      expected_agent: KNOWLEDGE_REGISTER_AGENT,
+      expected_skill: KNOWLEDGE_REGISTER_SKILL,
+    }),
+  );
+  executorMap.set(
     JOURNEY_GEN_AGENT.id,
     new GenerateJourneyRuntimeExecutor({
       expected_agent: JOURNEY_GEN_AGENT,
@@ -1324,23 +1362,28 @@ export function buildDevFixture(options: {
     {
       name: "discover_ui_surface_after_login",
       description:
-        "Discovers a Semantic UI Map for a screen reachable only after logging in (session/cookie-gated) — discover_ui_surface alone cannot see it because every call launches a fresh, unauthenticated browser. This tool runs one browser for the whole sequence: navigates to login_url, discovers ITS Semantic UI Map, resolves username_field_name/password_field_name/submit_action_name against that discovered map (never a raw selector), fills and submits, then navigates to target_url and discovers that screen on the exact same session. Field/action names must match what discover_ui_surface would report for the login page — call it on login_url first if unsure. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt in front of both login_url and target_url, distinct from the in-page login form), supply basic_auth_username + basic_auth_password together to answer it first.",
+        "Discovers a Semantic UI Map for a screen reachable only after authenticating. Form path: login_url + username/password fields + submit + target_url. SSO path: login_url + sso_action_name (+ optional sso_wait_url_includes / mfa_wait_for_*) + target_url — clicks IdP button and waits for redirect; does not invent IdP credentials (test IdP or human-in-session). Field/action names must match discover_ui_surface on the login page. Optional HTTP Basic Auth via basic_auth_*.",
       inputSchema: {
         type: "object",
         properties: {
           login_url: { type: "string", description: "e.g. https://your-app.example/login" },
-          username_field_name: { type: "string", description: "Discovered field accessible_name, e.g. \"Username\"" },
+          username_field_name: { type: "string", description: "Form login: discovered field accessible_name, e.g. \"Username\"" },
           username: { type: "string" },
-          password_field_name: { type: "string", description: "Discovered field accessible_name, e.g. \"Password\"" },
+          password_field_name: { type: "string", description: "Form login: discovered field accessible_name, e.g. \"Password\"" },
           password: { type: "string", description: "Literal password — prefer password_secret_ref after register_workspace_secret." },
           password_secret_ref: { type: "string", description: "e.g. workspace-secret:demo-password (Phase 6)." },
-          submit_action_name: { type: "string", description: "Discovered action accessible_name, e.g. \"Sign in\"" },
+          submit_action_name: { type: "string", description: "Form login: discovered action accessible_name, e.g. \"Sign in\"" },
+          sso_action_name: { type: "string", description: "SSO bootstrap: accessible name of IdP button, e.g. \"Continue with Google\"." },
+          sso_wait_url_includes: { type: "string", description: "After SSO click, wait until URL includes this (default: target pathname)." },
+          mfa_wait_for_accessible_name: { type: "string", description: "Optional MFA/post-login gate accessible name before capture." },
+          mfa_wait_for_accessible_role: { type: "string" },
+          mfa_wait_timeout_ms: { type: "number" },
           target_url: { type: "string", description: "The screen to discover after login, e.g. https://your-app.example/dashboard" },
           basic_auth_username: { type: "string", description: "Optional. Supply with basic_auth_password or basic_auth_password_secret_ref when the site is also behind HTTP Basic Auth." },
           basic_auth_password: { type: "string" },
           basic_auth_password_secret_ref: { type: "string" },
         },
-        required: ["login_url", "username_field_name", "username", "password_field_name", "submit_action_name", "target_url"],
+        required: ["login_url", "target_url"],
       },
       agent: DISCOVER_AFTER_LOGIN_AGENT,
       purpose: "Discover a session-gated screen's Semantic UI Map via MCP, logging in first",
@@ -1349,19 +1392,25 @@ export function buildDevFixture(options: {
       allowed_skills: [DISCOVER_AFTER_LOGIN_SKILL],
       allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
       budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
-      buildInput: (args) => ({
-        login_url: (args["login_url"] as string | undefined) ?? "",
-        username_field_name: (args["username_field_name"] as string | undefined) ?? "",
-        username: (args["username"] as string | undefined) ?? "",
-        password_field_name: (args["password_field_name"] as string | undefined) ?? "",
-        password: (args["password"] as string | undefined) ?? "",
-        password_secret_ref: (args["password_secret_ref"] as string | undefined) ?? "",
-        submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
-        target_url: (args["target_url"] as string | undefined) ?? "",
-        basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
-        basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
-        basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
-      }),
+      buildInput: (args) =>
+        compactMcpInput({
+          login_url: (args["login_url"] as string | undefined) ?? "",
+          username_field_name: (args["username_field_name"] as string | undefined) ?? "",
+          username: (args["username"] as string | undefined) ?? "",
+          password_field_name: (args["password_field_name"] as string | undefined) ?? "",
+          password: (args["password"] as string | undefined) ?? "",
+          password_secret_ref: (args["password_secret_ref"] as string | undefined) ?? "",
+          submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
+          sso_action_name: (args["sso_action_name"] as string | undefined) ?? "",
+          sso_wait_url_includes: (args["sso_wait_url_includes"] as string | undefined) ?? "",
+          mfa_wait_for_accessible_name: (args["mfa_wait_for_accessible_name"] as string | undefined) ?? "",
+          mfa_wait_for_accessible_role: (args["mfa_wait_for_accessible_role"] as string | undefined) ?? "",
+          mfa_wait_timeout_ms: (args["mfa_wait_timeout_ms"] as number | undefined) ?? 0,
+          target_url: (args["target_url"] as string | undefined) ?? "",
+          basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
+          basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
+          basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
+        }),
     },
     {
       name: "generate_test_cases",
@@ -2073,9 +2122,9 @@ export function buildDevFixture(options: {
         }),
     },
     {
-      name: "generate_test_strategy",
+      name: "generate_test_strategy_stub",
       description:
-        "SPEC-206 generate path: draft a Test Strategy document from url or ui_map_elements (complements exploratory charter).",
+        "STUB only (SPEC-206 generate path): draft a thin Test Strategy document from url or ui_map_elements. Heuristic UI-map template — not a professional strategy. Prefer assess_test_strategy_quality on a real strategy when one exists.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2403,6 +2452,76 @@ export function buildDevFixture(options: {
         compactMcpInput({
           defects: (args["defects"] as JsonValue | undefined) ?? [],
           format: (args["format"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "file_defects_to_tracker",
+      description:
+        "Optional tracker filing seam (jira_rest | linear_graphql | webhook). Default dry-run builds payloads without POSTing. Set confirm_file=true + bearer_token_secret_ref to live-file. Never silent auto-file; never invents confirmed_cause.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          defects: { type: "array", items: { type: "object" } },
+          provider: { type: "string", description: "jira_rest | linear_graphql | webhook" },
+          base_url: { type: "string" },
+          project_or_team: { type: "string", description: "Jira project key or Linear team UUID (ignored for webhook)." },
+          bearer_token: { type: "string" },
+          bearer_token_secret_ref: { type: "string" },
+          confirm_file: { type: "boolean", description: "Must be true to POST — default dry-run." },
+          jira_issue_type: { type: "string", description: "Default Bug." },
+        },
+        required: ["defects", "provider", "base_url"],
+      },
+      agent: DEFECT_FILE_AGENT,
+      purpose: "Dry-run or confirm-file defects to Jira/Linear/webhook",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [DEFECT_FILE_SKILL],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 20, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          defects: (args["defects"] as JsonValue | undefined) ?? [],
+          provider: (args["provider"] as string | undefined) ?? "",
+          base_url: (args["base_url"] as string | undefined) ?? "",
+          project_or_team: (args["project_or_team"] as string | undefined) ?? "",
+          bearer_token: (args["bearer_token"] as string | undefined) ?? "",
+          bearer_token_secret_ref: (args["bearer_token_secret_ref"] as string | undefined) ?? "",
+          confirm_file: args["confirm_file"] === true,
+          jira_issue_type: (args["jira_issue_type"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "register_knowledge_record",
+      description:
+        "Upsert a durable Knowledge Search record under .qa-knowledge/<workspace>/records.json (survives MCP restart). Caller-authored facts only — never invent product truth. Used by discover_product_context / assessors.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          knowledge_ref: { type: "string" },
+          title: { type: "string" },
+          excerpt: { type: "string" },
+          authority_status: { type: "string" },
+          scopes: { type: "array", items: { type: "string" } },
+          provenance: { type: "array", items: { type: "string" } },
+          evidence: { type: "array", items: { type: "string" } },
+        },
+        required: ["knowledge_ref", "title", "excerpt"],
+      },
+      agent: KNOWLEDGE_REGISTER_AGENT,
+      purpose: "Register durable knowledge record for Workspace search",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [KNOWLEDGE_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 1, max_retries: 0 },
+      buildInput: (args) =>
+        compactMcpInput({
+          knowledge_ref: (args["knowledge_ref"] as string | undefined) ?? "",
+          title: (args["title"] as string | undefined) ?? "",
+          excerpt: (args["excerpt"] as string | undefined) ?? "",
+          authority_status: (args["authority_status"] as string | undefined) ?? "",
+          scopes: (args["scopes"] as JsonValue | undefined) ?? [],
+          provenance: (args["provenance"] as JsonValue | undefined) ?? [],
+          evidence: (args["evidence"] as JsonValue | undefined) ?? [],
         }),
     },
     {

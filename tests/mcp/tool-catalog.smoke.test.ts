@@ -95,7 +95,7 @@ const EXPECTED_TOOLS = [
   "list_workspace_environments",
   "generate_business_analysis_stub",
   "generate_risk_stub",
-  "generate_test_strategy",
+  "generate_test_strategy_stub",
   "register_test_dataset",
   "list_test_datasets",
   "create_automation_asset",
@@ -109,6 +109,8 @@ const EXPECTED_TOOLS = [
   "run_regression_suite",
   "generate_api_smoke_from_openapi",
   "export_defects_for_tracker",
+  "file_defects_to_tracker",
+  "register_knowledge_record",
   "compare_ui_surfaces",
   "generate_journey_test_cases",
 ] as const;

@@ -86,11 +86,24 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
     5. Unbindable AC / not_executed / residual risks
     6. Artifact paths (HTML, testcases JSON, defects JSON, suite id)
     7. Scope limit: surfaces + AC exercised — not full WCAG/load/pen-test
-11. **Export for tracker (human files).** `export_defects_for_tracker`
-    (`markdown` or `jira_description`) — paste into Jira/Linear. Do **not**
-    invent `confirmed_cause`. Do not claim auto-filed unless Host does it.
+11. **Export for tracker.** Prefer `export_defects_for_tracker` (paste). Optional
+    `file_defects_to_tracker` is dry-run by default — only live-file with
+    `confirm_file=true` + `bearer_token_secret_ref`. Do **not** invent
+    `confirmed_cause`. Do not claim auto-filed without confirm.
 12. **Retest loop after a fix.** Re-run `run_regression_suite` for the
     saved suite (or subset via fresh register). Only then soften release gate.
+
+## Advanced catalog (optional)
+
+- Stubs: `generate_business_analysis_stub`, `generate_risk_stub`,
+  `generate_test_strategy_stub` — UI-map heuristics, not professional docs.
+- Assessors: `assess_*_quality` on caller-supplied documents.
+- Learning: `raise_mistake_recurrence_candidate`, `list_failure_avoidance_hints`
+  (Session Memory; never auto-promote).
+- Knowledge: `register_knowledge_record` → `.qa-knowledge/` for
+  `discover_product_context`.
+- SSO bootstrap: `discover_ui_surface_after_login` with `sso_action_name`
+  (+ optional MFA wait) — no invented IdP credentials.
 
 ## Triage rules
 

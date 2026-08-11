@@ -32,28 +32,70 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
     const configurationFailure = validateConfiguration(input, this.#dependencies);
     if (configurationFailure) return { ok: false, failure: configurationFailure };
 
-    const requiredKeys = ["login_url", "username_field_name", "username", "password_field_name", "submit_action_name", "target_url"] as const;
-    const requiredStrings: Record<string, string> = {};
-    for (const key of requiredKeys) {
-      const value = input.start_request.input[key];
-      if (typeof value !== "string" || value.trim().length === 0) {
-        return { ok: false, failure: failure("orchestration", "invalid_request", `Discovery-after-login requires an exact "${key}" input.`) };
-      }
-      requiredStrings[key] = value;
+    const loginUrl = readOptional(input.start_request.input["login_url"]);
+    const targetUrl = readOptional(input.start_request.input["target_url"]);
+    if (loginUrl === undefined || targetUrl === undefined) {
+      return {
+        ok: false,
+        failure: failure("orchestration", "invalid_request", 'Discovery-after-login requires "login_url" and "target_url".'),
+      };
     }
 
-    const passwordResolved = resolvePasswordInput({
-      registry: this.#dependencies.credentials,
-      workspaceId: input.reference.workspace_id,
-      ...(readOptional(input.start_request.input["password"]) !== undefined
-        ? { password: readOptional(input.start_request.input["password"])! }
-        : {}),
-      ...(readOptional(input.start_request.input["password_secret_ref"]) !== undefined
-        ? { password_secret_ref: readOptional(input.start_request.input["password_secret_ref"])! }
-        : {}),
-    });
-    if (!passwordResolved.ok) {
-      return { ok: false, failure: failure("orchestration", "invalid_request", passwordResolved.message) };
+    const ssoActionName = readOptional(input.start_request.input["sso_action_name"]);
+    const usingSso = ssoActionName !== undefined;
+
+    let passwordVia: string | undefined;
+    let formFields:
+      | Readonly<{
+          username_field_name: string;
+          username: string;
+          password_field_name: string;
+          password: string;
+          submit_action_name: string;
+        }>
+      | undefined;
+
+    if (!usingSso) {
+      const requiredKeys = ["username_field_name", "username", "password_field_name", "submit_action_name"] as const;
+      const requiredStrings: Record<string, string> = {};
+      for (const key of requiredKeys) {
+        const value = readOptional(input.start_request.input[key]);
+        if (value === undefined) {
+          return {
+            ok: false,
+            failure: failure(
+              "orchestration",
+              "invalid_request",
+              `Form login requires "${key}" — or supply sso_action_name for SSO bootstrap.`,
+            ),
+          };
+        }
+        requiredStrings[key] = value;
+      }
+
+      const passwordResolved = resolvePasswordInput({
+        registry: this.#dependencies.credentials,
+        workspaceId: input.reference.workspace_id,
+        ...(readOptional(input.start_request.input["password"]) !== undefined
+          ? { password: readOptional(input.start_request.input["password"])! }
+          : {}),
+        ...(readOptional(input.start_request.input["password_secret_ref"]) !== undefined
+          ? { password_secret_ref: readOptional(input.start_request.input["password_secret_ref"])! }
+          : {}),
+      });
+      if (!passwordResolved.ok) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", passwordResolved.message) };
+      }
+      if (passwordResolved.via === "secret_ref" && passwordResolved.secret_ref !== undefined) {
+        passwordVia = passwordResolved.secret_ref;
+      }
+      formFields = {
+        username_field_name: requiredStrings["username_field_name"]!,
+        username: requiredStrings["username"]!,
+        password_field_name: requiredStrings["password_field_name"]!,
+        password: passwordResolved.value,
+        submit_action_name: requiredStrings["submit_action_name"]!,
+      };
     }
 
     const basicAuthPassword = resolveBasicAuthPassword({
@@ -74,16 +116,32 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
     }
     const basicAuthUsername = readOptional(input.start_request.input["basic_auth_username"]);
 
+    const mfaTimeoutRaw = input.start_request.input["mfa_wait_timeout_ms"];
+    const mfaTimeout =
+      typeof mfaTimeoutRaw === "number" && Number.isFinite(mfaTimeoutRaw) && mfaTimeoutRaw > 0
+        ? mfaTimeoutRaw
+        : undefined;
+
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
       context: input.execution.workspace_context,
-      login_url: requiredStrings["login_url"]!,
-      username_field_name: requiredStrings["username_field_name"]!,
-      username: requiredStrings["username"]!,
-      password_field_name: requiredStrings["password_field_name"]!,
-      password: passwordResolved.value,
-      submit_action_name: requiredStrings["submit_action_name"]!,
-      target_url: requiredStrings["target_url"]!,
+      login_url: loginUrl,
+      target_url: targetUrl,
+      ...(usingSso
+        ? {
+            sso_action_name: ssoActionName,
+            ...(readOptional(input.start_request.input["sso_wait_url_includes"]) !== undefined
+              ? { sso_wait_url_includes: readOptional(input.start_request.input["sso_wait_url_includes"])! }
+              : {}),
+          }
+        : formFields!),
+      ...(readOptional(input.start_request.input["mfa_wait_for_accessible_name"]) !== undefined
+        ? { mfa_wait_for_accessible_name: readOptional(input.start_request.input["mfa_wait_for_accessible_name"])! }
+        : {}),
+      ...(readOptional(input.start_request.input["mfa_wait_for_accessible_role"]) !== undefined
+        ? { mfa_wait_for_accessible_role: readOptional(input.start_request.input["mfa_wait_for_accessible_role"])! }
+        : {}),
+      ...(mfaTimeout !== undefined ? { mfa_wait_timeout_ms: mfaTimeout } : {}),
       ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
         ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
         : {}),
@@ -91,9 +149,13 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 
     const map = discovered.value;
-    const evidence = unique([`capture:${map.capture_id}`, `semantic-ui-map:${map.capture_id}`]);
-    if (passwordResolved.via === "secret_ref" && passwordResolved.secret_ref !== undefined) {
-      evidence.push(`password-via:${passwordResolved.secret_ref}`);
+    const evidence = unique([
+      `capture:${map.capture_id}`,
+      `semantic-ui-map:${map.capture_id}`,
+      ...(usingSso ? ["login-mode:sso"] : ["login-mode:form"]),
+    ]);
+    if (passwordVia !== undefined) {
+      evidence.push(`password-via:${passwordVia}`);
     }
 
     return {
@@ -112,7 +174,12 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
         skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
         tool_usage: [this.#dependencies.engine_ref],
         citations: unique([...evidence, `source-url:${map.source_url}`]),
-        uncertainty: { level: "none", reasons: [] },
+        uncertainty: {
+          level: usingSso ? "medium" : "none",
+          reasons: usingSso
+            ? ["SSO bootstrap waits for redirect; IdP MFA/consent may need human or test-IdP completion in-session."]
+            : [],
+        },
         policy_events: [],
         usage: { steps: 2, duration_seconds: 0, tool_calls: 1, retries: 0 },
         evidence,

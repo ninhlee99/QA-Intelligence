@@ -27,12 +27,26 @@ export type DiscoverAfterLoginRequest = Readonly<{
   operation_id: string;
   context: WorkspaceContext;
   login_url: string;
-  username_field_name: string;
-  username: string;
-  password_field_name: string;
-  password: string;
-  submit_action_name: string;
   target_url: string;
+  /** Form login path (mutually exclusive with sso_action_name). */
+  username_field_name?: string;
+  username?: string;
+  password_field_name?: string;
+  password?: string;
+  submit_action_name?: string;
+  /**
+   * SSO/OIDC bootstrap: click this accessible action on the login page
+   * (e.g. "Continue with Google"), then wait for redirect. Does not invent
+   * IdP credentials — Host must complete IdP out-of-band or use a test IdP
+   * that auto-completes in the same browser session.
+   */
+  sso_action_name?: string;
+  /** After SSO click, wait until page URL includes this substring (default: target_url host path). */
+  sso_wait_url_includes?: string;
+  /** Optional MFA / post-login gate: wait for this accessible name before capturing target. */
+  mfa_wait_for_accessible_name?: string;
+  mfa_wait_for_accessible_role?: string;
+  mfa_wait_timeout_ms?: number;
   /** HTTP Basic Auth (a browser-native credential prompt, distinct from the in-page login form above) required in front of both login_url and target_url — supply both or neither. */
   basic_auth_username?: string;
   basic_auth_password?: string;
@@ -111,34 +125,79 @@ export class DiscoverAfterLogin {
         });
         if (!loginMap.ok) return loginMap;
 
-        const usernameField = loginMap.value.elements.find(
-          (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, request.username_field_name),
-        );
-        if (usernameField === undefined) {
-          return loginFailure(`Login page has no discovered field named "${request.username_field_name}".`);
-        }
-        const passwordField = loginMap.value.elements.find(
-          (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, request.password_field_name),
-        );
-        if (passwordField === undefined) {
-          return loginFailure(`Login page has no discovered field named "${request.password_field_name}".`);
-        }
-        const submitAction = loginMap.value.elements.find(
-          (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, request.submit_action_name),
-        );
-        if (submitAction === undefined) {
-          return loginFailure(`Login page has no discovered action named "${request.submit_action_name}".`);
-        }
-
-        // Semantic locators only, same as every other interaction path
-        // (ADR-022 §4) — targets resolved above against the login page's
-        // own already-discovered Semantic UI Map, never a raw selector
-        // this method invents.
+        const ssoActionName = request.sso_action_name?.trim();
         try {
-          await fillByRole(page, usernameField.accessible_role, request.username_field_name, request.username);
-          await fillByRole(page, passwordField.accessible_role, request.password_field_name, request.password);
-          await clickByRole(page, submitAction.accessible_role, request.submit_action_name);
-          await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+          if (ssoActionName !== undefined && ssoActionName.length > 0) {
+            const ssoAction = loginMap.value.elements.find(
+              (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, ssoActionName),
+            );
+            if (ssoAction === undefined) {
+              return loginFailure(`Login page has no discovered SSO action named "${ssoActionName}".`);
+            }
+            await clickByRole(page, ssoAction.accessible_role, ssoActionName);
+            const waitNeedle =
+              request.sso_wait_url_includes?.trim() ||
+              (() => {
+                try {
+                  return new URL(request.target_url).pathname;
+                } catch {
+                  return request.target_url;
+                }
+              })();
+            await page.waitForURL((url) => url.toString().includes(waitNeedle), { timeout: 60_000 }).catch(() => {});
+            await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+          } else {
+            const usernameFieldName = request.username_field_name?.trim();
+            const passwordFieldName = request.password_field_name?.trim();
+            const submitActionName = request.submit_action_name?.trim();
+            const username = request.username;
+            const password = request.password;
+            if (
+              !usernameFieldName ||
+              !passwordFieldName ||
+              !submitActionName ||
+              username === undefined ||
+              password === undefined
+            ) {
+              return loginFailure(
+                "Form login requires username_field_name, username, password_field_name, password, submit_action_name — or supply sso_action_name for SSO bootstrap.",
+              );
+            }
+            const usernameField = loginMap.value.elements.find(
+              (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, usernameFieldName),
+            );
+            if (usernameField === undefined) {
+              return loginFailure(`Login page has no discovered field named "${usernameFieldName}".`);
+            }
+            const passwordField = loginMap.value.elements.find(
+              (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, passwordFieldName),
+            );
+            if (passwordField === undefined) {
+              return loginFailure(`Login page has no discovered field named "${passwordFieldName}".`);
+            }
+            const submitAction = loginMap.value.elements.find(
+              (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, submitActionName),
+            );
+            if (submitAction === undefined) {
+              return loginFailure(`Login page has no discovered action named "${submitActionName}".`);
+            }
+
+            await fillByRole(page, usernameField.accessible_role, usernameFieldName, username);
+            await fillByRole(page, passwordField.accessible_role, passwordFieldName, password);
+            await clickByRole(page, submitAction.accessible_role, submitActionName);
+            await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+          }
+
+          const mfaName = request.mfa_wait_for_accessible_name?.trim();
+          if (mfaName !== undefined && mfaName.length > 0) {
+            const timeout = request.mfa_wait_timeout_ms ?? 60_000;
+            const role = request.mfa_wait_for_accessible_role;
+            const locator =
+              role !== undefined && role.trim().length > 0
+                ? page.getByRole(role as Parameters<typeof page.getByRole>[0], { name: mfaName })
+                : page.getByText(mfaName);
+            await locator.waitFor({ state: "visible", timeout });
+          }
         } catch (error) {
           return {
             ok: false,

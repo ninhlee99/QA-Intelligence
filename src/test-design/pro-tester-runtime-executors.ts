@@ -11,6 +11,10 @@ import { ExecuteApiSmoke } from "../api-testing/execute-api-smoke.js";
 import { openApiToApiSmokeCases } from "../api-testing/openapi-to-smoke-cases.js";
 import type { ApiSmokeCase } from "../api-testing/public.js";
 import { formatDefectsForTracker, type DefectExportFormat } from "../bug-analysis/format-defects-for-tracker.js";
+import { fileDefectsToTracker, type DefectTrackerProvider } from "../bug-analysis/file-defects-to-tracker.js";
+import type { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
+import { resolveBearerToken } from "../credentials/resolve-secret-input.js";
+import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import type { Defect } from "../bug-analysis/public.js";
 import { compareUiSurfaces } from "../discovery/compare-ui-surfaces.js";
 import type { SemanticUiElement } from "../discovery/public.js";
@@ -391,6 +395,212 @@ export class DefectExportRuntimeExecutor implements AgentRunExecutor {
   }
 }
 
+export type DefectFileRuntimeExecutorDependencies = Readonly<{
+  expected_agent: VersionReference;
+  expected_skill: VersionReference;
+  credentials?: WorkspaceCredentialRegistry;
+}>;
+
+export class DefectFileRuntimeExecutor implements AgentRunExecutor {
+  readonly #dependencies: DefectFileRuntimeExecutorDependencies;
+
+  constructor(dependencies: DefectFileRuntimeExecutorDependencies) {
+    this.#dependencies = dependencies;
+  }
+
+  async execute(input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    const configurationFailure = validateConfiguration(input, this.#dependencies);
+    if (configurationFailure) return { ok: false, failure: configurationFailure };
+
+    const raw = input.start_request.input["defects"];
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return {
+        ok: false,
+        failure: failure("orchestration", "invalid_request", "file_defects_to_tracker requires non-empty defects array."),
+      };
+    }
+    const providerRaw = readString(input.start_request.input["provider"]) ?? "webhook";
+    if (providerRaw !== "jira_rest" && providerRaw !== "linear_graphql" && providerRaw !== "webhook") {
+      return {
+        ok: false,
+        failure: failure("orchestration", "invalid_request", "provider must be jira_rest | linear_graphql | webhook."),
+      };
+    }
+    const provider = providerRaw as DefectTrackerProvider;
+    const baseUrl = readString(input.start_request.input["base_url"]);
+    if (baseUrl === undefined) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", "base_url is required.") };
+    }
+    const projectOrTeam = readString(input.start_request.input["project_or_team"]) ?? "";
+    const bearer = resolveBearerToken({
+      registry: this.#dependencies.credentials,
+      workspaceId: input.reference.workspace_id,
+      ...(readString(input.start_request.input["bearer_token"]) !== undefined
+        ? { token: readString(input.start_request.input["bearer_token"])! }
+        : {}),
+      ...(readString(input.start_request.input["bearer_token_secret_ref"]) !== undefined
+        ? { token_secret_ref: readString(input.start_request.input["bearer_token_secret_ref"])! }
+        : {}),
+    });
+    if (!bearer.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", bearer.message) };
+    }
+    if (bearer.value === undefined) {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "bearer_token or bearer_token_secret_ref is required (never invent tokens).",
+        ),
+      };
+    }
+
+    const filed = await fileDefectsToTracker({
+      defects: raw as unknown as Defect[],
+      provider,
+      base_url: baseUrl,
+      bearer_token: bearer.value,
+      project_or_team: projectOrTeam,
+      confirm_file: input.start_request.input["confirm_file"] === true,
+      ...(readString(input.start_request.input["jira_issue_type"]) !== undefined
+        ? { jira_issue_type: readString(input.start_request.input["jira_issue_type"])! }
+        : {}),
+    });
+    if (!filed.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", filed.message) };
+    }
+
+    return {
+      ok: true,
+      value: {
+        output: {
+          dry_run: filed.value.dry_run,
+          provider: filed.value.provider,
+          base_url: filed.value.base_url,
+          honesty: filed.value.honesty,
+          payloads: filed.value.payloads.map((payload) => ({
+            defect_id: payload.defect_id,
+            method: payload.method,
+            url: payload.url,
+            body: payload.body as JsonValue,
+          })),
+          results: filed.value.results.map((result) => ({
+            defect_id: result.defect_id,
+            ok: result.ok,
+            message: result.message,
+            ...(result.remote_id !== undefined ? { remote_id: result.remote_id } : {}),
+            ...(result.remote_url !== undefined ? { remote_url: result.remote_url } : {}),
+            ...(result.status !== undefined ? { status: result.status } : {}),
+          })),
+        },
+        output_validated: true,
+        satisfied_evidence_requirements: [],
+        resolved_versions: {
+          agent: `${this.#dependencies.expected_agent.id}@${this.#dependencies.expected_agent.version}`,
+          policy: input.start_request.policy_version,
+          skill: `${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`,
+        },
+        rule_results: [],
+        skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
+        tool_usage: [],
+        citations: [`defect-count:${raw.length}`, `provider:${provider}`, `dry-run:${filed.value.dry_run}`],
+        uncertainty: {
+          level: filed.value.dry_run ? "low" : "medium",
+          reasons: [filed.value.honesty],
+        },
+        policy_events: [],
+        usage: { steps: 1, duration_seconds: 0, tool_calls: filed.value.dry_run ? 0 : raw.length, retries: 0 },
+        evidence: [
+          `defect-count:${raw.length}`,
+          `provider:${provider}`,
+          `dry-run:${filed.value.dry_run}`,
+          ...filed.value.results.map((result) => `defect:${result.defect_id}:${result.ok ? "ok" : "fail"}`),
+        ],
+        cleanup_status: "not_required",
+        knowledge_candidates: [],
+      },
+    };
+  }
+}
+
+export type KnowledgeRegisterRuntimeExecutorDependencies = Readonly<{
+  knowledge: FileBackedKnowledgeSearch;
+  expected_agent: VersionReference;
+  expected_skill: VersionReference;
+}>;
+
+export class KnowledgeRegisterRuntimeExecutor implements AgentRunExecutor {
+  readonly #dependencies: KnowledgeRegisterRuntimeExecutorDependencies;
+
+  constructor(dependencies: KnowledgeRegisterRuntimeExecutorDependencies) {
+    this.#dependencies = dependencies;
+  }
+
+  async execute(input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
+    const configurationFailure = validateConfiguration(input, this.#dependencies);
+    if (configurationFailure) return { ok: false, failure: configurationFailure };
+
+    const knowledgeRef = readString(input.start_request.input["knowledge_ref"]);
+    const title = readString(input.start_request.input["title"]);
+    const excerpt = readString(input.start_request.input["excerpt"]);
+    if (knowledgeRef === undefined || title === undefined || excerpt === undefined) {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "register_knowledge_record requires knowledge_ref, title, and excerpt.",
+        ),
+      };
+    }
+    const upserted = this.#dependencies.knowledge.upsertRecord({
+      workspace_id: input.reference.workspace_id,
+      knowledge_snapshot: "0.1.0",
+      knowledge_ref: knowledgeRef,
+      title,
+      excerpt,
+      authority_status: readString(input.start_request.input["authority_status"]) ?? "accepted",
+      scopes: readStringArray(input.start_request.input["scopes"]) ?? ["product-context"],
+      applicability: { workspace_id: input.reference.workspace_id },
+      provenance: readStringArray(input.start_request.input["provenance"]) ?? ["mcp:register_knowledge_record"],
+      evidence: readStringArray(input.start_request.input["evidence"]) ?? [],
+    });
+    if (!upserted.ok) {
+      return { ok: false, failure: failure("orchestration", "invalid_request", upserted.message) };
+    }
+
+    return {
+      ok: true,
+      value: {
+        output: {
+          knowledge_ref: knowledgeRef,
+          persisted_path: upserted.persisted_path,
+          count: upserted.count,
+          note: "Durable under .qa-knowledge/ — not a governed multi-tenant Knowledge Store. Never invent product truth.",
+        },
+        output_validated: true,
+        satisfied_evidence_requirements: [],
+        resolved_versions: {
+          agent: `${this.#dependencies.expected_agent.id}@${this.#dependencies.expected_agent.version}`,
+          policy: input.start_request.policy_version,
+          skill: `${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`,
+        },
+        rule_results: [],
+        skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
+        tool_usage: [],
+        citations: [`knowledge:${knowledgeRef}`],
+        uncertainty: { level: "low", reasons: ["Caller-authored knowledge only — not LLM-invented."] },
+        policy_events: [],
+        usage: { steps: 1, duration_seconds: 0, tool_calls: 0, retries: 0 },
+        evidence: [`knowledge:${knowledgeRef}`, `persisted:${upserted.persisted_path}`],
+        cleanup_status: "not_required",
+        knowledge_candidates: [],
+      },
+    };
+  }
+}
+
 export type CompareUiSurfacesRuntimeExecutorDependencies = Readonly<{
   expected_agent: VersionReference;
   expected_skill: VersionReference;
@@ -510,6 +720,12 @@ function validateConfiguration(
 
 function readString(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readStringArray(value: JsonValue | undefined): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  return items.length > 0 ? items : undefined;
 }
 
 function parseRegressionCases(value: JsonValue | undefined): readonly RegressionCase[] | undefined {
