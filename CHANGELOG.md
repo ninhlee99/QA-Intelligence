@@ -1,72 +1,106 @@
 # Changelog
 
-## Unreleased
+All notable changes to QA Intelligence are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-### Added
+---
 
-- Expert QA upgrade (A+B+C groups):
-  - A1: Rewrote `hosts/claude-code/skills/test/SKILL.md` and `dev/SKILL.md` — risk-first triage, 3 strategies (full/regression/exploratory), explicit coverage gap section, tool map by purpose
-  - A2: `run_auto_qa` output now includes `coverage_gaps` (not-executed cases, unbindable AC, unlabeled fields, scope limits) and `smart_retest_suggestion` (exact `case_ids`/`related_defect_ids` for targeted retest after fix)
-  - A3: `smart_retest_suggestion` in `run_auto_qa` output — never re-run full suite when only subset failed
-  - B1: HTML report `evidenceCell` now renders trace `.zip` as clickable link with `npx playwright show-trace` hint
-  - B2: `discover_ui_workflow` persists `network_hints` to `SessionMemory` (key `network-hints:<workspace>:<url>`); surfaces `prior_network_hints` on subsequent runs for AC authoring — never invent routes
-  - B3: `export_defects_for_tracker` now includes `quality_warnings` pre-export gate (confirmed_cause set, no evidence, non-draft status)
-  - C1+C2: Added `hosts/cursor/skills/test/SKILL.md`, `hosts/cursor/skills/dev/SKILL.md`, `hosts/codex/skills/test/SKILL.md`, `hosts/codex/skills/dev/SKILL.md`
-- P6: Playwright fail-only traces → `.qa-traces/` (+ evidence pack `trace`); durable `avoid:*` (`.qa-avoidance-hints/`), learning candidates (`.qa-learning-candidates/`), mistake occurrences (`.qa-mistake-occurrences/`) across MCP restart
-- P5: visual baselines (`capture_ui_baseline` / `compare_ui_baseline` → `.qa-baselines/`, exact PNG hash+dims, observation only); surface baselines (`register_ui_surface_baseline` / `compare_ui_surface_to_baseline`); stable `avoid:<classification>:<test_ref>` recurrence keys + auto-raise Learning candidate on repeat; `list_learning_candidates` (never promotes)
-- P4.5: synthetic `field_samples` on `register_test_dataset` (credential-shape reject); durable `.qa-test-datasets/`; `resolve_test_dataset_fields` → `field_values` for execute/regression
-- P4 slices: `run_regression_suite` subset (`case_ids` / `related_defect_ids`) + `field_values` + draft defects / release gate; workflow `network_hints`; `discover_and_compare_role_ui_surfaces`; defect evidence pack on tracker export
-- P3 slices: exploratory bounded live probes (`include_live_probes`); journey `expected_network` passthrough; `ScriptedReasoningProvider([])` fail-soft; `create_automation_asset` → `.qa-automation-assets/` + `mcp:run_regression_suite` bind; roadmap Ground truth refresh
-- P2 slices: `file_defects_to_tracker` (dry-run default / confirm_file); `generate_test_strategy_stub` rename; durable `.qa-knowledge/` + `register_knowledge_record`; SSO/MFA wait path on `discover_ui_surface_after_login`
-- P1 slices: generate `select`/`wait_for` from AC (`option_label`, `wait_for_*`); OpenAPI wrong-role negatives (`auth=alternate_bearer`); file-backed `.qa-credentials/`; optional axe-core stage in `run_depth_smokes`
-- AC oracle passthrough: `generate_test_cases` / `run_auto_qa` copy `expected_url_includes` / `expected_title_includes` / `expected_network` from acceptance criteria onto positive `generated_assertion` (network-only AC is executable; no oracle → `missing_expected_result`)
-- Network oracle in UI runs: Playwright captures xhr/fetch; `expected_network` on generated assertions couples submit→API in one plan
-- Expert follow-up slices: skills aligned to catalog; journey generator; disk-backed regression suites; OpenAPI authz negatives
-- Pro-tester capability slices: requirement ingest, multi-page workflow discovery, regression suites, OpenAPI→API smoke, defect tracker export, UI surface compare, URL/title oracles
-- SPEC gap thin slices: Workspace environment allowlist (`register_workspace_environment` / `list_workspace_environments`), BA/Risk/Strategy generate stubs, TestDataset registry, AutomationAsset create stub, SPEC-213 dogfood MCP, SPEC-105 raise-mistake-recurrence MCP, Playwright `select`/`wait_for` steps
-- MCP catalog completion for remaining assessors/discovery: `discover_product_context`, `assess_execution_record_quality`, `draft_defects_from_qa_run`
-- `compactMcpInput` helper; credential registry authorize (`credential:register` / `credential:read`)
-- Tool catalog smoke test (`tests/mcp/tool-catalog.smoke.test.ts`)
-- `npm run release:check` (= full `validate`) for release-like gate
-- MCP Senior QA catalog (dev): discover UI, generate/execute variants, `run_auto_qa` with a11y naming smoke + draft defects + release gate, exploratory charter, defect quality assess (`src/mcp/dev-fixture.ts`, hosts Skills `dev`/`test`)
-- `npm run mcp:dev` / `npm run mcp:remote` entry scripts
-- Foundation specifications SPEC-001–007
-- Governance documents GOV-001–012
-- Architecture decisions ADR-001–015, including the approved technology and tracer-bullet baseline
-- Knowledge specifications SPEC-101–107
-- Product specifications SPEC-201–213
-- Architecture specifications SPEC-301–310
-- Component specifications SPEC-401–411
-- Interface specifications SPEC-501–511
-- Runtime specifications SPEC-601–607
-- Machine-readable meta indexes and repository graph
-- Draft ontology, schemas, deterministic rule sets, and validated examples
-- Governance playbooks, templates, reference catalogs, and AI engineering instructions
-- Agent and Skill knowledge, product, architecture, contract, component, and runtime specifications
-- Agent/Skill evaluation schemas, examples, lifecycle ontology, specialized quality gates, and delivery playbooks
-- Draft implementation ADRs for Node/TypeScript, PostgreSQL/outbox, modular deployment, OIDC authorization, and the Requirement Review tracer bullet
-- Tracer-bullet review records, change-impact evidence, adapter conformance plan, deterministic fixtures, strict Ajv validation, and CI workflow
+## [0.1.0-dev] — Unreleased
 
-### Changed
+> Development release. Production blocked on GOV-012 G2–G6.
 
-- `execute_generated_test_case` now shares `ExecuteBrowserTest` flake-detection + screenshot path with `run_auto_qa`
-- Host plugin descriptions and `docs/GUIDE.md` updated for the multi-tool MCP catalog (no longer "one tool only")
+### Expert QA upgrade (2026-08-11)
 
-### Corrected
+**Thinking layer**
+- `run_auto_qa` output now includes `coverage_gaps` — explicitly states what was NOT tested (not-executed cases, unbindable AC, unlabeled fields, scope limits). Expert QA rule: never claim pass by silence.
+- `run_auto_qa` output now includes `smart_retest_suggestion` — exact `case_ids` / `related_defect_ids` for targeted retest after a fix; never re-run full suite when only a subset failed.
+- Rewrote `hosts/claude-code/skills/test/SKILL.md` and `dev/SKILL.md` — risk-first triage, 3 strategies (Full/Regression/Exploratory), 5 pre-task assessment questions, tool map by purpose.
 
-- Changed downstream specifications from `accepted` to `draft` pending formal review
-- Reversed interface/component dependencies to contract-first direction
-- Repaired invalid YAML front matter in six accepted artifacts
-- Corrected Reading Order to Ontology before Schema and Interfaces before Components
-- Replaced premature completion claims with explicit readiness states
-- Closed the Agent/Skill implementation-readiness gap without changing Knowledge Store authority, deterministic-first reasoning, Workspace isolation, Plugin boundaries, or controlled learning
-- Corrected schema structures exposed by strict Draft 2020-12 compilation
-- Clarified and approved the comprehensive QA/QC and Senior Test Engineer product identity; the first tracer bullet cannot narrow the roadmap
+**Evidence quality**
+- HTML report: trace `.zip` evidence rendered as clickable link with `npx playwright show-trace` hint.
+- `discover_ui_workflow`: persists `network_hints` to `SessionMemory` cross-run; subsequent runs expose `prior_network_hints` for AC authoring — never invent routes.
+- `export_defects_for_tracker`: pre-export `quality_warnings` gate — flags `confirmed_cause` set (pipeline never confirms cause), no evidence, non-draft status.
 
-### Accepted
+**Multi-host Skills**
+- Added `hosts/cursor/skills/test/SKILL.md`, `hosts/cursor/skills/dev/SKILL.md`
+- Added `hosts/codex/skills/test/SKILL.md`, `hosts/codex/skills/dev/SKILL.md`
 
-- ADR-011 TypeScript and Node.js runtime baseline
-- ADR-012 PostgreSQL persistence and transactional outbox baseline
-- ADR-013 modular monolith and worker deployment baseline
-- ADR-014 OIDC identity and internal authorization baseline
-- ADR-015 Requirement Review Agent initial tracer bullet
+---
+
+### Durable learning + Playwright traces (2026-08-10)
+
+- Playwright fail-only traces → `.qa-traces/` with clickable evidence in HTML report.
+- `avoid:*` session memory entries durable across MCP restarts → `.qa-avoidance-hints/`.
+- Learning candidates durable → `.qa-learning-candidates/`.
+- Mistake occurrence counts durable → `.qa-mistake-occurrences/`.
+- `FileBackedCandidateRepository` replaces in-memory candidate store.
+
+### Visual & surface baselines (2026-08-10)
+
+- `capture_ui_baseline` / `compare_ui_baseline` — exact PNG hash+dims under `.qa-baselines/`; mismatch is observation only, not auto-fail.
+- `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` — named-control drift detection under `.qa-surface-baselines/`.
+- Stable `avoid:<classification>:<test_ref>` recurrence keys; auto-raise learning candidate on repeat failure.
+- `list_learning_candidates` — never auto-promotes.
+
+### Document quality assessors (2026-08-10)
+
+Seven `assess_*_quality` MCP tools: BA, risk, strategy, test case, dataset, automation asset, report.
+Each returns governed findings via the same deterministic rule engine used by requirement review.
+Generate stubs: `generate_business_analysis_stub`, `generate_risk_stub`, `generate_test_strategy_stub`.
+
+### API + depth testing (2026-08-10)
+
+- `generate_api_smoke_from_openapi` + `execute_api_smoke` — OpenAPI → smoke cases with optional authz negatives.
+- `run_depth_smokes` — WCAG-subset, perf threshold, security heuristics; `has_critical` never hidden by green counts.
+
+### Exploratory + multi-browser (2026-08-10)
+
+- `execute_exploratory_session` — bounded live probes, auto-check leak/naming oracles, `manual_follow_up` signal.
+- `browser` param on `discover_ui_surface` / `run_auto_qa` (`chromium` | `firefox` | `webkit`).
+
+### Senior QA pipeline (2026-08-10)
+
+- `run_auto_qa` — single call: discover → a11y naming smoke → generate variants → execute (flake-aware) → HTML/JSON report → draft defects → residual risks → release gate.
+- `run_regression_suite` — re-run a saved suite; subset by `case_ids` / `related_defect_ids`.
+- `register_regression_suite` / `list_regression_suites` — durable under `.qa-regression-suites/`.
+- `discover_ui_workflow` — multi-page crawl, pages + edges + `network_hints`.
+- `discover_and_compare_role_ui_surfaces` — dual login sessions + named-control diff.
+- `export_defects_for_tracker` — Markdown/Jira text + evidence pack.
+- `generate_journey_test_cases` — E2E click journeys from workflow edges.
+
+### Credential & environment registry (2026-08-10)
+
+- `register_workspace_secret` / `list_workspace_secrets` — secrets never listed back.
+- `password_secret_ref` / `field_secret_refs` / `bearer_token_secret_ref` on all relevant tools.
+- `register_workspace_environment` / `list_workspace_environments` — non-loopback URLs must match allowlist.
+- SSO/MFA wait path on `discover_ui_surface_after_login`.
+
+### Test data & learning (2026-08-10)
+
+- `register_test_dataset` with synthetic `field_samples` → `resolve_test_dataset_fields` → `field_values`.
+- `register_knowledge_record` — durable knowledge under `.qa-knowledge/`.
+- `create_automation_asset` — stub → `.qa-automation-assets/`.
+- `list_failure_avoidance_hints` — Session Memory `avoid:*` read side; `prior_failure_avoidance_hints` injected into `run_auto_qa` output.
+
+### Test generation & execution (2026-08-07)
+
+- `generate_test_cases` — positive / negative / boundary / adversarial variants from AC + discovered UI.
+- `execute_generated_test_case` — flake-aware execution, screenshot on fail.
+- `run_auto_qa` initial version: discover → generate → execute → HTML report.
+- AC oracle passthrough: `expected_url_includes` / `expected_title_includes` / `expected_network` copied onto positive `generated_assertion`.
+- Network oracle: Playwright captures xhr/fetch; `expected_network` couples submit→API in one plan.
+
+### UI discovery (2026-08-07)
+
+- `discover_ui_surface` — live Semantic UI Map (fields, actions, accessible names).
+- `discover_ui_surface_after_login` — same, after semantic login.
+- `PlaywrightExecutionEngine` — semantic `type` / `click` / `select` / `wait_for`, multi-step plans, URL/title/network oracles, flake detection, screenshots.
+
+### Foundation (2026-08-06)
+
+- MCP server over `@modelcontextprotocol/sdk` (stdio + Streamable HTTP transports).
+- Agent Runtime, Evaluation Engine, Knowledge Store, Rule Engine, Workspace isolation.
+- Requirement review: `assess_requirement_quality`, `register_requirement`, `discover_product_context`.
+- `execute_browser_test` — DEMO ONLY with seeded plans.
+- Host integration packages: Claude Code, Cursor, Codex.
+- 66 specifications (SPEC-001–213), 23 ADRs, governance (GOV-001–012).
