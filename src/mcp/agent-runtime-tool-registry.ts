@@ -5,6 +5,9 @@ import type { WorkspaceContext, ConsequenceClass, JsonObject } from "../requirem
 import { resolveAgentRunBudgets } from "../runtime/default-budgets.js";
 import type { SessionMemory, SessionMemoryEntry } from "../memory/session-memory.js";
 import { evaluateFailureAvoidanceCandidate } from "../memory/failure-avoidance.js";
+import type { MistakeRecurrenceTracker } from "../learning-engine/mistake-recurrence.js";
+import { raiseMistakeRecurrenceCandidate } from "../learning-engine/public.js";
+import type { CandidateRepository } from "../candidate-repository/public.js";
 import type { McpTool, McpToolCallOutcome, McpToolRegistry } from "./sdk-mcp-server.js";
 
 export type AgentRuntimeToolDefinition = Readonly<{
@@ -52,6 +55,9 @@ export type AgentRuntimeToolRegistryDependencies = Readonly<{
    */
   sessionMemory?: SessionMemory;
   sessionMemoryTtlSeconds?: number;
+  /** SPEC-105 §9a: count same causal class across runs; when recurring, raise Learning candidate. */
+  mistakeRecurrenceTracker?: MistakeRecurrenceTracker;
+  candidateRepository?: CandidateRepository;
 }>;
 
 export const DEFAULT_SESSION_MEMORY_TTL_SECONDS = 60 * 60;
@@ -141,7 +147,7 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
     }
 
     this.#retainOutcomeInSessionMemory(context.workspace_id, definition, executed.value);
-    this.#retainFailureAvoidanceFromQaRun(context.workspace_id, definition, executed.value);
+    await this.#retainFailureAvoidanceFromQaRun(context.workspace_id, definition, executed.value);
 
     return {
       ok: executed.value.outcome === "completed",
@@ -178,18 +184,17 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
   }
 
   /**
-   * SPEC-108 §7.3: when `run_auto_qa` completes with draft defects, offer
-   * each causal mistake as a failure-avoidance candidate so a later run in
-   * the same Workspace CAN look it up. Still goes through
-   * `evaluateFailureAvoidanceCandidate` (recurring/global → Learning Engine
-   * path, not silent retain). Does not invent confirmed causes — key is the
-   * draft defect id + classification.
+   * SPEC-108 §7.3 / SPEC-105 §9a: when `run_auto_qa` completes with draft
+   * defects, retain avoidance hints under a *stable* causal key
+   * (`avoid:<classification>:<test_ref>`), not unique draft ids — so the
+   * same mistake recurring across runs can trip MistakeRecurrenceTracker.
+   * Recurring → Learning Engine candidate (never promote); one-off → Session Memory.
    */
-  #retainFailureAvoidanceFromQaRun(
+  async #retainFailureAvoidanceFromQaRun(
     workspaceId: string,
     definition: AgentRuntimeToolDefinition,
     result: AgentRunResult,
-  ): void {
+  ): Promise<void> {
     if (definition.name !== "run_auto_qa" || result.outcome !== "completed") return;
     const sessionMemory = this.#dependencies.sessionMemory;
     if (sessionMemory === undefined) return;
@@ -199,6 +204,10 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
     if (!Array.isArray(drafts)) return;
 
     const ttl = this.#dependencies.sessionMemoryTtlSeconds ?? DEFAULT_SESSION_MEMORY_TTL_SECONDS;
+    const tracker = this.#dependencies.mistakeRecurrenceTracker;
+    const candidates = this.#dependencies.candidateRepository;
+    const context = this.#dependencies.resolveWorkspaceContext();
+
     for (const draft of drafts) {
       if (typeof draft !== "object" || draft === null || Array.isArray(draft)) continue;
       const defect = draft as JsonObject;
@@ -207,17 +216,63 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
       const summary = typeof defect["summary"] === "string" ? defect["summary"] : "";
       const suspected = typeof defect["suspected_cause"] === "string" ? defect["suspected_cause"] : summary;
       if (id === undefined) continue;
+
+      const related = defect["related_test_refs"];
+      const testRef =
+        Array.isArray(related) && typeof related[0] === "string" && related[0].trim().length > 0
+          ? related[0].trim()
+          : id.replace(/^DEF-DRAFT:/, "");
+      const causalMistakeKey = `avoid:${classification}:${testRef}`;
+      const trigger = classification === "security_incident" ? "defect" : "failed_execution";
+
+      let recurring = false;
+      let assessment:
+        | Readonly<{ recurring: false }>
+        | Readonly<{
+            recurring: true;
+            occurrence_count: number;
+            affected_runs: readonly string[];
+            first_observed_at: string;
+          }> = { recurring: false };
+
+      if (tracker !== undefined) {
+        assessment = tracker.record({
+          workspace_id: workspaceId,
+          causal_mistake_key: causalMistakeKey,
+          trigger,
+          source_ref: `defect-draft:${id}`,
+          occurred_at: this.#dependencies.now().toISOString(),
+        });
+        recurring = assessment.recurring;
+      }
+
+      if (recurring && assessment.recurring && candidates !== undefined) {
+        await raiseMistakeRecurrenceCandidate(candidates, {
+          context,
+          occurrence: {
+            workspace_id: workspaceId,
+            causal_mistake_key: causalMistakeKey,
+            trigger,
+            source_ref: `defect-draft:${id}`,
+            occurred_at: this.#dependencies.now().toISOString(),
+          },
+          assessment,
+          causal_mistake: suspected || summary || id,
+          prior_avoidance_fact_refs: [`session:${causalMistakeKey}`],
+          owner: "qa-intelligence-auto-recurrence",
+          expires_at: new Date(this.#dependencies.now().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          idempotency_key: `recurrence:${causalMistakeKey}:${assessment.occurrence_count}`,
+        }).catch(() => undefined);
+      }
+
       evaluateFailureAvoidanceCandidate(sessionMemory, {
         workspace_id: workspaceId,
-        trigger: classification === "security_incident" ? "defect" : "failed_execution",
-        causal_mistake_key: `avoid:${id}:${classification}`,
+        trigger,
+        causal_mistake_key: causalMistakeKey,
         causal_mistake: suspected || summary || id,
         source_ref: `defect-draft:${id}`,
-        // Fast-path retain only (SPEC-108 §7.2). Security drafts still carry
-        // classification in the key/value for later lookup; promoting them as
-        // high_consequence would decline here and require Learning Engine.
         consequence_class: "reversible",
-        recurring: false,
+        recurring,
         ttl_seconds: ttl,
       });
     }

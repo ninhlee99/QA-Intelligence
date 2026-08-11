@@ -123,6 +123,12 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 - Datasets: `register_test_dataset` with synthetic `field_samples`, then
   `resolve_test_dataset_fields` → pass `field_values` into execute/regression.
   Passwords stay in `register_workspace_secret` / `field_secret_refs`.
+- Visual baseline: `capture_ui_baseline` then `compare_ui_baseline` — exact
+  PNG match only; mismatch is observation, not auto product fail.
+- Surface baseline: after discover, `register_ui_surface_baseline` then
+  `compare_ui_surface_to_baseline` for named-control drift.
+- Learning: `list_learning_candidates` after repeated `run_auto_qa` drafts —
+  never auto-promote.
 
 ## Triage rules
 

@@ -133,7 +133,7 @@ function main(): void {
   });
 
   const sessionMemory = new SessionMemory(clock);
-  const { runtime, tools } = buildDevFixture({
+  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,
     authorizer,
@@ -156,6 +156,8 @@ function main(): void {
     // Parent Runtime), so this instance never needs to isolate more than
     // the one WORKSPACE_ID this entrypoint uses.
     sessionMemory,
+    mistakeRecurrenceTracker,
+    candidateRepository,
     tools,
   });
 

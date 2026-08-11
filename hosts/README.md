@@ -158,6 +158,9 @@ on both stdio and remote transports:
 | `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status; optional authz negatives) |
 | `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges (+ optional `expected_network`) |
 | `export_defects_for_tracker` | Markdown/Jira text + evidence pack (no tracker API call) |
+| `capture_ui_baseline` / `compare_ui_baseline` | Exact PNG hash+dims under `.qa-baselines/` (observation only) |
+| `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` | Named-control drift vs `.qa-surface-baselines/` |
+| `list_learning_candidates` | Read Learning candidates (never auto-promotes) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.
 Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.

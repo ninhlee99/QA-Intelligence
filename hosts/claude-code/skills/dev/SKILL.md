@@ -50,6 +50,9 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
    bind (persists under `.qa-automation-assets/`).
    Optional fills: `register_test_dataset` (`field_samples`, synthetic) →
    `resolve_test_dataset_fields` → pass `field_values` on execute/regression.
+   Optional visual: `capture_ui_baseline` / `compare_ui_baseline` (exact match
+   observation). Optional surface: `register_ui_surface_baseline` after
+   discover. Learning list: `list_learning_candidates` (never promote).
 8. **API (when this screen calls your HTTP API).** If OpenAPI/JSON exists in
    repo, `generate_api_smoke_from_openapi` (`include_authz_negatives: true`
    when secured) → `execute_api_smoke` on local base URL.

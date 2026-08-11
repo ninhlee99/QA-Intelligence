@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   });
 
   const sessionMemory = new SessionMemory(clock);
-  const { runtime, tools } = buildDevFixture({
+  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,
     authorizer,
@@ -130,6 +130,8 @@ async function main(): Promise<void> {
     environment: "development",
     deadlineSeconds: 120,
     sessionMemory,
+    mistakeRecurrenceTracker,
+    candidateRepository,
   });
 
   const transport = new StreamableHttpTransport({ authenticator });

@@ -7,3 +7,5 @@ node_modules/
 .qa-automation-assets/
 .qa-test-datasets/
 .qa-screenshots/
+.qa-baselines/
+.qa-surface-baselines/

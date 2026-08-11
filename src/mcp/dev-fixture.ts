@@ -57,7 +57,11 @@ import { generateTestStrategyStub } from "../test-strategy/generate-test-strateg
 import { UiMapStubRuntimeExecutor } from "./ui-map-stub-runtime-executor.js";
 import { EvaluateTestCaseQualitySkillRuntimeExecutor } from "../agent-skill-quality/evaluate-test-case-quality-skill-runtime-executor.js";
 import { RaiseMistakeRecurrenceCandidateRuntimeExecutor } from "../learning-engine/raise-mistake-recurrence-candidate-runtime-executor.js";
+import { ListLearningCandidatesRuntimeExecutor } from "../learning-engine/list-learning-candidates-runtime-executor.js";
+import { MistakeRecurrenceTracker } from "../learning-engine/mistake-recurrence.js";
 import { InMemoryCandidateRepository } from "../adapters/memory/in-memory-candidate-repository.js";
+import { UiBaselineRuntimeExecutor } from "../visual-testing/ui-baseline-runtime-executor.js";
+import { SurfaceBaselineRuntimeExecutor } from "../discovery/surface-baseline-runtime-executor.js";
 import {
   DocumentQualityRuntimeExecutor,
   toDocumentQualityAssessment,
@@ -210,6 +214,16 @@ export const SKILL_QUALITY_EVAL_AGENT = { id: "evaluate-test-case-quality-skill-
 export const SKILL_QUALITY_EVAL_SKILL = { id: "evaluate-test-case-quality-skill", version: "0.1.0" } as const;
 export const MISTAKE_RECURRENCE_AGENT = { id: "raise-mistake-recurrence-candidate-agent", version: "0.1.0" } as const;
 export const MISTAKE_RECURRENCE_SKILL = { id: "raise-mistake-recurrence-candidate", version: "0.1.0" } as const;
+export const LIST_LEARNING_CANDIDATES_AGENT = { id: "list-learning-candidates-agent", version: "0.1.0" } as const;
+export const LIST_LEARNING_CANDIDATES_SKILL = { id: "list-learning-candidates", version: "0.1.0" } as const;
+export const UI_BASELINE_CAPTURE_AGENT = { id: "capture-ui-baseline-agent", version: "0.1.0" } as const;
+export const UI_BASELINE_CAPTURE_SKILL = { id: "capture-ui-baseline", version: "0.1.0" } as const;
+export const UI_BASELINE_COMPARE_AGENT = { id: "compare-ui-baseline-agent", version: "0.1.0" } as const;
+export const UI_BASELINE_COMPARE_SKILL = { id: "compare-ui-baseline", version: "0.1.0" } as const;
+export const SURFACE_BASELINE_REGISTER_AGENT = { id: "register-ui-surface-baseline-agent", version: "0.1.0" } as const;
+export const SURFACE_BASELINE_REGISTER_SKILL = { id: "register-ui-surface-baseline", version: "0.1.0" } as const;
+export const SURFACE_BASELINE_COMPARE_AGENT = { id: "compare-ui-surface-to-baseline-agent", version: "0.1.0" } as const;
+export const SURFACE_BASELINE_COMPARE_SKILL = { id: "compare-ui-surface-to-baseline", version: "0.1.0" } as const;
 export const REQUIREMENT_REGISTER_AGENT = { id: "requirement-registry-agent", version: "0.1.0" } as const;
 export const REQUIREMENT_REGISTER_SKILL = { id: "register-requirement", version: "0.1.0" } as const;
 export const REQUIREMENT_LIST_AGENT = { id: "requirement-list-agent", version: "0.1.0" } as const;
@@ -309,6 +323,8 @@ export const DEMO_LOGIN_TEST_CASE_REF = "TC-DEMO-002@1.0.0";
 export type DevFixtureBuild = Readonly<{
   runtime: InMemoryAgentRuntime;
   tools: readonly AgentRuntimeToolDefinition[];
+  mistakeRecurrenceTracker: MistakeRecurrenceTracker;
+  candidateRepository: InMemoryCandidateRepository;
 }>;
 
 /**
@@ -399,6 +415,7 @@ export function buildDevFixture(options: {
     join(process.cwd(), ".qa-test-datasets"),
   );
   const candidateRepository = new InMemoryCandidateRepository(clock);
+  const mistakeRecurrenceTracker = new MistakeRecurrenceTracker(clock);
 
   // Tracer bullet (docs/proposals/SPEC-512-mcp-test-execution-tool.md).
   // TC-DEMO-001: navigate + assert only. TC-DEMO-002 (Phase 2,
@@ -1184,6 +1201,50 @@ export function buildDevFixture(options: {
       candidateRepository,
       expected_agent: MISTAKE_RECURRENCE_AGENT,
       expected_skill: MISTAKE_RECURRENCE_SKILL,
+    }),
+  );
+  executorMap.set(
+    LIST_LEARNING_CANDIDATES_AGENT.id,
+    new ListLearningCandidatesRuntimeExecutor({
+      candidateRepository,
+      expected_agent: LIST_LEARNING_CANDIDATES_AGENT,
+      expected_skill: LIST_LEARNING_CANDIDATES_SKILL,
+    }),
+  );
+  executorMap.set(
+    UI_BASELINE_CAPTURE_AGENT.id,
+    new UiBaselineRuntimeExecutor({
+      expected_agent: UI_BASELINE_CAPTURE_AGENT,
+      expected_skill: UI_BASELINE_CAPTURE_SKILL,
+      mode: "capture",
+      clock,
+    }),
+  );
+  executorMap.set(
+    UI_BASELINE_COMPARE_AGENT.id,
+    new UiBaselineRuntimeExecutor({
+      expected_agent: UI_BASELINE_COMPARE_AGENT,
+      expected_skill: UI_BASELINE_COMPARE_SKILL,
+      mode: "compare",
+      clock,
+    }),
+  );
+  executorMap.set(
+    SURFACE_BASELINE_REGISTER_AGENT.id,
+    new SurfaceBaselineRuntimeExecutor({
+      expected_agent: SURFACE_BASELINE_REGISTER_AGENT,
+      expected_skill: SURFACE_BASELINE_REGISTER_SKILL,
+      mode: "register",
+      clock,
+    }),
+  );
+  executorMap.set(
+    SURFACE_BASELINE_COMPARE_AGENT.id,
+    new SurfaceBaselineRuntimeExecutor({
+      expected_agent: SURFACE_BASELINE_COMPARE_AGENT,
+      expected_skill: SURFACE_BASELINE_COMPARE_SKILL,
+      mode: "compare",
+      clock,
     }),
   );
   executorMap.set(
@@ -2353,6 +2414,139 @@ export function buildDevFixture(options: {
         }),
     },
     {
+      name: "list_learning_candidates",
+      description:
+        "Read Learning Engine candidates (default discovery_source=mistake-recurrence). Never promotes — human triage only (SPEC-105).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          discovery_source: {
+            type: "string",
+            description: "Optional filter; default mistake-recurrence.",
+          },
+        },
+        required: [],
+      },
+      agent: LIST_LEARNING_CANDIDATES_AGENT,
+      purpose: "List Learning Engine candidates",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [LIST_LEARNING_CANDIDATES_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          discovery_source: (args["discovery_source"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "capture_ui_baseline",
+      description:
+        "Capture full-page PNG under .qa-baselines/ (SHA-256 + dimensions). Exact-match baseline only — not perceptual soft compare.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          baseline_id: { type: "string" },
+          browser: { type: "string" },
+        },
+        required: ["url", "baseline_id"],
+      },
+      agent: UI_BASELINE_CAPTURE_AGENT,
+      purpose: "Capture UI visual baseline",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [UI_BASELINE_CAPTURE_SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 4, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          baseline_id: (args["baseline_id"] as string | undefined) ?? "",
+          browser: (args["browser"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "compare_ui_baseline",
+      description:
+        "Re-screenshot URL and compare to .qa-baselines/ via exact SHA-256 + dimensions. Mismatch is observation only — never auto product fail.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          baseline_id: { type: "string" },
+          browser: { type: "string" },
+        },
+        required: ["url", "baseline_id"],
+      },
+      agent: UI_BASELINE_COMPARE_AGENT,
+      purpose: "Compare UI visual baseline",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [UI_BASELINE_COMPARE_SKILL],
+      allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }],
+      budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 4, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          baseline_id: (args["baseline_id"] as string | undefined) ?? "",
+          browser: (args["browser"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "register_ui_surface_baseline",
+      description:
+        "Persist Semantic UI element array under .qa-surface-baselines/ for release-over-release named-control drift.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseline_id: { type: "string" },
+          elements: { type: "array", items: { type: "object" } },
+          label: { type: "string" },
+          source_url: { type: "string" },
+        },
+        required: ["baseline_id", "elements"],
+      },
+      agent: SURFACE_BASELINE_REGISTER_AGENT,
+      purpose: "Register UI surface baseline",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [SURFACE_BASELINE_REGISTER_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          baseline_id: (args["baseline_id"] as string | undefined) ?? "",
+          elements: (args["elements"] as JsonValue | undefined) ?? [],
+          label: (args["label"] as string | undefined) ?? "",
+          source_url: (args["source_url"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "compare_ui_surface_to_baseline",
+      description:
+        "Diff live elements[] against a registered surface baseline (only-baseline / only-live / shared). Observation only.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseline_id: { type: "string" },
+          elements: { type: "array", items: { type: "object" } },
+          label: { type: "string" },
+        },
+        required: ["baseline_id", "elements"],
+      },
+      agent: SURFACE_BASELINE_COMPARE_AGENT,
+      purpose: "Compare UI surface to baseline",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [SURFACE_BASELINE_COMPARE_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          baseline_id: (args["baseline_id"] as string | undefined) ?? "",
+          elements: (args["elements"] as JsonValue | undefined) ?? [],
+          label: (args["label"] as string | undefined) ?? "",
+        }),
+    },
+    {
       name: "register_requirement",
       description:
         "SPEC-202 ingest: register/replace a Requirement (id/title/statement/acceptance_criteria). scope.workspace_id forced to this Workspace. Use requirement_ref = id@version with generate_test_cases / run_auto_qa.",
@@ -2697,5 +2891,5 @@ export function buildDevFixture(options: {
     },
   ];
 
-  return { runtime, tools };
+  return { runtime, tools, mistakeRecurrenceTracker, candidateRepository };
 }
