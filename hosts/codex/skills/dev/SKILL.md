@@ -1,8 +1,7 @@
 ---
 name: dev
 description: >
-  Expert QA for developers — endpoint URL; AC from source; targeted retest.
-  Trigger: "/qa-intelligence:dev".
+  Expert QA for developers — Expert bar. Trigger: "/qa-intelligence:dev".
 ---
 
 # dev (Codex)

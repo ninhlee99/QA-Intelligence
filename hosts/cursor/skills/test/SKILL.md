@@ -1,11 +1,10 @@
 ---
 name: test
 description: >
-  Expert QA tester — URL + spec; env from URL. Retest by case/screen/defect.
-  Trigger: "/qa-intelligence:test".
+  Expert QA tester — gate/gaps/domain/retest enforced. Trigger: "/qa-intelligence:test".
 ---
 
 # test (Cursor)
 
-Follow `hosts/references/expert-tester-workflow.md`.  
+Follow `hosts/references/expert-tester-workflow.md` (Expert bar).  
 Details: `hosts/claude-code/skills/test/SKILL.md`.

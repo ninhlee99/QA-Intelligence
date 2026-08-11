@@ -2,52 +2,54 @@
 
 ## What it is
 
-An **MCP server** that turns Claude Code / Cursor / Codex into an **Expert QA Engineer**.
+An **Expert-shaped QA agent**: Skills enforce professional discipline; MCP supplies **evidence** (discover → risk-based cases → execute → gate → gaps → targeted retest).
 
-You give: a **URL** + a **spec** (or source for local).  
-It returns: **evidence-backed test results**, **draft defects**, and a **release gate** — not a green pass count.
+Commands: `/qa-intelligence:test` | `/qa-intelligence:dev`  
+Environment = **URL** you pass (local or staging).
+
+## Level claim (honest)
+
+| Claim | Status |
+|-------|--------|
+| Expert **process** (G0–G8, refuse green-wash, targeted retest) | Yes — Skills + MCP outputs |
+| Expert **scoped** UI/AC/API with domain pack | Target — pack in `domain-knowledge/` required for business rules |
+| Replace human Expert / release accountability | **No** — human signs off; pen-test & novel domain stay human |
 
 ## What it is not
 
-- Not a Playwright recorder / script dump
-- Not a full WCAG / load / pen-test platform
-- Not an auto-filer that invents root cause
-- Not production SaaS yet (`0.1.0-dev`; GOV-012 still blocks prod)
+- Not a recorder / script dump  
+- Not full WCAG / load / pen-test  
+- Not inventing root cause or AC  
+- Not production SaaS IdP yet (`0.1.0-dev`)
 
 ## Mental model
 
 ```
-Host (Claude / Cursor / Codex)
-  → Skills (/qa-intelligence:test | :dev)
-  → MCP tools (discover → generate → execute → report)
-  → Agent Runtime (authority: versions, evidence, no fake pass)
+Host → :test | :dev Skill (Expert bar)
+    → domain pack + learning hints (G0)
+    → MCP tools (evidence)
+    → Output contract (gate → gaps → retest → suite_id)
+    → Human accountable for release
 ```
 
-Core loop:
+## Expert upgrades built in
 
-1. **Discover** live UI (semantic names, not CSS selectors)
-2. **Design** risk-based cases (positive / negative / boundary / adversarial)
-3. **Execute** with Playwright (flake-aware; screenshot + trace on fail)
-4. **Judge** with release recommendation + coverage gaps + smart retest subset
-5. **Learn** durable avoidance hints (never silent promote)
-
-## Non-negotiables
-
-- No fabricated pass when gate says otherwise
-- No `confirmed_cause` invented by the pipeline
-- Unbound AC / not_executed never counted as pass
-- Scope honesty: naming smoke ≠ WCAG; API smoke ≠ full authz matrix
+1. **Refuse pass** without gate + coverage gaps + retest plan  
+2. **Domain pack** (`domain-knowledge/` or `.qa-domain/`) before execute when present  
+3. **Learning hints** listed before execute  
+4. **E2 mandates:** roles → compare; OpenAPI → authz negatives  
+5. **Explore must close loop** → AC confirm → full run → suite  
+6. **Retest** by case / defect / screen — not whole world  
 
 ## Who uses it
 
-| Role | Trigger | Intent |
+| Role | Command | Intent |
 |------|---------|--------|
-| Tester | `/qa-intelligence:test` | Spec + URL → gate + defects |
-| Developer | `/qa-intelligence:dev` | Code → AC → localhost QA before push |
+| Tester | `:test` | Spec + URL → Expert result |
+| Developer | `:dev` | Source AC + URL → same bar |
 
-## Where to go next
+## Where next
 
-- Install: [`GUIDE.md`](GUIDE.md)
-- Rules: [`../RULES.md`](../RULES.md)
-- Tools: [`../hosts/README.md`](../hosts/README.md)
-- History (optional): [`../archive/`](../archive/)
+- Workflow: [`../hosts/references/expert-tester-workflow.md`](../hosts/references/expert-tester-workflow.md)  
+- Domain pack: [`../hosts/references/domain-pack.md`](../hosts/references/domain-pack.md)  
+- Install: [`GUIDE.md`](GUIDE.md) · Rules: [`../RULES.md`](../RULES.md)

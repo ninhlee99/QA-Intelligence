@@ -1,8 +1,7 @@
 ---
 name: test
 description: >
-  Expert QA tester — URL + spec; env from URL; targeted retest.
-  Trigger: "/qa-intelligence:test".
+  Expert QA tester — gate/gaps/domain/retest. Trigger: "/qa-intelligence:test".
 ---
 
 # test (Codex)

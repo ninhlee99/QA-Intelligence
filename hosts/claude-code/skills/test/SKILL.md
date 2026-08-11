@@ -1,59 +1,42 @@
 ---
 name: test
 description: >
-  Expert QA tester — URL + spec. Environment (local/staging) comes from the
-  URL user passes, not a separate command. Supports full run and targeted
-  retest (case / screen / defect). Trigger: "/qa-intelligence:test",
-  "test this page", "QA this URL", "retest this case", "kiểm tra tính năng".
+  Expert-level QA tester — URL + spec. Env from URL. Enforces gate, coverage
+  gaps, domain pack, learning hints, targeted retest. Trigger:
+  "/qa-intelligence:test", "test this page", "retest this case", "QA this URL".
 ---
 
 # QA Intelligence — test (Expert Tester)
 
-**Command:** `/qa-intelligence:test`  
-**Role:** Tester — spec + URL (no source required).  
-**Env:** From URL (`localhost` → local hygiene; else register staging env).
+**MUST follow** `hosts/references/expert-tester-workflow.md` (Expert bar + G0→G8).  
+Domain pack: `hosts/references/domain-pack.md` + templates under `hosts/templates/domain-knowledge/`.
 
-**MUST follow** `hosts/references/expert-tester-workflow.md` (G0→G8 + Retest).
-
-MCP: `qa-intelligence`. Never `execute_browser_test` on real targets.
+MCP: `qa-intelligence`. Evidence only from tools.
 
 ---
 
-## Entry
+## Hard refuses
 
-Collect:
-
-1. **URL** (endpoint) — required  
-2. **Spec / AC** — ticket, doc, or stated behavior (or exploratory if none)  
-3. Login secret refs if session-gated  
-4. Mode: **full run** or **retest** (case_ids / suite / screen / defect)
-
-If user says “retest …” → Strategy **B** (see Retest below). Do not restart full product discovery unless AC/UI changed.
+Do **not** conclude pass / ship / ready unless Expert bar met (gate + gaps + retest plan + suite_id on serious A).  
+Missing pieces → **incomplete Expert run** + blockers.
 
 ---
 
-## Full run (Strategy A / C)
+## Procedure
 
-1. G0–G1 from URL + secrets  
-2. Discover live UI  
-3. Bind AC or Strategy C then confirm AC  
-4. `run_auto_qa` → **always** `register_regression_suite` on serious runs  
-5. G5–G8 Output contract  
+1. **Entry:** URL, AC/spec (or exploratory), secrets, full vs retest  
+2. **G0:** 5 questions  
+3. **G0 learning:** `list_failure_avoidance_hints` (+ `list_learning_candidates`) — state applicability  
+4. **G0d:** If `domain-knowledge/` or `.qa-domain/` exists → read before execute; tag money/permission/legacy/pii into gaps later  
+5. **G1–G3:** env from URL; discover; bind AC (never invent)  
+6. **G4:**  
+   - Retest intent → Strategy B + `smart_retest_suggestion` / case_ids / defects / screen  
+   - Else Strategy A (or C→confirm→A)  
+   - E2: roles → role compare; API → openapi authz negatives + execute  
+7. **G5–G8:** Output contract exactly — gate first  
+8. Serious A → `register_regression_suite` (required)
 
-## Retest (Strategy B) — required capability
+## Exploratory (C)
 
-| User intent | MCP call |
-|-------------|----------|
-| Retest these cases | `run_regression_suite` + `case_ids` |
-| Retest after bug fix | `related_defect_ids: ["DEF-DRAFT:…"]` |
-| Retest this screen | suite for that URL/screen, or `run_auto_qa` **only that URL** |
-| Retest one case object | `execute_generated_test_case` with saved case + assertion |
-
-Use `smart_retest_suggestion` from prior `run_auto_qa` when present.  
-Report what was **not** retested.
-
----
-
-## Output
-
-Output contract in the reference — `Command: test`, Environment from URL.
+Must end with AC candidates + human confirm path + then A + suite.  
+Do not stop at “I explored” as final quality claim.

@@ -55,7 +55,7 @@ Most AI “QA” tools dump scripts or cheerlead green CI. This one behaves like
 | Links fail traces in HTML report | Claims WCAG / load / pen-test not run |
 | Warns before defect export | Puts passwords on the MCP wire |
 
-Rules: **[RULES.md](RULES.md)** · Idea: **[docs/PRODUCT.md](docs/PRODUCT.md)**
+Rules: **[RULES.md](RULES.md)** · Idea: **[docs/PRODUCT.md](docs/PRODUCT.md)** · Workflow: **[hosts/references/expert-tester-workflow.md](hosts/references/expert-tester-workflow.md)** · Domain pack: **[hosts/references/domain-pack.md](hosts/references/domain-pack.md)**
 
 ## Core tools
 

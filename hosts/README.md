@@ -92,18 +92,15 @@ Then connect with the printed token — see `hosts/cursor/mcp-remote.json.exampl
 
 ## Skills (Expert Tester)
 
-Canonical: [`references/expert-tester-workflow.md`](references/expert-tester-workflow.md) (G0–G8 + targeted retest).
+Canonical: [`references/expert-tester-workflow.md`](references/expert-tester-workflow.md)  
+Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templates: [`templates/domain-knowledge/`](templates/domain-knowledge/)
 
-| Trigger | Skill | Who | Notes |
-|---------|-------|-----|--------|
-| `/qa-intelligence:test` | `test` | Tester | URL + spec; env from URL |
-| `/qa-intelligence:dev` | `dev` | Developer | URL + AC from source when possible |
+| Trigger | Skill | Who |
+|---------|-------|-----|
+| `/qa-intelligence:test` | `test` | Tester — URL + spec |
+| `/qa-intelligence:dev` | `dev` | Dev — URL + source AC |
 
-**Local vs staging:** user passes the endpoint. Loopback → local hygiene; other http(s) → `register_workspace_environment`.
-
-**Retest:** `run_regression_suite` with `case_ids` / `related_defect_ids`, or one screen URL, or `execute_generated_test_case`. Serious runs must `register_regression_suite`.
-
-Command map: [`commands/README.md`](commands/README.md).
+**Env** = URL. **Expert bar** = refuse pass without gate + gaps + retest plan; learning hints + domain pack in G0; explore→suite loop; targeted retest.
 
 ---
 

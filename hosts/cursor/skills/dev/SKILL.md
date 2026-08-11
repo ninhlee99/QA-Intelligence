@@ -1,8 +1,7 @@
 ---
 name: dev
 description: >
-  Expert QA for developers — URL endpoint; AC from source; targeted retest.
-  Trigger: "/qa-intelligence:dev".
+  Expert QA for developers — same Expert bar as :test. Trigger: "/qa-intelligence:dev".
 ---
 
 # dev (Cursor)
