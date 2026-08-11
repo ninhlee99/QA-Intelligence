@@ -1,12 +1,11 @@
 ---
 name: dev
 description: >
-  Dev entry — routes to local or staging Expert Tester. Trigger:
-  "/qa-intelligence:dev".
+  Expert QA for developers — URL endpoint; AC from source; targeted retest.
+  Trigger: "/qa-intelligence:dev".
 ---
 
-# Dev entry (Cursor)
+# dev (Cursor)
 
 Follow `hosts/references/expert-tester-workflow.md`.  
-Route: localhost → local skill; staging URL → staging skill.  
 Details: `hosts/claude-code/skills/dev/SKILL.md`.

@@ -16,16 +16,15 @@ Agent:
   → G5 release gate → G6 coverage_gaps → G7 artifacts → G8 next action
 ```
 
-**Skills (same Expert process, different entry):**
+**Skills:**
 
-| Trigger | Role | Target |
-|---------|------|--------|
-| `/qa-intelligence:local` | Dev | localhost |
-| `/qa-intelligence:staging` | Dev / QA | staging |
-| `/qa-intelligence:test` | Tester | URL + spec |
-| `/qa-intelligence:dev` | Dev | routes → local or staging |
+| Trigger | Role |
+|---------|------|
+| `/qa-intelligence:test` | Tester — URL + spec |
+| `/qa-intelligence:dev` | Dev — URL + AC from source |
 
-Workflow: [`hosts/references/expert-tester-workflow.md`](hosts/references/expert-tester-workflow.md)
+Env (local/staging) = **endpoint URL**, not a separate command.  
+Retest: by `case_ids`, defect ids, or one screen URL — see [`hosts/references/expert-tester-workflow.md`](hosts/references/expert-tester-workflow.md).
 
 ## Quick start
 
@@ -39,7 +38,7 @@ Connect one host:
 
 | Host | Setup |
 |------|--------|
-| **Claude Code** | Plugin: `hosts/claude-code/` → `:local` / `:staging` / `:test` / `:dev` |
+| **Claude Code** | Plugin: `hosts/claude-code/` → `:test` / `:dev` |
 | **Cursor** | Copy `hosts/cursor/mcp.json.example` (absolute path) |
 | **Codex** | Plugin / config: `hosts/codex/` |
 

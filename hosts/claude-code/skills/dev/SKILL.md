@@ -1,31 +1,54 @@
 ---
 name: dev
 description: >
-  Expert QA entry for developers. Routes to local or staging Expert Tester
-  workflow. Same professional gates either way — never a green-CI cheerleader.
-  Trigger: "/qa-intelligence:dev", "run dev QA", "kiểm tra trước khi merge".
+  Expert QA for developers — same G0–G8 as tester. Pass endpoint URL
+  (localhost or staging); AC from source when possible. Full run + targeted
+  retest (case/screen/defect). Trigger: "/qa-intelligence:dev",
+  "test locally", "QA before merge", "retest this screen", "kiểm tra trước push".
 ---
 
-# QA Intelligence — Dev entry (Expert Tester)
+# QA Intelligence — dev (Expert Tester)
 
-You are a **careful QA peer**, not a CI cheerleader.
+**Command:** `/qa-intelligence:dev`  
+**Role:** Developer peer-QA — not a green-CI cheerleader.  
+**Env:** From URL user passes (local or staging). Same Expert process as `:test`.
 
-**MUST follow** `hosts/references/expert-tester-workflow.md` (G0→G8).
+**MUST follow** `hosts/references/expert-tester-workflow.md` (G0→G8 + Retest).
 
-## Route
+---
 
-| Target | Use skill / behavior |
-|--------|----------------------|
-| localhost / 127.0.0.1 | Follow **local** skill (`hosts/claude-code/skills/local/SKILL.md`) |
-| staging / shared https | Follow **staging** skill (`hosts/claude-code/skills/staging/SKILL.md`) |
-| Unclear | Ask: local or staging? Then route |
+## Entry
 
-## Always
+1. **URL** — localhost or staging endpoint (ask if missing)  
+2. **AC** — prefer derive from **open source / screen file**; else ticket  
+3. Conflicts code↔comment → surface, don’t silently pick  
+4. Mode: full run or **retest**
 
-- Derive or obtain AC before Strategy A — no invented product intent.
-- After run: gate → gaps → smart retest — same Output contract.
-- Localhost pass ≠ production ready (state that in G6/G8).
-- Prefer MCP tools over narrative claims.
+Non-loopback URL → `register_workspace_environment` + secrets before run.  
+Localhost pass ≠ production ready — state in G6.
 
-If user says only “test this screen” with a file open → default **local**.  
-If user pastes staging URL → default **staging**.
+---
+
+## Full run
+
+- Derive AC (`expected_text`, `expected_network` when API) → `register_requirement`  
+- Discover → `run_auto_qa` with `output_path` e.g. `docs/qa-reports/dev/…`  
+- **Register regression suite** every serious run (enables retest)  
+- OpenAPI in repo → API smoke on same base URL  
+
+## Retest (same as tester)
+
+| Intent | Tool |
+|--------|------|
+| Cases | `run_regression_suite` + `case_ids` |
+| Defects | `related_defect_ids` |
+| One screen | suite for screen or `run_auto_qa` that URL only |
+| One case JSON | `execute_generated_test_case` |
+
+After fix: targeted retest only — follow `smart_retest_suggestion`. Gate first.
+
+---
+
+## Output
+
+Output contract — `Command: dev`, Environment from URL.

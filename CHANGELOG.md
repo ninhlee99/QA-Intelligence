@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI slimmed to typecheck + test + audit (+ optional schema examples); dropped SPEC-index gate from default `validate`
 - README rewritten for GitHub: badges, quick start, core tools, clear status
 
+### Skills simplified to test + dev (2026-08-11)
+
+- Removed `:local` / `:staging` skills — environment inferred from user URL
+- Only `/qa-intelligence:test` and `/qa-intelligence:dev`
+- Retest section strengthened: `case_ids`, `related_defect_ids`, one screen URL, `execute_generated_test_case`; serious runs must register regression suite
+
 ### Expert Tester Skills — local / staging / tester (2026-08-11)
 
 - Shared gates G0–G8: `hosts/references/expert-tester-workflow.md`

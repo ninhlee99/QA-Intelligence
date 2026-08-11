@@ -1,14 +1,18 @@
-# Slash command map (host Skills)
+# Slash commands
 
-These names match Claude Code / Cursor / Codex skill triggers.
-All share `hosts/references/expert-tester-workflow.md` (G0–G8).
+Only **two** main commands. Environment = URL the user passes.
 
-| Command | Skill | Who | Target |
-|---------|-------|-----|--------|
-| `/qa-intelligence:local` | `local` | Dev | localhost |
-| `/qa-intelligence:staging` | `staging` | Dev / QA | staging allowlist |
-| `/qa-intelligence:test` | `test` | Tester | URL + spec |
-| `/qa-intelligence:dev` | `dev` | Dev | routes → local or staging |
+| Command | Skill | Who |
+|---------|-------|-----|
+| `/qa-intelligence:test` | `test` | Tester — URL + spec |
+| `/qa-intelligence:dev` | `dev` | Dev — URL + source/ticket AC |
 
-Every command must end with the **Output contract** (gate → gaps → retest → artifacts).
-Evidence steps call MCP `qa-intelligence` tools.
+Both follow `hosts/references/expert-tester-workflow.md`.
+
+Retest examples:
+
+```
+/qa-intelligence:test retest case_ids TC-1,TC-2 suite <id>
+/qa-intelligence:dev retest screen https://staging.example.com/login
+/qa-intelligence:test retest related_defect_ids DEF-DRAFT:TC-1
+```

@@ -1,7 +1,7 @@
 {
   "name": "qa-intelligence",
   "version": "0.1.0-dev",
-  "description": "QA Intelligence Expert Tester MCP (0.1.0-dev): local/staging/tester Skills with shared G0–G8 workflow + MCP evidence (run_auto_qa, regression, traces). See hosts/references/expert-tester-workflow.md.",
+  "description": "QA Intelligence Expert Tester (0.1.0-dev): :test and :dev Skills (env from URL) + MCP evidence, targeted retest by case/screen. See hosts/references/expert-tester-workflow.md.",
   "author": {
     "name": "QA Intelligence"
   },

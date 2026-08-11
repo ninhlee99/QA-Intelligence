@@ -90,21 +90,20 @@ Then connect with the printed token — see `hosts/cursor/mcp-remote.json.exampl
 
 ---
 
-## Skills (Expert Tester — all roles)
+## Skills (Expert Tester)
 
-Canonical process: [`references/expert-tester-workflow.md`](references/expert-tester-workflow.md) (gates **G0–G8**).
+Canonical: [`references/expert-tester-workflow.md`](references/expert-tester-workflow.md) (G0–G8 + targeted retest).
 
-| Trigger | Skill | Use |
-|---------|-------|-----|
-| `/qa-intelligence:local` | `local` | Dev QA on localhost (AC from source) |
-| `/qa-intelligence:staging` | `staging` | Shared staging (env + secrets required) |
-| `/qa-intelligence:test` | `test` | Tester: URL + spec, no source required |
-| `/qa-intelligence:dev` | `dev` | Router → local or staging |
+| Trigger | Skill | Who | Notes |
+|---------|-------|-----|--------|
+| `/qa-intelligence:test` | `test` | Tester | URL + spec; env from URL |
+| `/qa-intelligence:dev` | `dev` | Developer | URL + AC from source when possible |
 
-Same honesty rules for every role. Only **inputs** change (source vs ticket; loopback vs allowlisted URL).  
+**Local vs staging:** user passes the endpoint. Loopback → local hygiene; other http(s) → `register_workspace_environment`.
+
+**Retest:** `run_regression_suite` with `case_ids` / `related_defect_ids`, or one screen URL, or `execute_generated_test_case`. Serious runs must `register_regression_suite`.
+
 Command map: [`commands/README.md`](commands/README.md).
-
-Claude Code ships Skills under `claude-code/skills/`. Cursor/Codex mirrors under `cursor/skills/` and `codex/skills/`.
 
 ---
 

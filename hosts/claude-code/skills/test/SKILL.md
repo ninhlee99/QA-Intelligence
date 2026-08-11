@@ -1,52 +1,59 @@
 ---
 name: test
 description: >
-  Expert QA tester workflow — URL + spec, no source required. Same gates as
-  local/staging. Trigger: "/qa-intelligence:test", "test this page",
-  "QA this URL", "kiểm tra tính năng này".
+  Expert QA tester — URL + spec. Environment (local/staging) comes from the
+  URL user passes, not a separate command. Supports full run and targeted
+  retest (case / screen / defect). Trigger: "/qa-intelligence:test",
+  "test this page", "QA this URL", "retest this case", "kiểm tra tính năng".
 ---
 
-# QA Intelligence — Tester (Expert Tester)
+# QA Intelligence — test (Expert Tester)
 
-**Role:** Human Senior/Expert QA with **spec + URL** (no source authority).  
-**Same gates G0→G8** as local/staging — see `hosts/references/expert-tester-workflow.md`.
+**Command:** `/qa-intelligence:test`  
+**Role:** Tester — spec + URL (no source required).  
+**Env:** From URL (`localhost` → local hygiene; else register staging env).
 
-Never invent business intent. Never green-wash. Evidence only via MCP `qa-intelligence`.
+**MUST follow** `hosts/references/expert-tester-workflow.md` (G0→G8 + Retest).
+
+MCP: `qa-intelligence`. Never `execute_browser_test` on real targets.
 
 ---
 
-## Tester-specific G0–G1
+## Entry
 
-1. Target URL + environment (local/staging/prod-like) — confirm before write-ish login.
-2. Spec / AC pack — ticket, doc, or stated expected behavior.
-   - Prefer `register_requirement` → reuse `id@version`.
-   - No AC → Strategy C exploratory first; propose AC; wait for confirm before binding.
-3. Login field names + secret refs if session-gated.
-4. Non-loopback → `register_workspace_environment`.
+Collect:
 
-## Tester G2–G4
+1. **URL** (endpoint) — required  
+2. **Spec / AC** — ticket, doc, or stated behavior (or exploratory if none)  
+3. Login secret refs if session-gated  
+4. Mode: **full run** or **retest** (case_ids / suite / screen / defect)
 
-- Discover live UI — do not assume structure from chat memory.
-- Multi-page → `discover_ui_workflow` then deepen hot pages.
-- Roles matter → dual-session compare (mandatory call-out of only-in-role surprises).
-- Prefer Strategy A `run_auto_qa` with reconciled AC + `output_path`.
-- Persist `register_regression_suite` every serious run.
-- API path when HTTP exists — do not claim API coverage from UI-only.
+If user says “retest …” → Strategy **B** (see Retest below). Do not restart full product discovery unless AC/UI changed.
 
-## Tester G5–G8
+---
 
-Triage order (hard):
+## Full run (Strategy A / C)
 
-1. `release_recommendation` + rationale  
-2. Critical / security / critical a11y naming  
-3. Role-diff surprises  
-4. Fail/flaky + high drafts  
-5. `coverage_gaps` + unbound AC  
-6. Artifact paths + `smart_retest_suggestion`  
-7. Explicit NOT covered (WCAG/load/pen-test unless run)
+1. G0–G1 from URL + secrets  
+2. Discover live UI  
+3. Bind AC or Strategy C then confirm AC  
+4. `run_auto_qa` → **always** `register_regression_suite` on serious runs  
+5. G5–G8 Output contract  
 
-Export: `export_defects_for_tracker` — check `quality_warnings`. No silent live filing without `confirm_file=true`.
+## Retest (Strategy B) — required capability
+
+| User intent | MCP call |
+|-------------|----------|
+| Retest these cases | `run_regression_suite` + `case_ids` |
+| Retest after bug fix | `related_defect_ids: ["DEF-DRAFT:…"]` |
+| Retest this screen | suite for that URL/screen, or `run_auto_qa` **only that URL** |
+| Retest one case object | `execute_generated_test_case` with saved case + assertion |
+
+Use `smart_retest_suggestion` from prior `run_auto_qa` when present.  
+Report what was **not** retested.
+
+---
 
 ## Output
 
-Use Output contract with `Environment: <as provided>` and Strategy A/B/C named.
+Output contract in the reference — `Command: test`, Environment from URL.

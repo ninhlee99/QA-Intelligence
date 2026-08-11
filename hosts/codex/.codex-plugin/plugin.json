@@ -1,7 +1,7 @@
 {
   "name": "qa-intelligence",
   "version": "0.1.0-dev",
-  "description": "QA Intelligence Expert Tester MCP (0.1.0-dev): local/staging/tester Skills + MCP evidence. See hosts/references/expert-tester-workflow.md.",
+  "description": "QA Intelligence Expert Tester (0.1.0-dev): :test / :dev (env from URL) + MCP evidence + targeted retest. See hosts/references/expert-tester-workflow.md.",
   "mcp": {
     "servers": {
       "qa-intelligence": {

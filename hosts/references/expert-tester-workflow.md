@@ -1,145 +1,172 @@
 # Expert Tester Workflow (canonical)
 
-Shared by `/qa-intelligence:local`, `:staging`, `:test`, `:dev`.
-Role (dev vs tester) only changes **inputs**. Process and honesty rules are identical.
+Shared by `/qa-intelligence:test` and `/qa-intelligence:dev`.
 
-MCP server: `qa-intelligence` must be connected. Evidence steps **call MCP tools** — never invent UI structure, pass/fail, or root cause.
+**Only two entry commands.** Local vs staging is **not** a separate skill — user passes the **endpoint (URL)**. Agent detects loopback vs shared env and applies the right G1 hygiene.
 
----
-
-## Why this raises QA level
-
-| Layer | What increases |
-|-------|----------------|
-| This Skill workflow | Consistency, triage discipline, forced coverage honesty, environment hygiene |
-| MCP tools | Real discovery, flake-aware execute, traces, deterministic release gate |
-
-Together: higher **process maturity** + higher **evidence quality**. Product coverage still scales with AC quality and chosen strategy — Skill forces you to *state* gaps instead of hiding them.
+MCP: `qa-intelligence`. Evidence steps **call MCP tools** — never invent UI, pass/fail, or root cause.
 
 ---
 
-## Non-negotiables (every role, every env)
+## Commands
 
-1. No fabricated pass when `release_recommendation` is not release-friendly.
-2. Never set/imply `confirmed_cause` — only `suspected_cause` + evidence.
-3. Unbound AC / `not_executed` never count as pass — surface in `coverage_gaps`.
-4. Secrets only via `register_workspace_secret` → `*_secret_ref`.
-5. Non-loopback URLs need `register_workspace_environment` first.
-6. Do **not** use `execute_browser_test` on real targets (DEMO only).
-7. Lead with gate → critical defects → coverage gaps → artifacts. Never cheerlead pass-count.
+| Command | Who | Inputs |
+|---------|-----|--------|
+| `/qa-intelligence:test` | Tester | URL + spec/AC (no source required) |
+| `/qa-intelligence:dev` | Developer | URL (often localhost) + AC from **source** or ticket |
 
-Full list: repo `RULES.md`.
+Same gates **G0→G8**. Same honesty. Different AC provenance only.
 
 ---
 
-## Gates (must complete in order — or state why skipped)
+## Environment from URL (not from command name)
 
-| Gate | Name | Pass criterion |
-|------|------|----------------|
-| **G0** | Assess | 5 risk questions answered (feature vs regression, API, roles, auth, desired output) |
-| **G1** | Environment | Env registered if needed; secrets registered; target URL confirmed |
-| **G2** | Discover | Live surface/workflow captured via MCP — not assumed from memory |
-| **G3** | Bind AC | Each AC bound to real accessible name **or** listed unbound — never invent AC |
-| **G4** | Execute | Chosen strategy run via MCP (`run_auto_qa` / `run_regression_suite` / exploratory) |
-| **G5** | Gate read | `release_recommendation` + rationale stated **before** pass counts |
-| **G6** | Coverage truth | `coverage_gaps` + what was NOT tested stated explicitly |
-| **G7** | Evidence pack | Report path, suite id, defects, traces (if fail) available |
-| **G8** | Next action | Smart retest suggestion **or** export defects **or** clear “no retest needed” |
+| URL shape | Treat as | G1 |
+|-----------|----------|-----|
+| `localhost` / `127.0.0.1` / loopback | local | Env register optional |
+| Other http(s) | staging/shared | `register_workspace_environment` **required**; confirm before write-ish login |
+| Missing URL | Ask | Do not guess |
 
-Ship / “ready to merge” / “ready for release” requires **G5–G8** with honest gaps.
+Always state in output: `Environment: local | staging | <name>` derived from URL.
 
 ---
 
-## G0 — Five questions (always)
+## Non-negotiables
 
-1. New feature or regression?
-2. API involved? OpenAPI available?
-3. Multiple roles / permissions?
-4. Session-gated (login)?
-5. Desired output: release decision / defects / baseline / all?
+1. No fabricated pass when gate is not release-friendly.
+2. Never invent `confirmed_cause`.
+3. Unbound AC / `not_executed` ≠ pass — use `coverage_gaps`.
+4. Secrets via `*_secret_ref` only.
+5. No `execute_browser_test` on real targets (DEMO only).
+6. Triage: gate → critical → gaps → artifacts — never pass-count cheerleading.
 
-Missing critical input → **ask**. Do not guess production password or business intent.
+See repo `RULES.md`.
+
+---
+
+## Gates G0→G8
+
+| Gate | Pass when |
+|------|-----------|
+| **G0** Assess | Feature vs regression; API; roles; auth; desired output |
+| **G1** Env | URL confirmed; env registered if non-loopback; secrets ready |
+| **G2** Discover | Live MCP discover — not assumed |
+| **G3** Bind AC | Bound to accessible names **or** listed unbound — never invent AC |
+| **G4** Execute | Strategy A/B/C via MCP |
+| **G5** Gate | `release_recommendation` stated first |
+| **G6** Gaps | `coverage_gaps` + NOT covered stated |
+| **G7** Artifacts | report / suite_id / defects / traces |
+| **G8** Next | Retest plan **or** export **or** “no retest needed” |
 
 ---
 
 ## Strategies (G4)
 
 ### A — Full pipeline
-Use: new screen/AC, or material UI change.
+New feature / new AC / material UI change:
 
 ```
-register_requirement (if real AC)
+register_requirement (if AC pack)
 → discover_ui_surface | discover_ui_workflow | after_login
 → [roles] discover_and_compare_role_ui_surfaces
-→ run_auto_qa (AC + output_path + requirement_ref)
-→ [API] generate_api_smoke_from_openapi → execute_api_smoke
-→ register_regression_suite
-→ [first time] capture_ui_baseline + register_ui_surface_baseline
+→ run_auto_qa (url + AC + output_path)
+→ [API] openapi smoke + execute_api_smoke
+→ register_regression_suite   # REQUIRED for serious runs — enables retest
 ```
 
-### B — Regression / retest
-Use: fix landed, suite exists.
+### B — Retest / regression (preferred after fix)
+Suite already exists:
 
 ```
-list_regression_suites → run_regression_suite
-  (case_ids | related_defect_ids — NOT full suite if subset enough)
-→ [UI layout] compare_ui_baseline / compare_ui_surface_to_baseline
-→ read release_recommendation (not pass-count)
-→ if fail: npx playwright show-trace <.qa-traces/…>
+list_regression_suites
+→ run_regression_suite with TARGETED filter (see Retest below)
+→ optional compare_ui_baseline / compare_ui_surface_to_baseline
+→ read release_recommendation
 ```
 
-### C — Exploratory (weak/no AC)
-Use: tester has URL only.
+### C — Exploratory
+No/weak AC:
 
 ```
-discover_ui_workflow → generate_exploratory_charter
-→ execute_exploratory_session
-→ propose AC candidates → human confirm → Strategy A
+discover → generate_exploratory_charter → execute_exploratory_session
+→ propose AC → human confirm → Strategy A
 ```
 
 ---
 
-## Environment profiles
+## Retest (must support — G8)
 
-| Profile | Typical URL | Extra G1 steps |
-|---------|-------------|----------------|
-| **local** | `http://127.0.0.1` / `localhost` | Loopback OK without env register; AC may come from source |
-| **staging** | non-loopback https | `register_workspace_environment` required; confirm before write-ish login |
-| **tester** | any provided | Spec/AC from ticket/doc; no source authority unless given |
+Expert Tester **never** re-runs the whole world when a subset is enough.
+Always prefer targeted retest. Use MCP:
 
-Same gates. Different AC provenance and env hygiene.
+### 1) Retest one or more **cases**
+
+```
+run_regression_suite
+  suite_id: <from list_regression_suites>
+  case_ids: ["TC-…", "TC-…"]
+```
+
+Or after `run_auto_qa` fail: follow `smart_retest_suggestion.failed_case_ids` / `flaky_case_ids`.
+
+### 2) Retest by **defect / failure**
+
+```
+run_regression_suite
+  related_defect_ids: ["DEF-DRAFT:<test_case_id>", …]
+```
+
+### 3) Retest one **screen / URL**
+
+- Prefer a suite registered for that screen (name/purpose includes route or screen id).
+- If no suite: Strategy A `run_auto_qa` on **that URL only** (not whole product), then `register_regression_suite` for next time.
+- Multi-page product: `discover_ui_workflow` → retest only pages in scope; do not claim full product.
+
+### 4) Retest one **generated case** ad-hoc
+
+```
+execute_generated_test_case
+  # pass the stored test_case + generated_assertion from prior JSON / suite entry
+  field_values / field_secret_refs as needed
+```
+
+### 5) After retest — report
+
+- Gate first (not pass-count).
+- What was retested (`case_ids` / URL / defect ids).
+- What was **not** retested (residual risk).
+- New traces if still failing: `npx playwright show-trace .qa-traces/…`
+
+**Rule:** Every serious Strategy A run **must** `register_regression_suite` so G8 retest is possible later.
 
 ---
 
-## Output contract (every run — paste this shape)
+## Output contract
 
 ```markdown
 ## Expert QA result
-- Environment: local | staging | <name>
-- Strategy: A full | B regression | C exploratory
+- Command: test | dev
+- Environment: local | staging | <name>  (from URL)
+- Target URL: …
+- Strategy: A | B | C
 - release_recommendation: …
-- Rationale: …
-- Critical / security: … (or none)
-- Coverage gaps: … (from tool + scope limits)
-- Smart retest: … (case_ids / related_defect_ids or none)
+- Coverage gaps: …
+- Retest plan: case_ids […] | related_defect_ids […] | screen/URL … | none
 - Artifacts: report_path, suite_id, traces
-- NOT claimed: full WCAG / load / pen-test (unless run_depth_smokes said otherwise)
+- NOT claimed: full WCAG / load / pen-test (unless explicitly run)
 ```
 
 ---
 
-## MCP tool map (by purpose)
+## Tool map
 
 | Purpose | Tool |
 |---------|------|
-| Full pipeline | `run_auto_qa` |
-| Retest subset | `run_regression_suite` |
-| One page map | `discover_ui_surface` |
-| Multi-page | `discover_ui_workflow` |
+| Full run | `run_auto_qa` |
+| Targeted retest | `run_regression_suite` (`case_ids` / `related_defect_ids`) |
+| Single case | `execute_generated_test_case` |
+| Persist pack | `register_regression_suite` / `list_regression_suites` |
+| Discover | `discover_ui_surface` / `discover_ui_workflow` |
 | Roles | `discover_and_compare_role_ui_surfaces` |
 | API | `execute_api_smoke` |
-| No AC | `generate_exploratory_charter` + `execute_exploratory_session` |
-| Visual drift | `compare_ui_baseline` |
-| Control drift | `compare_ui_surface_to_baseline` |
-| Prior mistakes | `list_failure_avoidance_hints` / `list_learning_candidates` |
-| Export bugs | `export_defects_for_tracker` (read `quality_warnings`) |
+| Export | `export_defects_for_tracker` |
