@@ -129,6 +129,37 @@ export class ScriptedReasoningProvider implements ReasoningProvider {
     this.#calls.push(request);
     const script = this.#scripts[this.#nextScriptIndex];
     if (script === undefined) {
+      // Empty script list = fail-soft advisory (dev MCP has no LLM). Exhausted
+      // non-empty scripts still hard-fail so replay tests stay strict.
+      if (this.#scripts.length === 0) {
+        return Promise.resolve({
+          ok: true,
+          value: {
+            structured_output: {
+              questions: [
+                "Unresolved requirement gaps need product authority; no reasoning scripts are configured for this Workspace.",
+              ],
+              uncertainty_reasons: [
+                "scripted-reasoning:empty-scripts",
+                "Deterministic rules left unresolved facts; advisory reasoning unavailable.",
+              ],
+            },
+            provider_id: "scripted-replay",
+            provider_version: "0.1.0-empty",
+            model_id: "none",
+            finish_status: "completed",
+            safety_outcomes: [],
+            tool_calls: [],
+            usage: { input_tokens: 0, output_tokens: 0, cost: 0 },
+            latency_ms: 0,
+            citations: ["scripted-reasoning:empty-scripts-fail-soft"],
+            diagnostics: {
+              replay_case_id: "empty-scripts-fail-soft",
+              authority_widening: false,
+            },
+          },
+        });
+      }
       return Promise.resolve({
         ok: false,
         failure: {

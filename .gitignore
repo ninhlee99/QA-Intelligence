@@ -4,4 +4,5 @@ node_modules/
 .qa-regression-suites/
 .qa-credentials/
 .qa-knowledge/
+.qa-automation-assets/
 .qa-screenshots/

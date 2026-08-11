@@ -52,6 +52,36 @@ test("generateJourneyTestCases builds one-hop and multi-hop journeys", () => {
   assert.ok((multi?.steps.length ?? 0) >= 3);
 });
 
+test("generateJourneyTestCases copies optional expected_network onto assertions", () => {
+  const result = generateJourneyTestCases({
+    workspace_id: "ws-1",
+    start_url: "https://example.com/",
+    pages: [
+      {
+        url: "https://example.com/",
+        title: "Home",
+        capture_id: "c1",
+        element_count: 1,
+        named_fields: [],
+        named_actions: ["Products"],
+        limitations: [],
+      },
+    ],
+    edges: [
+      { from_url: "https://example.com/", to_url: "https://example.com/products", link_text: "Products" },
+    ],
+    expected_network: { url_includes: "/api/products", method: "GET", status: 200 },
+  });
+
+  assert.ok(result.test_cases.length >= 1);
+  assert.ok(
+    result.generated_assertions.every(
+      (a) => a.expected_network?.url_includes === "/api/products" && a.expected_network.method === "GET",
+    ),
+  );
+  assert.ok(result.findings.some((f) => f.includes("expected_network")));
+});
+
 test("generateJourneyTestCases reports finding when no edges", () => {
   const result = generateJourneyTestCases({
     workspace_id: "ws-1",

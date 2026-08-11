@@ -12,6 +12,7 @@ import {
   generateExploratoryCharter,
   type ExploratoryCharter,
 } from "./generate-exploratory-charter.js";
+import type { BoundedProbeRunner } from "./exploratory-bounded-probes.js";
 
 export type ExploratoryObservationStatus = "pass" | "fail" | "manual_follow_up" | "blocked";
 
@@ -66,6 +67,12 @@ export type ExecuteExploratorySessionRequest = Readonly<{
   requirement_ref?: string;
   /** Defaults to [chromium]. Pass two+ for multi-browser compare. */
   browsers?: readonly BrowserName[];
+  /**
+   * When true and a `runBoundedProbes` dependency is wired, after the first
+   * successful capture run empty-submit / click probes (max 2) and re-capture.
+   * Default false — unit tests stay offline; MCP enables via runtime.
+   */
+  include_live_probes?: boolean;
 }>;
 
 export type ExecuteExploratorySessionDependencies = Readonly<{
@@ -73,6 +80,8 @@ export type ExecuteExploratorySessionDependencies = Readonly<{
   clock: { now(): Date };
   ids: { next(scope: "session" | "observation"): string };
   discoverUiSurface: DiscoverUiSurface;
+  /** Optional Playwright (or test double) bounded probe runner. */
+  runBoundedProbes?: BoundedProbeRunner;
 }>;
 
 const LEAK_PATTERNS = [
@@ -262,6 +271,27 @@ export class ExecuteExploratorySession {
           ],
         });
       }
+    }
+
+    const probeRunner = this.#dependencies.runBoundedProbes;
+    const primaryCapture = captures.find((c) => c.outcome === "captured");
+    if (
+      request.include_live_probes === true &&
+      probeRunner !== undefined &&
+      primaryCapture !== undefined &&
+      primaryElements !== undefined &&
+      primaryUrl !== undefined
+    ) {
+      const probeObs = await probeRunner({
+        operation_id: request.operation_id,
+        context: request.context,
+        url: primaryUrl,
+        browser: primaryCapture.browser,
+        elements: primaryElements,
+        ids: this.#dependencies.ids,
+        discoverUiSurface: this.#dependencies.discoverUiSurface,
+      });
+      observations.push(...probeObs);
     }
 
     const completedAt = this.#dependencies.clock.now();

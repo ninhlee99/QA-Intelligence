@@ -2,6 +2,7 @@
  * MCP adapter: generate_journey_test_cases from workflow discovery output.
  */
 import { generateJourneyTestCases } from "./generate-journey-test-cases.js";
+import type { GenerateJourneyInput } from "./generate-journey-test-cases.js";
 import type { WorkflowEdge, WorkflowPageCapture } from "../discovery/discover-ui-workflow.js";
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type {
@@ -45,6 +46,7 @@ export class GenerateJourneyRuntimeExecutor implements AgentRunExecutor {
     const maxRaw = input.start_request.input["max_hops"];
     const maxHops = typeof maxRaw === "number" && Number.isFinite(maxRaw) ? maxRaw : undefined;
     const requirementRef = readString(input.start_request.input["requirement_ref"]);
+    const expectedNetwork = readExpectedNetwork(input.start_request.input["expected_network"]);
 
     const result = generateJourneyTestCases({
       workspace_id: input.reference.workspace_id,
@@ -53,6 +55,7 @@ export class GenerateJourneyRuntimeExecutor implements AgentRunExecutor {
       edges,
       ...(maxHops !== undefined ? { max_hops: maxHops } : {}),
       ...(requirementRef !== undefined ? { requirement_ref: requirementRef } : {}),
+      ...(expectedNetwork !== undefined ? { expected_network: expectedNetwork } : {}),
     });
 
     return {
@@ -84,7 +87,9 @@ export class GenerateJourneyRuntimeExecutor implements AgentRunExecutor {
         ],
         uncertainty: {
           level: "low",
-          reasons: ["URL oracles only; link accessible names must match live link text."],
+          reasons: expectedNetwork
+            ? ["URL + caller-supplied expected_network; link names must match live text."]
+            : ["URL oracles only; link accessible names must match live link text."],
         },
         policy_events: [],
         usage: { steps: 1, duration_seconds: 0, tool_calls: 0, retries: 0 },
@@ -115,6 +120,33 @@ function validateConfiguration(
 
 function readString(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readExpectedNetwork(
+  value: JsonValue | undefined,
+): GenerateJourneyInput["expected_network"] | undefined {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const obj = value as JsonObject;
+  const urlIncludes = readString(obj["url_includes"]);
+  if (urlIncludes === undefined) return undefined;
+  const method = readString(obj["method"]);
+  const bodyIncludes = readString(obj["body_includes"]);
+  const statusRaw = obj["status"];
+  let status: number | readonly number[] | undefined;
+  if (typeof statusRaw === "number" && Number.isFinite(statusRaw)) {
+    status = statusRaw;
+  } else if (Array.isArray(statusRaw)) {
+    const nums = statusRaw.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+    if (nums.length > 0) status = nums;
+  }
+  return {
+    url_includes: urlIncludes,
+    ...(method !== undefined ? { method } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(bodyIncludes !== undefined ? { body_includes: bodyIncludes } : {}),
+  };
 }
 
 function readPages(value: JsonValue | undefined): readonly WorkflowPageCapture[] | undefined {

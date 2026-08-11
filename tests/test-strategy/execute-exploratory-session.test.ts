@@ -162,6 +162,70 @@ test("exploratory session multi-browser parity observation", async () => {
   );
 });
 
+test("exploratory session runs optional bounded probes when wired", async () => {
+  let probeCalls = 0;
+  const skill = new ExecuteExploratorySession({
+    authorizer: new AllowingAuthorizer(),
+    clock: { now: () => new Date("2026-08-10T08:00:00.000Z") },
+    ids: {
+      next: (() => {
+        let n = 0;
+        return (scope: string) => `${scope}-${++n}`;
+      })(),
+    },
+    discoverUiSurface: stubDiscover(() => ({
+      ok: true,
+      value: {
+        schema_version: "1.0.0",
+        workspace_id: "workspace-explore",
+        source_url: "https://app.example.test/form",
+        capture_id: "capture:1",
+        captured_at: "2026-08-10T08:00:00.000Z",
+        elements: elements(),
+        limitations: [],
+      },
+    })),
+    runBoundedProbes: async () => {
+      probeCalls += 1;
+      return [
+        {
+          id: "obs-probe",
+          browser: "chromium",
+          kind: "risk",
+          subject: 'empty-submit via "Submit"',
+          status: "pass",
+          note: "stub probe",
+          evidence: ["probe:stub"],
+        },
+      ];
+    },
+  });
+
+  const without = await skill.run({
+    operation_id: "op-1",
+    workspace_id: "workspace-explore",
+    context: context(),
+    url: "https://app.example.test/form",
+  });
+  assert.equal(without.ok, true);
+  assert.equal(probeCalls, 0);
+
+  const withProbes = await skill.run({
+    operation_id: "op-2",
+    workspace_id: "workspace-explore",
+    context: context(),
+    url: "https://app.example.test/form",
+    include_live_probes: true,
+  });
+  assert.equal(withProbes.ok, true);
+  assert.equal(probeCalls, 1);
+  if (!withProbes.ok) return;
+  assert.equal(
+    withProbes.value.observations.some((o) => o.subject.includes("empty-submit")),
+    true,
+  );
+});
+
 test("exploratory session marks unlabeled controls as oracle fail", async () => {
   const skill = new ExecuteExploratorySession({
     authorizer: new AllowingAuthorizer(),

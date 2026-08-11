@@ -64,6 +64,8 @@ export class ExploratorySessionRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
+    const includeLiveProbes = readIncludeLiveProbes(raw["include_live_probes"]);
+
     const run = await this.#dependencies.skill.run({
       operation_id: input.execution.operation_id,
       workspace_id: input.reference.workspace_id,
@@ -73,6 +75,7 @@ export class ExploratorySessionRuntimeExecutor implements AgentRunExecutor {
       ...(objective !== undefined && objective.trim() ? { objective } : {}),
       ...(requirement_ref !== undefined && requirement_ref.trim() ? { requirement_ref } : {}),
       browsers: browsers.value,
+      include_live_probes: includeLiveProbes,
     });
     if (!run.ok) return { ok: false, failure: mapSkillFailure(run.failure) };
 
@@ -112,6 +115,13 @@ export class ExploratorySessionRuntimeExecutor implements AgentRunExecutor {
       },
     };
   }
+}
+
+/** Default true when omitted — MCP sessions get bounded probes when runner is wired. */
+function readIncludeLiveProbes(raw: JsonValue | undefined): boolean {
+  if (raw === false || raw === "false" || raw === 0) return false;
+  if (raw === true || raw === "true" || raw === 1) return true;
+  return true;
 }
 
 function parseBrowsers(

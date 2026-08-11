@@ -382,3 +382,18 @@ test("enforces exact ordered matching and never falls back past a mismatched scr
     ["second", "first", "first", "first", "first", "second", "third"],
   );
 });
+
+test("empty ScriptedReasoningProvider fail-softs instead of provider_error", async () => {
+  const provider = new ScriptedReasoningProvider([]);
+  const result = await provider.generate(request("assess unresolved semantic gaps"));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.finish_status, "completed");
+  assert.equal(result.value.provider_id, "scripted-replay");
+  assert.ok(Array.isArray(result.value.structured_output["questions"]));
+  assert.ok(
+    JSON.stringify(result.value.structured_output["uncertainty_reasons"]).includes(
+      "scripted-reasoning:empty-scripts",
+    ),
+  );
+});

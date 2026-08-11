@@ -1,6 +1,6 @@
 ---
 status: proposal — not governed, not a SPEC
-last_updated: 2026-08-07
+last_updated: 2026-08-11
 ---
 
 # Roadmap: MCP as a professional QA test engineer
@@ -45,25 +45,34 @@ platform still can't perceive or touch.
 
 ## Ground truth already in the repo (read, not assumed)
 
-- `PlaywrightExecutionEngine` (`src/adapters/playwright/`) navigates a URL
-  and runs one boolean assertion against a cleaned Semantic UI tree. It does
-  not type, click, or hold session state across steps (ADR-022 §4, by
-  design — raw selector interaction was explicitly rejected to keep
-  assertions selector-independent).
-- `extractRawDom` + `DeterministicDomCleaner` (`src/dom-cleaner/`) already
-  turn a live page into `CleanedDomNode` (role, accessible_name, text,
-  children) — this is the raw material Discovery needs, but nothing calls
-  it for discovery purposes today.
-- `src/discovery/public.ts` line 60 says outright: *"Semantic UI Map/Product
-  Surface Map are out of scope for this slice — no browser/Platform Plugin
-  adapter exists yet."* `DiscoverProductContext` only searches the Knowledge
-  Store's existing text; it has never looked at a live page.
-- SPEC-206 (Test Strategy), SPEC-207 (Test Design) are accepted specs with
-  no corresponding `src/` implementation directories at all — pure paper
-  today.
-- The Requirement Review Agent (`src/requirement-review/`) is the only
-  capability wired end-to-end (Skill -> Runtime Executor -> MCP tool). It is
-  the template every phase below copies.
+> **Refresh (2026-08-11):** Phase 1–2 tracers and much of the Senior QA MCP
+> catalog are **implemented** in `src/` + `src/mcp/dev-fixture.ts`. Treat the
+> bullets below as historical “before Phase 1” notes unless marked current.
+
+### Current (dev MCP / `0.1.0-dev`)
+
+- `PlaywrightExecutionEngine` supports semantic `type` / `click` / `select` /
+  `wait_for`, multi-step plans, URL/title/network oracles, flake detection,
+  and screenshots — not navigate+boolean-only anymore.
+- `discover_ui_surface` (+ after-login / workflow crawl) emits live Semantic
+  UI Maps; `generate_test_cases` / `run_auto_qa` / regression suites /
+  journey generator / exploratory session (bounded probes) are wired as MCP
+  tools. Still **not** production: GOV-012 G2–G6 / Vault / full pen-test
+  remain out of scope for honesty claims.
+- Requirement Review remains the template Skill→Runtime→MCP path; many
+  assessors/stubs reuse that pattern with varying depth (stubs ≠ professional
+  BA/strategy docs).
+
+### Historical (pre–Phase 1 tracer — do not re-assume)
+
+- Early `PlaywrightExecutionEngine` navigated a URL and ran one boolean
+  assertion against a cleaned Semantic UI tree without type/click/session
+  (ADR-022 §4 at the time).
+- `src/discovery/public.ts` once said Semantic UI Map was out of scope —
+  superseded by `DiscoverUiSurface`.
+- SPEC-206 / SPEC-207 had no `src/` dirs — now have thin stubs + generators;
+  not full professional strategy/design engines.
+- Requirement Review was once the only end-to-end capability.
 
 ## Phase 1 — Discovery: let the platform see a real page
 

@@ -12,6 +12,8 @@ export type CreateAutomationAssetStubInput = Readonly<{
   environment_constraints?: readonly string[];
   execution_interface?: string;
   id?: string;
+  /** When set, recorded under data_requirements for run_regression_suite binding. */
+  regression_suite_id?: string;
 }>;
 
 export type CreateAutomationAssetStubResult =
@@ -32,13 +34,19 @@ export function createAutomationAssetStub(input: CreateAutomationAssetStubInput)
   }
 
   const id = input.id?.trim() || `automation-asset:${input.workspace_id}:${refs[0]}`;
+  const suiteId = input.regression_suite_id?.trim();
+  const dataRequirements = [
+    "Register matching cases via register_regression_suite before run_regression_suite",
+    ...(suiteId ? [`regression_suite:${suiteId}`] : []),
+  ];
   const asset: AutomationAsset = {
     id,
     version: "0.1.0-draft",
     status: "draft",
     implemented_test_case_refs: refs,
-    execution_interface: input.execution_interface?.trim() || "playwright-semantic-steps@0.1.0",
-    compatible_engine_refs: ["playwright-execution-engine@0.1.0"],
+    execution_interface: input.execution_interface?.trim() || "mcp:run_regression_suite",
+    compatible_engine_refs: ["playwright-execution-engine@0.1.0", "mcp:run_regression_suite@0.1.0"],
+    data_requirements: dataRequirements,
     environment_constraints:
       input.environment_constraints && input.environment_constraints.length > 0
         ? input.environment_constraints

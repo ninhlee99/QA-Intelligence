@@ -74,7 +74,9 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 9. **Optional depth (same session):**
    - `list_failure_avoidance_hints`
    - `generate_exploratory_charter` / `execute_exploratory_session`
-     (`browsers: ["chromium","firefox"]` for parity)
+     (`browsers: ["chromium","firefox"]` for parity; default
+     `include_live_probes=true` = empty-submit/click ≤2 + re-capture —
+     **not** free-form exploratory automation)
    - `assess_defect_quality` on serious drafts
    - Document assessors / stubs only when tester brought governed docs
    - `run_depth_smokes` — if `has_critical`, lead with that; not a WCAG substitute
@@ -92,18 +94,25 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
     `confirmed_cause`. Do not claim auto-filed without confirm.
 12. **Retest loop after a fix.** Re-run `run_regression_suite` for the
     saved suite (or subset via fresh register). Only then soften release gate.
+    Optional: `create_automation_asset` with `regression_suite_id` binds
+    governance metadata to that suite (still not a compiled script pack).
 
 ## Advanced catalog (optional)
 
 - Stubs: `generate_business_analysis_stub`, `generate_risk_stub`,
   `generate_test_strategy_stub` — UI-map heuristics, not professional docs.
 - Assessors: `assess_*_quality` on caller-supplied documents.
+  `assess_requirement_quality` with empty scripted reasoning fail-softs
+  (questions/uncertainty) — does not invent product authority.
 - Learning: `raise_mistake_recurrence_candidate`, `list_failure_avoidance_hints`
   (Session Memory; never auto-promote).
 - Knowledge: `register_knowledge_record` → `.qa-knowledge/` for
   `discover_product_context`.
 - SSO bootstrap: `discover_ui_surface_after_login` with `sso_action_name`
   (+ optional MFA wait) — no invented IdP credentials.
+- Journeys: pass caller-observed `expected_network` into
+  `generate_journey_test_cases` when hops trigger a known API — never invent
+  routes.
 
 ## Triage rules
 

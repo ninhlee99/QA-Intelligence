@@ -68,9 +68,40 @@ test("createAutomationAssetStub requires test case refs", () => {
   const good = createAutomationAssetStub({
     workspace_id: "ws-1",
     implemented_test_case_refs: ["TC-1@1.0.0"],
+    regression_suite_id: "suite-42",
   });
   assert.equal(good.ok, true);
-  if (good.ok) assert.equal(good.asset.implemented_test_case_refs[0], "TC-1@1.0.0");
+  if (good.ok) {
+    assert.equal(good.asset.implemented_test_case_refs[0], "TC-1@1.0.0");
+    assert.equal(good.asset.execution_interface, "mcp:run_regression_suite");
+    assert.ok(good.asset.data_requirements?.some((d) => d.includes("regression_suite:suite-42")));
+  }
+});
+
+test("persistAutomationAsset writes under workspace dir", async () => {
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { persistAutomationAsset } = await import("../../src/automation/persist-automation-asset.js");
+  const root = mkdtempSync(join(tmpdir(), "qa-auto-asset-"));
+  try {
+    const created = createAutomationAssetStub({
+      workspace_id: "ws-persist",
+      implemented_test_case_refs: ["TC-9@1.0.0"],
+      id: "asset-9",
+    });
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const persisted = persistAutomationAsset({
+      rootDir: root,
+      workspace_id: "ws-persist",
+      asset: created.asset,
+    });
+    const raw = JSON.parse(readFileSync(persisted.persisted_path, "utf8")) as { id: string };
+    assert.equal(raw.id, "asset-9");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("to-execution-plan maps select and wait_for steps", () => {

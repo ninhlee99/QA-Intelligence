@@ -1,7 +1,10 @@
 /**
  * MCP adapter for SPEC-209 create_automation_asset stub.
+ * Persists under `.qa-automation-assets/` and defaults execution_interface
+ * to `mcp:run_regression_suite`.
  */
 import { createAutomationAssetStub } from "./create-automation-asset-stub.js";
+import { persistAutomationAsset } from "./persist-automation-asset.js";
 import type { JsonValue, VersionReference, WorkspaceAuthorizer } from "../requirement-review/public.js";
 import type {
   AgentRunExecutor,
@@ -15,6 +18,8 @@ export type AutomationAssetStubRuntimeExecutorDependencies = Readonly<{
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   authorizer?: WorkspaceAuthorizer;
+  /** When set, write asset JSON under this root (workspace subdir). */
+  persistRootDir?: string;
 }>;
 
 export class AutomationAssetStubRuntimeExecutor implements AgentRunExecutor {
@@ -68,6 +73,7 @@ export class AutomationAssetStubRuntimeExecutor implements AgentRunExecutor {
     const id = readString(input.start_request.input["id"]);
     const constraints = readStringArray(input.start_request.input["environment_constraints"]);
     const executionInterface = readString(input.start_request.input["execution_interface"]);
+    const regressionSuiteId = readString(input.start_request.input["regression_suite_id"]);
 
     const created = createAutomationAssetStub({
       workspace_id: workspaceId,
@@ -76,15 +82,31 @@ export class AutomationAssetStubRuntimeExecutor implements AgentRunExecutor {
       ...(id !== undefined ? { id } : {}),
       ...(constraints !== undefined ? { environment_constraints: constraints } : {}),
       ...(executionInterface !== undefined ? { execution_interface: executionInterface } : {}),
+      ...(regressionSuiteId !== undefined ? { regression_suite_id: regressionSuiteId } : {}),
     });
     if (!created.ok) {
       return { ok: false, failure: failure("orchestration", "invalid_request", created.message) };
     }
 
+    let persistedPath: string | undefined;
+    if (this.#dependencies.persistRootDir !== undefined) {
+      const persisted = persistAutomationAsset({
+        rootDir: this.#dependencies.persistRootDir,
+        workspace_id: workspaceId,
+        asset: created.asset,
+      });
+      persistedPath = persisted.persisted_path;
+    }
+
     return {
       ok: true,
       value: {
-        output: { ...created.asset },
+        output: {
+          ...created.asset,
+          ...(persistedPath !== undefined ? { persisted_path: persistedPath } : {}),
+          run_hint:
+            "Re-execute bound cases via run_regression_suite (pass regression_suite_id when registered).",
+        },
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -95,14 +117,26 @@ export class AutomationAssetStubRuntimeExecutor implements AgentRunExecutor {
         rule_results: [],
         skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
         tool_usage: [],
-        citations: [`workspace:${workspaceId}`, created.asset.id, ...refs],
+        citations: [
+          `workspace:${workspaceId}`,
+          created.asset.id,
+          ...refs,
+          ...(persistedPath !== undefined ? [`persisted:${persistedPath}`] : []),
+        ],
         uncertainty: {
           level: "low",
-          reasons: ["Stub declares governance fields only — not a runnable automation package."],
+          reasons: [
+            "Governance stub bound to mcp:run_regression_suite — not a compiled script package.",
+          ],
         },
         policy_events: [],
         usage: { steps: 1, duration_seconds: 0, tool_calls: 0, retries: 0 },
-        evidence: [`workspace:${workspaceId}`, `automation-asset:${created.asset.id}`],
+        evidence: [
+          `workspace:${workspaceId}`,
+          `automation-asset:${created.asset.id}`,
+          `execution-interface:${created.asset.execution_interface}`,
+          ...(persistedPath !== undefined ? [`persisted:${persistedPath}`] : []),
+        ],
         cleanup_status: "not_required",
         knowledge_candidates: [],
       },

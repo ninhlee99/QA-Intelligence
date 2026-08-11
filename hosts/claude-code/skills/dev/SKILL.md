@@ -36,7 +36,8 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
    Keep the returned `requirement_ref` (`id@version`) for later tools.
 4. **Discover.** `discover_ui_surface` on the local URL. If the change spans
    multiple routes, `discover_ui_workflow` then `generate_journey_test_cases`
-   from `pages`+`edges`, and spot-check hot pages.
+   from `pages`+`edges` (optional caller-known `expected_network` — never invent
+   API paths), and spot-check hot pages.
 5. **`run_auto_qa`** against the local URL with derived `acceptance_criteria`
    (+ `requirement_ref`). Add login_* / secret refs if session-gated. Set
    `output_path` (default `docs/qa-reports/dev/<screen>-<date>.html`).
@@ -45,11 +46,15 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
 7. **Register regression suite** from generated `test_case` +
    `generated_assertion` pairs via `register_regression_suite` so the next
    local rebuild can `run_regression_suite` without regenerating everything.
+   Optional: `create_automation_asset` + `regression_suite_id` for governance
+   bind (persists under `.qa-automation-assets/`).
 8. **API (when this screen calls your HTTP API).** If OpenAPI/JSON exists in
    repo, `generate_api_smoke_from_openapi` (`include_authz_negatives: true`
    when secured) → `execute_api_smoke` on local base URL.
-9. **Optional:** `generate_exploratory_charter`; `assess_defect_quality` on
-   serious drafts; `export_defects_for_tracker` before asking a tester to file.
+9. **Optional:** `generate_exploratory_charter` /
+   `execute_exploratory_session` (bounded probes only — not free explore);
+   `assess_defect_quality` on serious drafts; `export_defects_for_tracker`
+   before asking a tester to file.
 10. **Persist:** report HTML + testcases JSON + suite id; save drafts if any.
 11. **Summarize gate-first:** `release_recommendation` → fails/flakes/a11y
     critical → unbound AC → residual risks → artifact paths + suite id.

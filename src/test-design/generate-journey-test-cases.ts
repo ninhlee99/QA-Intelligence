@@ -15,6 +15,16 @@ export type GenerateJourneyInput = Readonly<{
   /** Max hops in a multi-edge path (default 3, cap 5). */
   max_hops?: number;
   owner?: string;
+  /**
+   * Optional UI→API oracle copied onto every generated assertion.
+   * Caller supplies observed API substring — never invent routes.
+   */
+  expected_network?: Readonly<{
+    url_includes: string;
+    method?: string;
+    status?: number | readonly number[];
+    body_includes?: string;
+  }>;
 }>;
 
 export type GenerateJourneyResult = Readonly<{
@@ -66,6 +76,7 @@ export function generateJourneyTestCases(input: GenerateJourneyInput): GenerateJ
       workspace_id: input.workspace_id,
       owner,
       req,
+      expectedNetwork: input.expected_network,
       testCases,
       assertions,
       findings,
@@ -89,6 +100,7 @@ export function generateJourneyTestCases(input: GenerateJourneyInput): GenerateJ
       workspace_id: input.workspace_id,
       owner,
       req,
+      expectedNetwork: input.expected_network,
       testCases,
       assertions,
       findings,
@@ -98,7 +110,9 @@ export function generateJourneyTestCases(input: GenerateJourneyInput): GenerateJ
   }
 
   findings.push(
-    "Journeys assert final URL substring only — add expected_text via execute_generated_test_case overrides if page copy matters.",
+    input.expected_network?.url_includes
+      ? "Journeys assert final URL substring + optional expected_network from caller."
+      : "Journeys assert final URL substring only — pass expected_network on generate_journey_test_cases when UI hops trigger a known API.",
   );
 
   return {
@@ -143,11 +157,26 @@ function pushCase(args: {
   workspace_id: string;
   owner: string;
   req: string | undefined;
+  expectedNetwork: GenerateJourneyInput["expected_network"];
   testCases: TestCase[];
   assertions: TestCaseGeneratedAssertion[];
   findings: string[];
 }): void {
   const refined = refineWaitSteps(args.steps, args.pages);
+  const expectedResults = [
+    {
+      assertion: `Final URL includes "${args.urlIncludes}".`,
+      authority: args.req ?? "journey:url-oracle",
+    },
+    ...(args.expectedNetwork?.url_includes
+      ? [
+          {
+            assertion: `Network xhr/fetch URL includes "${args.expectedNetwork.url_includes}".`,
+            authority: args.req ?? "journey:network-oracle",
+          },
+        ]
+      : []),
+  ];
   const testCase: TestCase = {
     id: args.id,
     version: "0.1.0",
@@ -157,18 +186,25 @@ function pushCase(args: {
     preconditions: ["Workflow edges observed by discover_ui_workflow at generation time."],
     workspace_scope: args.workspace_id,
     steps: refined,
-    expected_results: [
-      {
-        assertion: `Final URL includes "${args.urlIncludes}".`,
-        authority: args.req ?? "journey:url-oracle",
-      },
-    ],
+    expected_results: expectedResults,
     owner: args.owner,
   };
   args.testCases.push(testCase);
   args.assertions.push({
     test_case_id: args.id,
     expected_url_includes: args.urlIncludes,
+    ...(args.expectedNetwork?.url_includes
+      ? {
+          expected_network: {
+            url_includes: args.expectedNetwork.url_includes,
+            ...(args.expectedNetwork.method !== undefined ? { method: args.expectedNetwork.method } : {}),
+            ...(args.expectedNetwork.status !== undefined ? { status: args.expectedNetwork.status } : {}),
+            ...(args.expectedNetwork.body_includes !== undefined
+              ? { body_includes: args.expectedNetwork.body_includes }
+              : {}),
+          },
+        }
+      : {}),
   });
   if (!args.urlIncludes) {
     args.findings.push(`${args.id}: weak URL oracle — destination path empty.`);

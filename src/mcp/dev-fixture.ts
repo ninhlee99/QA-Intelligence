@@ -102,6 +102,7 @@ import { ExecuteApiSmoke } from "../api-testing/execute-api-smoke.js";
 import { ApiSmokeRuntimeExecutor } from "../api-testing/runtime-executor.js";
 import { ExecuteExploratorySession } from "../test-strategy/execute-exploratory-session.js";
 import { ExploratorySessionRuntimeExecutor } from "../test-strategy/execute-exploratory-session-runtime-executor.js";
+import { runPlaywrightBoundedProbes } from "../test-strategy/exploratory-bounded-probes.js";
 import { RunDepthSmokes } from "../depth-smokes/run-depth-smokes.js";
 import { DepthSmokesRuntimeExecutor } from "../depth-smokes/runtime-executor.js";
 import type { SessionMemory } from "../memory/session-memory.js";
@@ -654,6 +655,7 @@ export function buildDevFixture(options: {
     authorizer,
     clock,
     discoverUiSurface: uiDiscoverySkill,
+    runBoundedProbes: runPlaywrightBoundedProbes,
     ids: {
       next: (scope): string =>
         scope === "session"
@@ -1145,6 +1147,7 @@ export function buildDevFixture(options: {
       expected_agent: AUTOMATION_STUB_AGENT,
       expected_skill: AUTOMATION_STUB_SKILL,
       authorizer,
+      persistRootDir: join(process.cwd(), ".qa-automation-assets"),
     }),
   );
   executorMap.set(
@@ -1644,7 +1647,7 @@ export function buildDevFixture(options: {
     {
       name: "execute_exploratory_session",
       description:
-        "Phase 9: run an exploratory *session* (not just a charter). Discovers the live URL per browser, auto-checks oracles that can be grounded in the Semantic UI Map (leakage patterns, unlabeled controls), records focus/risk items as manual_follow_up, and optionally compares chromium vs firefox/webkit captures. Does not invent business expected results or fully automate free exploration.",
+        "Phase 9: run an exploratory *session* (not free-form explore). Discovers the live URL per browser, auto-checks oracles grounded in the Semantic UI Map (leakage, unlabeled controls), optionally runs bounded live probes (empty-submit / click ≤2 named actions + re-capture; set include_live_probes=false to skip), records focus/risk as manual_follow_up, and can compare chromium vs firefox/webkit. Does not invent business expected results.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1658,6 +1661,10 @@ export function buildDevFixture(options: {
             items: { type: "string" },
           },
           browser: { type: "string", description: "Single-browser shorthand." },
+          include_live_probes: {
+            type: "boolean",
+            description: "Default true. Bounded empty-submit/click probes after capture (not free exploration).",
+          },
         },
         required: [],
       },
@@ -1675,6 +1682,7 @@ export function buildDevFixture(options: {
         requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
         browsers: (args["browsers"] as JsonValue | undefined) ?? [],
         browser: (args["browser"] as string | undefined) ?? "",
+        include_live_probes: args["include_live_probes"] === undefined ? true : Boolean(args["include_live_probes"]),
       }),
     },
     {
@@ -2198,7 +2206,7 @@ export function buildDevFixture(options: {
     {
       name: "create_automation_asset",
       description:
-        "SPEC-209 create path: draft an AutomationAsset from implemented_test_case_refs for assess_automation_asset_quality.",
+        "SPEC-209 create path: draft an AutomationAsset from implemented_test_case_refs, persist under .qa-automation-assets/, default execution_interface mcp:run_regression_suite (optional regression_suite_id bind).",
       inputSchema: {
         type: "object",
         properties: {
@@ -2207,6 +2215,10 @@ export function buildDevFixture(options: {
           environment_constraints: { type: "array", items: { type: "string" } },
           execution_interface: { type: "string" },
           id: { type: "string" },
+          regression_suite_id: {
+            type: "string",
+            description: "Optional suite_id from register_regression_suite to record on the asset.",
+          },
         },
         required: ["implemented_test_case_refs"],
       },
@@ -2223,6 +2235,7 @@ export function buildDevFixture(options: {
           environment_constraints: (args["environment_constraints"] as JsonValue | undefined) ?? [],
           execution_interface: (args["execution_interface"] as string | undefined) ?? "",
           id: (args["id"] as string | undefined) ?? "",
+          regression_suite_id: (args["regression_suite_id"] as string | undefined) ?? "",
         }),
     },
     {
@@ -2527,7 +2540,7 @@ export function buildDevFixture(options: {
     {
       name: "generate_journey_test_cases",
       description:
-        "Build thin E2E journey TestCases from discover_ui_workflow pages[] + edges[] (click link chains + expected_url_includes). Execute via execute_generated_test_case or register_regression_suite.",
+        "Build thin E2E journey TestCases from discover_ui_workflow pages[] + edges[] (click link chains + expected_url_includes). Optional expected_network (caller-supplied API substring) copies onto generated assertions. Execute via execute_generated_test_case or register_regression_suite.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2536,6 +2549,10 @@ export function buildDevFixture(options: {
           edges: { type: "array", items: { type: "object" } },
           max_hops: { type: "number" },
           requirement_ref: { type: "string" },
+          expected_network: {
+            type: "object",
+            description: "Optional UI→API oracle: {url_includes, method?, status?, body_includes?}",
+          },
         },
         required: ["start_url", "pages", "edges"],
       },
@@ -2552,6 +2569,7 @@ export function buildDevFixture(options: {
           edges: (args["edges"] as JsonValue | undefined) ?? [],
           max_hops: (args["max_hops"] as number | undefined) ?? 0,
           requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+          expected_network: (args["expected_network"] as JsonValue | undefined) ?? {},
         }),
     },
     {

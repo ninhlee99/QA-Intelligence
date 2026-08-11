@@ -123,7 +123,7 @@ on both stdio and remote transports:
 | `run_auto_qa` | Discover → a11y naming smoke → generate → execute → HTML/JSON report + draft defects + release gate + prior avoidance hints |
 | `assess_ui_accessibility_smoke` | Naming a11y smoke (missing/duplicate names) — not full WCAG; also embedded in `run_auto_qa` |
 | `generate_exploratory_charter` | Time-boxed exploratory charter from a surface |
-| `execute_exploratory_session` | Phase 9: run session (auto oracles + multi-browser capture compare) |
+| `execute_exploratory_session` | Phase 9: capture + auto oracles + optional bounded live probes (≤2 clicks; not free explore) + multi-browser compare |
 | `assess_defect_quality` | SPEC-211 defect-document quality review |
 | `draft_defects_from_qa_run` | SPEC-211 draft defects from failed/flaky outcomes (standalone) |
 | `assess_execution_record_quality` | SPEC-210 ExecutionRecord document quality |
@@ -148,14 +148,14 @@ on both stdio and remote transports:
 | `file_defects_to_tracker` | Optional Jira/Linear/webhook filing (dry-run default; `confirm_file=true` to POST) |
 | `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
 | `register_test_dataset` / `list_test_datasets` | SPEC-208: dataset governance metadata (no secret rows) |
-| `create_automation_asset` | SPEC-209: AutomationAsset stub from TestCase refs |
+| `create_automation_asset` | SPEC-209: AutomationAsset stub → `.qa-automation-assets/`; default bind `mcp:run_regression_suite` |
 | `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
 | `compare_ui_surfaces` | Role/permission thin: diff two UI maps (admin vs viewer) |
 | `register_requirement` / `list_requirements` | SPEC-202 ingest real Requirements for generate/run_auto_qa |
 | `discover_ui_workflow` | Multi-page same-origin crawl (pages + edges) |
 | `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run browser/API packs |
 | `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status; optional authz negatives) |
-| `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges |
+| `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges (+ optional `expected_network`) |
 | `export_defects_for_tracker` | Markdown/Jira text export (no tracker API call) |
 
 **Release posture:** `0.1.0-dev` host packages are the supported **development release**.
