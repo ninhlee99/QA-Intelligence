@@ -16,6 +16,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI slimmed to typecheck + test + audit (+ optional schema examples); dropped SPEC-index gate from default `validate`
 - README rewritten for GitHub: badges, quick start, core tools, clear status
 
+### MCP expert_checklist (2026-08-11)
+
+- `run_auto_qa` and `run_regression_suite` return `expert_checklist` with `claim_pass_allowed`, blockers, host_actions
+- HTML report includes Expert checklist section
+- Skills must honor `claim_pass_allowed` — no green-wash
+- `docs/NEXT.md` — split user vs agent remaining work
+
 ### Expert-level Skill upgrade E1–E5 (2026-08-11)
 
 - Expert bar: refuse pass without gate + coverage_gaps + retest plan (+ suite_id on serious A)

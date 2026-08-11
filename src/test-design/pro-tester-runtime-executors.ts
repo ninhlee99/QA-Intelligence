@@ -13,6 +13,7 @@ import type { ApiSmokeCase } from "../api-testing/public.js";
 import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
 import { formatDefectsForTracker, type DefectExportFormat } from "../bug-analysis/format-defects-for-tracker.js";
 import { fileDefectsToTracker, type DefectTrackerProvider } from "../bug-analysis/file-defects-to-tracker.js";
+import { deriveExpertChecklist } from "../reporting/expert-checklist.js";
 import type { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
 import { resolveBearerToken, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
@@ -342,6 +343,22 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       summary,
     });
 
+    const smartRetestAction =
+      summary.failed > 0 || summary.flaky > 0 ? "targeted_retest" : "no_retest_needed";
+    const coverageGapCount =
+      1 + (summary.not_executed > 0 ? 1 : 0) + (draft_defects.length > 0 ? 1 : 0);
+    const expert_checklist = deriveExpertChecklist({
+      release_recommendation: analysis.release_recommendation,
+      release_recommendation_rationale: analysis.release_recommendation_rationale,
+      test_cases: qaResults,
+      summary,
+      draft_defect_count: draft_defects.length,
+      coverage_gap_count: coverageGapCount,
+      smart_retest_action: smartRetestAction,
+      suite_id_present: true,
+      context: "run_regression_suite",
+    });
+
     return success(
       this.#dependencies,
       input,
@@ -359,12 +376,26 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
         residual_risks: analysis.residual_risks.map((r) => ({ ...r })),
         variant_coverage: analysis.variant_coverage.map((r) => ({ ...r })),
         summary,
+        expert_checklist,
+        smart_retest_suggestion:
+          smartRetestAction === "no_retest_needed"
+            ? {
+                action: "no_retest_needed",
+                message: "All executed regression cases passed.",
+              }
+            : {
+                action: "targeted_retest",
+                message: "Re-run only failed/flaky case_ids after fix.",
+                failed_case_ids: qaResults.filter((r) => r.outcome === "failed").map((r) => r.test_case_id),
+                flaky_case_ids: qaResults.filter((r) => r.outcome === "flaky").map((r) => r.test_case_id),
+              },
       },
       [
         `suite:${suite.id}`,
         `failed:${nonPassed}`,
         `release:${analysis.release_recommendation}`,
         `draft-defects:${draft_defects.length}`,
+        `claim_pass_allowed:${expert_checklist["claim_pass_allowed"] === true}`,
       ],
     );
   }

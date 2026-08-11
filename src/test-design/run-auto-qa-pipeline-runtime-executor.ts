@@ -19,6 +19,7 @@ import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/r
 import type { SessionMemory } from "../memory/session-memory.js";
 import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
+import { expertChecklistFromQaRunReport } from "../reporting/expert-checklist.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
 import type {
   AgentRunExecutor,
@@ -455,6 +456,15 @@ function qaRunReportJson(report: QaRunReport, html: string, writtenPath: string 
     })),
     coverage_gaps: deriveCoverageGaps(report),
     smart_retest_suggestion: deriveSmartRetestSuggestion(report),
+    expert_checklist: (() => {
+      const gaps = deriveCoverageGaps(report);
+      const retest = deriveSmartRetestSuggestion(report);
+      return expertChecklistFromQaRunReport(
+        report,
+        gaps.length,
+        String(retest["action"] ?? "unknown"),
+      );
+    })(),
     report_html: html,
     report_path: writtenPath ?? null,
   };

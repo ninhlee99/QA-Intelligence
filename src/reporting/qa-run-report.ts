@@ -105,6 +105,8 @@ export function withProfessionalAnalysis(
   };
 }
 
+import { expertChecklistHtml, expertChecklistFromQaRunReport } from "./expert-checklist.js";
+
 /** Derives an explicit coverage gap summary for the HTML report. */
 function coverageGapsHtml(report: QaRunReport): string {
   const items: string[] = [];
@@ -136,6 +138,18 @@ function coverageGapsHtml(report: QaRunReport): string {
   return `<h2>Coverage gaps</h2>
 <p class="meta">Expert QA rule: never claim pass by silence. Gaps surfaced proactively.</p>
 <ul>${items.join("\n")}</ul>`;
+}
+
+function expertChecklistSection(report: QaRunReport): string {
+  let gapCount = 1; // scope limits always
+  if (report.test_cases.some((tc) => tc.outcome === "not_executed")) gapCount += 1;
+  if (report.generation_findings.length > 0) gapCount += 1;
+  if (report.accessibility_smoke.findings.some((f) => f.severity === "critical")) gapCount += 1;
+  const hasFail = report.test_cases.some((tc) => tc.outcome === "failed" || tc.outcome === "cancelled");
+  const hasFlaky = report.test_cases.some((tc) => tc.outcome === "flaky");
+  const retestAction = hasFail || hasFlaky ? "targeted_retest" : "no_retest_needed";
+  const checklist = expertChecklistFromQaRunReport(report, gapCount, retestAction);
+  return expertChecklistHtml(checklist);
 }
 
 /** Renders a self-contained HTML report — no external stylesheet/script, safe to open directly from disk. */
@@ -252,6 +266,7 @@ ${report.draft_defects.map(defectRow).join("\n")}
 </div>
 ${coverage}
 ${coverageGapsHtml(report)}
+${expertChecklistSection(report)}
 <h2>Test cases</h2>
 <table>
   <thead><tr><th>Test case</th><th>Variant</th><th>Purpose</th><th>Outcome</th><th>Evidence</th></tr></thead>

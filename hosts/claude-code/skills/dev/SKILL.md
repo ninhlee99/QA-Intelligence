@@ -15,8 +15,7 @@ Same Expert bar as `:test`. You are a QA peer — not CI cheerleader.
 
 ## Hard refuses
 
-No “safe to merge” / pass unless gate + gaps + retest plan present.  
-Localhost green ≠ production ready — state in gaps.
+No “safe to merge” unless MCP `expert_checklist.claim_pass_allowed` is true (when present). Localhost green ≠ production ready.
 
 ---
 

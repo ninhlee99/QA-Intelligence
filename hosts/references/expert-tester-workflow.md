@@ -13,13 +13,14 @@ MCP `qa-intelligence` = evidence. Skills = Expert discipline.
 
 Agent **MUST NOT** say ready / ship / all good / pass unless **all** true:
 
-1. `release_recommendation` quoted from MCP (not invented)
-2. `coverage_gaps` (or equivalent) stated — including scope NOT covered
-3. Retest plan present: `smart_retest_suggestion` followed, or explicit “no retest needed” with reason
-4. Serious Strategy A → `suite_id` from `register_regression_suite` (or justify why not)
-5. If domain pack exists → G0d completed (risks from pack considered)
+1. MCP `expert_checklist.claim_pass_allowed === true` (when field present) **or** equivalent bar below
+2. `release_recommendation` quoted from MCP (not invented)
+3. `coverage_gaps` stated — including scope NOT covered
+4. Retest plan: follow `smart_retest_suggestion` / `expert_checklist.host_actions`
+5. Serious Strategy A → `suite_id` from `register_regression_suite`
+6. If domain pack exists → G0d completed
 
-If any missing → status = **incomplete Expert run**, list blockers. Never fill with cheerleading.
+If `claim_pass_allowed` is **false** → status = **blocked / incomplete** — list `expert_checklist.blockers`. Never green-wash.
 
 ---
 

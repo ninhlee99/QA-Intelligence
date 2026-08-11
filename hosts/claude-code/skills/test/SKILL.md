@@ -17,8 +17,7 @@ MCP: `qa-intelligence`. Evidence only from tools.
 
 ## Hard refuses
 
-Do **not** conclude pass / ship / ready unless Expert bar met (gate + gaps + retest plan + suite_id on serious A).  
-Missing pieces → **incomplete Expert run** + blockers.
+Hard refuses: no pass unless MCP `expert_checklist.claim_pass_allowed` is true (when present) and Output contract complete.
 
 ---
 
