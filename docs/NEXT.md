@@ -1,30 +1,18 @@
 # What you do vs what the agent does
 
-## You (product owner / QA lead) — required for Expert on *your* app
+## You (minimal)
 
-1. **Domain pack** — copy once per product:
-   ```sh
-   cp -R hosts/templates/domain-knowledge /path/to/your-app/domain-knowledge
-   ```
-   Fill `money` / `permission` / `business` risks. Without this = AC-only, not business Expert.
+1. Ask for test: `/qa-intelligence:test` or `:dev` + **URL** (+ spec or open source).  
+2. Confirm only if agent asks a short question on money/permission ambiguity.  
+3. **Release sign-off** stays human. Supply secrets when needed.
 
-2. **Dogfood** — run `:test` / `:dev` on a real URL; confirm agent:
-   - quotes `expert_checklist.claim_pass_allowed`
-   - does not green-wash when false
-   - registers suite + targeted retest works
+## Agent (automatic on each test request)
 
-3. **Secrets / staging URL** — you supply; agent must not invent.
+1. Bootstrap or update `domain-knowledge/` in the **product workspace** from templates + this request (no manual `cp`).  
+2. G0 learning hints, discover, execute via MCP.  
+3. Honor `expert_checklist.claim_pass_allowed` — no green-wash.  
+4. Register suite + targeted retest plan.
 
-4. **Release sign-off** — still human.
+## Optional later (engine)
 
-## Agent / repo (already in flight)
-
-- Skills Expert bar + G0–G8  
-- MCP `coverage_gaps`, `smart_retest_suggestion`, `expert_checklist`  
-- Traces, regression subset, role/API mandates in workflow  
-
-## Still later (engine depth — optional next)
-
-- Richer multi-role authz matrix automation  
-- Tighter flake taxonomy in report  
-- npm-publish MCP for 1-click plugin install  
+- Deeper authz matrix, flake taxonomy, npm-publish MCP  

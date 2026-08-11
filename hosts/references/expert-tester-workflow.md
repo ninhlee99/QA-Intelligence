@@ -93,20 +93,17 @@ Call when MCP available:
 State: prior avoid hints count + whether they apply to this URL/AC.  
 Do **not** treat hints as confirmed cause.
 
-### G0d — Domain pack (E3)
+### G0d — Domain pack (auto bootstrap)
 
-Look for (first hit wins):
+See `hosts/references/domain-pack.md`.
 
-- `domain-knowledge/` in project workspace  
-- `.qa-domain/`  
-- path user gives  
+1. Find pack at product workspace: `domain-knowledge/` or `.qa-domain/`
+2. **If missing** → agent creates it from `hosts/templates/domain-knowledge/` into the **product** root and fills stubs from **this request** (URL, AC, roles, money/auth keywords). User does **not** run `cp` manually.
+3. **If present** → read; add new risks from this request if needed (additive)
+4. High-risk tags (`money` | `permission` | `legacy` | `pii`) must appear in G6 as tested or not tested
+5. Ambiguous money/permission TODOs → one short confirm question; do not stall the whole run forever — record as gap if unanswered
 
-If found: read `INDEX.md` + relevant domain files **before G4**.  
-Extract risks tagged `money` | `permission` | `legacy` | `pii`.  
-Each must appear in G6 as **tested** or **not tested (gap)**.
-
-If absent: say `Domain pack: absent — business-rule coverage limited to AC only.`  
-Offer template: `hosts/templates/domain-knowledge/`.
+Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 
 ---
 

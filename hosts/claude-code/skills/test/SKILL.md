@@ -1,23 +1,22 @@
 ---
 name: test
 description: >
-  Expert-level QA tester — URL + spec. Env from URL. Enforces gate, coverage
-  gaps, domain pack, learning hints, targeted retest. Trigger:
-  "/qa-intelligence:test", "test this page", "retest this case", "QA this URL".
+  Expert-level QA tester — URL + spec. Auto-bootstraps domain-knowledge from
+  templates using the test request. Env from URL. Gate/gaps/retest enforced.
+  Trigger: "/qa-intelligence:test", "test this page", "retest this case".
 ---
 
 # QA Intelligence — test (Expert Tester)
 
-**MUST follow** `hosts/references/expert-tester-workflow.md` (Expert bar + G0→G8).  
-Domain pack: `hosts/references/domain-pack.md` + templates under `hosts/templates/domain-knowledge/`.
+**MUST follow** `hosts/references/expert-tester-workflow.md` + `hosts/references/domain-pack.md`.
 
-MCP: `qa-intelligence`. Evidence only from tools.
+MCP: `qa-intelligence`. Evidence from tools only.
 
 ---
 
 ## Hard refuses
 
-Hard refuses: no pass unless MCP `expert_checklist.claim_pass_allowed` is true (when present) and Output contract complete.
+No pass unless MCP `expert_checklist.claim_pass_allowed` is true (when present) and Output contract complete.
 
 ---
 
@@ -25,17 +24,17 @@ Hard refuses: no pass unless MCP `expert_checklist.claim_pass_allowed` is true (
 
 1. **Entry:** URL, AC/spec (or exploratory), secrets, full vs retest  
 2. **G0:** 5 questions  
-3. **G0 learning:** `list_failure_avoidance_hints` (+ `list_learning_candidates`) — state applicability  
-4. **G0d:** If `domain-knowledge/` or `.qa-domain/` exists → read before execute; tag money/permission/legacy/pii into gaps later  
-5. **G1–G3:** env from URL; discover; bind AC (never invent)  
-6. **G4:**  
-   - Retest intent → Strategy B + `smart_retest_suggestion` / case_ids / defects / screen  
-   - Else Strategy A (or C→confirm→A)  
-   - E2: roles → role compare; API → openapi authz negatives + execute  
-7. **G5–G8:** Output contract exactly — gate first  
-8. Serious A → `register_regression_suite` (required)
+3. **G0 learning:** `list_failure_avoidance_hints` (+ `list_learning_candidates`)  
+4. **G0d Domain pack (AI does this — user does not `cp`):**  
+   - Product workspace root = app under test  
+   - Missing `domain-knowledge/` → create from `hosts/templates/domain-knowledge/`, fill INDEX/business/permissions/… from **this request** (URL, AC, roles, money/auth keywords)  
+   - Exists → read + additive update from this request  
+   - High-risk TODOs → short confirm if needed; else record as gap  
+5. **G1–G3:** env from URL; discover; bind AC  
+6. **G4:** A / B retest / C→A; E2 role + API mandates  
+7. **G5–G8:** Output contract; honor `expert_checklist`  
+8. Serious A → `register_regression_suite`
 
 ## Exploratory (C)
 
-Must end with AC candidates + human confirm path + then A + suite.  
-Do not stop at “I explored” as final quality claim.
+Close loop: AC candidates → confirm → A → suite. Not “explored” as final claim.

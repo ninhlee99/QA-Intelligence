@@ -63,7 +63,8 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
     "Paste coverage_gaps (and domain risks not tested) into the user-facing result.",
     "Follow smart_retest_suggestion for targeted retest after fixes.",
     "On next session G0: call list_failure_avoidance_hints (and list_learning_candidates).",
-    "If product repo has domain-knowledge/ or .qa-domain/: load before interpreting business pass.",
+    "If product repo lacks domain-knowledge/: bootstrap from hosts/templates/domain-knowledge/ using this request (do not ask user to cp).",
+    "If domain-knowledge/ exists: read and additively update from this request before G4.",
     "Human still required for release sign-off, pen-test, and novel domain without a pack.",
   ];
 

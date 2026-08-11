@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI slimmed to typecheck + test + audit (+ optional schema examples); dropped SPEC-index gate from default `validate`
 - README rewritten for GitHub: badges, quick start, core tools, clear status
 
+### Domain pack auto-bootstrap (2026-08-11)
+
+- Skills/workflow: on `:test`/`:dev`, agent creates or updates `domain-knowledge/` in the **product** workspace from templates + request — user does not copy templates manually
+- `docs/NEXT.md` updated: user only supplies URL/spec and confirms high-risk TODOs
+
 ### MCP expert_checklist (2026-08-11)
 
 - `run_auto_qa` and `run_regression_suite` return `expert_checklist` with `claim_pass_allowed`, blockers, host_actions

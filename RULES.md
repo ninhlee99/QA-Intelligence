@@ -22,7 +22,7 @@ Contracts live in TypeScript (`src/**/public.ts`), not in archived SPECs.
 9. **Deterministic first.** Rules and observed outcomes beat LLM storytelling.
 10. **Learning never auto-promotes.** `avoid:*` hints and learning candidates are advisory until a human acts.
 11. **Expert output bar.** Do not claim pass/ship without quoting `release_recommendation`, stating `coverage_gaps`, and giving a retest plan (or explicit none).
-12. **Domain pack.** If `domain-knowledge/` or `.qa-domain/` exists, read it before execute; money/permission/legacy/pii risks must appear as tested or gap — never silent waive.
+12. **Domain pack.** Before execute: load or **auto-create** `domain-knowledge/` in the product workspace from templates, filled from the test request. Money/permission/legacy/pii risks must appear as tested or gap — never silent waive. Do not require the user to copy templates manually.
 13. **Explore closes the loop.** Exploratory session alone is not a quality claim — promote to AC + `run_auto_qa` + regression suite after confirm.
 
 ## Host Skills

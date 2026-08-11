@@ -35,7 +35,7 @@ Host → :test | :dev Skill (Expert bar)
 ## Expert upgrades built in
 
 1. **Refuse pass** without gate + coverage gaps + retest plan  
-2. **Domain pack** (`domain-knowledge/` or `.qa-domain/`) before execute when present  
+2. **Domain pack** — agent **auto-creates/updates** `domain-knowledge/` in the product workspace from templates + the test request (user does not `cp` by hand)  
 3. **Learning hints** listed before execute  
 4. **E2 mandates:** roles → compare; OpenAPI → authz negatives  
 5. **Explore must close loop** → AC confirm → full run → suite  
