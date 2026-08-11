@@ -4,6 +4,7 @@
 
 ### Added
 
+- P1 slices: generate `select`/`wait_for` from AC (`option_label`, `wait_for_*`); OpenAPI wrong-role negatives (`auth=alternate_bearer`); file-backed `.qa-credentials/`; optional axe-core stage in `run_depth_smokes`
 - AC oracle passthrough: `generate_test_cases` / `run_auto_qa` copy `expected_url_includes` / `expected_title_includes` / `expected_network` from acceptance criteria onto positive `generated_assertion` (network-only AC is executable; no oracle → `missing_expected_result`)
 - Network oracle in UI runs: Playwright captures xhr/fetch; `expected_network` on generated assertions couples submit→API in one plan
 - Expert follow-up slices: skills aligned to catalog; journey generator; disk-backed regression suites; OpenAPI authz negatives

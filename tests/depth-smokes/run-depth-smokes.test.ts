@@ -85,6 +85,36 @@ test("depth smokes flags missing lang, missing img alt as critical, and has_crit
   );
 });
 
+test("axe stage reports image-alt violations via axe-core", async () => {
+  const html = encodeURIComponent(`<!doctype html><html lang="en"><head><title>Axe</title></head><body>
+    <h1>Broken</h1>
+    <img src="x.png"/>
+  </body></html>`);
+  const skill = new RunDepthSmokes({
+    authorizer: new AllowingAuthorizer(),
+    clock: { now: () => new Date("2026-08-10T08:00:00.000Z") },
+    ids: {
+      next: (() => {
+        let n = 0;
+        return (scope) => `${scope}-${++n}`;
+      })(),
+    },
+  });
+
+  const result = await skill.run({
+    operation_id: "op-axe",
+    workspace_id: "workspace-depth",
+    context: context(),
+    url: `data:text/html,${html}`,
+    stages: ["axe"],
+  });
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.ok(result.value.findings.some((f) => f.stage === "axe" && f.category.includes("image-alt")));
+  assert.equal(result.value.has_critical || result.value.summary.high > 0 || result.value.summary.critical > 0, true);
+});
+
 test("depth smokes clean page has no critical a11y findings", async () => {
   const html = encodeURIComponent(`<!doctype html><html lang="en"><head><title>OK</title></head><body>
     <h1>Fine</h1>

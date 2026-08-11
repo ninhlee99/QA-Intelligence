@@ -28,6 +28,13 @@ export type ApiSmokeCase = Readonly<{
   expect: ApiSmokeExpectation;
   /** Optional AC / requirement pin for citations — never invented. */
   requirement_ref?: string;
+  /**
+   * Auth material for this case:
+   * - `default` / omit — suite bearer/basic
+   * - `none` — strip Authorization (unauth negatives)
+   * - `alternate_bearer` — suite `alternate_bearer_token(_secret_ref)` (wrong-role)
+   */
+  auth?: "default" | "none" | "alternate_bearer";
 }>;
 
 export type ApiSmokeCaseResult = Readonly<{

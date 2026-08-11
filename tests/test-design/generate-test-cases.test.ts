@@ -350,3 +350,98 @@ test("AC with neither expected_text nor richer oracles still reports missing_exp
   assert.equal(result.value.generated_assertions.length, 0);
   assert.equal(result.value.findings[0]!.category, "missing_expected_result");
 });
+
+test("emits select steps for selectable fields when AC supplies option_label", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        {
+          id: "AC-1",
+          statement: "The Country field and the Save action store the selection.",
+          expected_text: "Saved",
+          option_label: "Vietnam",
+        },
+      ],
+      ui_map_elements: [
+        { id: "field-country", kind: "field", accessible_name: "Country", accessible_role: "combobox", interaction_hint: "selectable" },
+        { id: "action-save", kind: "action", accessible_name: "Save", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const positive = result.value.test_cases.find((testCase) => testCase.tags?.includes("positive"));
+  assert.ok(positive);
+  const selectStep = positive!.steps.find((step) => step.action === "select");
+  assert.deepEqual(selectStep?.input, {
+    accessible_name: "Country",
+    accessible_role: "combobox",
+    option_label: "Vietnam",
+  });
+  assert.equal(positive!.steps.some((step) => step.action === "type"), false);
+});
+
+test("selectable field without option_label reports missing_option_label and does not invent a select", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        {
+          id: "AC-1",
+          statement: "The Country field accepts a selection.",
+          expected_text: "Saved",
+        },
+      ],
+      ui_map_elements: [
+        { id: "field-country", kind: "field", accessible_name: "Country", accessible_role: "combobox", interaction_hint: "selectable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.ok(result.value.findings.some((f) => f.category === "missing_option_label"));
+  const positive = result.value.test_cases.find((testCase) => testCase.tags?.includes("positive"));
+  assert.ok(positive);
+  assert.equal(positive!.steps.some((step) => step.action === "select"), false);
+});
+
+test("emits wait_for after click when AC declares wait_for_accessible_name", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        {
+          id: "AC-1",
+          statement: "The Sign in action shows the dashboard.",
+          expected_text: "Dashboard",
+          wait_for_accessible_name: "Dashboard heading",
+          wait_for_accessible_role: "heading",
+          wait_for_timeout_ms: 5_000,
+        },
+      ],
+      ui_map_elements: [
+        { id: "action-sign-in", kind: "action", accessible_name: "Sign in", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const positive = result.value.test_cases.find((testCase) => testCase.tags?.includes("positive"));
+  assert.ok(positive);
+  const waitStep = positive!.steps.find((step) => step.action === "wait_for");
+  assert.deepEqual(waitStep?.input, {
+    accessible_name: "Dashboard heading",
+    accessible_role: "heading",
+    timeout_ms: 5_000,
+  });
+  const clickIdx = positive!.steps.findIndex((step) => step.action === "click");
+  const waitIdx = positive!.steps.findIndex((step) => step.action === "wait_for");
+  assert.ok(clickIdx >= 0 && waitIdx > clickIdx);
+});

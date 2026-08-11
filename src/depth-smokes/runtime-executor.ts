@@ -18,7 +18,7 @@ export type DepthSmokesRuntimeExecutorDependencies = Readonly<{
   expected_skill: VersionReference;
 }>;
 
-const STAGES = new Set<DepthSmokeStage>(["a11y_subset", "perf", "security"]);
+const STAGES = new Set<DepthSmokeStage>(["a11y_subset", "axe", "perf", "security"]);
 
 export class DepthSmokesRuntimeExecutor implements AgentRunExecutor {
   readonly #dependencies: DepthSmokesRuntimeExecutorDependencies;

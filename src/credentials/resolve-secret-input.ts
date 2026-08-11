@@ -4,14 +4,14 @@
  * instead of a literal. Literals remain supported for local demos.
  */
 import type { JsonObject, JsonValue } from "../requirement-review/public.js";
-import type { InMemoryWorkspaceCredentialRegistry } from "./workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry } from "./workspace-credential-registry.js";
 
 export type ResolvedSecret =
   | Readonly<{ ok: true; value: string; via: "literal" | "secret_ref"; secret_ref?: string }>
   | Readonly<{ ok: false; message: string }>;
 
 export function resolvePasswordInput(input: Readonly<{
-  registry: InMemoryWorkspaceCredentialRegistry | undefined;
+  registry: WorkspaceCredentialRegistry | undefined;
   workspaceId: string;
   password?: string;
   password_secret_ref?: string;
@@ -39,7 +39,7 @@ export function resolvePasswordInput(input: Readonly<{
 
 /** Optional Bearer token for API smoke — omit both for unauthenticated calls. */
 export function resolveBearerToken(input: Readonly<{
-  registry: InMemoryWorkspaceCredentialRegistry | undefined;
+  registry: WorkspaceCredentialRegistry | undefined;
   workspaceId: string;
   token?: string;
   token_secret_ref?: string;
@@ -67,7 +67,7 @@ export function resolveBearerToken(input: Readonly<{
 }
 
 export function resolveBasicAuthPassword(input: Readonly<{
-  registry: InMemoryWorkspaceCredentialRegistry | undefined;
+  registry: WorkspaceCredentialRegistry | undefined;
   workspaceId: string;
   username?: string;
   password?: string;
@@ -100,7 +100,7 @@ export function resolveBasicAuthPassword(input: Readonly<{
 
 /** Merge field_values with field_secret_refs resolved through the registry. */
 export function mergeFieldValuesWithSecrets(input: Readonly<{
-  registry: InMemoryWorkspaceCredentialRegistry | undefined;
+  registry: WorkspaceCredentialRegistry | undefined;
   workspaceId: string;
   field_values?: Readonly<Record<string, string>>;
   field_secret_refs?: Readonly<Record<string, string>>;

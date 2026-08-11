@@ -49,7 +49,8 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
    then `compare_ui_surfaces` on the two `elements` arrays. Lead with
    only-in-admin / only-in-viewer surprises.
 5. **Reconcile spec ↔ UI.** Bind each AC to a real accessible name. Flag
-   unbound AC — never force a fake binding. Prefer
+   unbound AC — never force a fake binding.    Prefer `option_label` when AC binds a selectable field; optional
+   `wait_for_accessible_name` after submit. Prefer
    `expected_text` plus optional `expected_url_includes` /
    `expected_title_includes` / `expected_network` on the AC — generator
    copies them onto the positive `generated_assertion` (xhr/fetch:

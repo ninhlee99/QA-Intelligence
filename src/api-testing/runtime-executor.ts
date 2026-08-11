@@ -170,6 +170,14 @@ function parseRequest(
 
     const body = obj["body"] as JsonValue | undefined;
     const requirement_ref = typeof obj["requirement_ref"] === "string" ? obj["requirement_ref"] : undefined;
+    const authRaw = obj["auth"];
+    let auth: ApiSmokeCase["auth"] | undefined;
+    if (authRaw !== undefined) {
+      if (authRaw !== "default" && authRaw !== "none" && authRaw !== "alternate_bearer") {
+        return { ok: false, message: `cases[${index}].auth must be default|none|alternate_bearer.` };
+      }
+      auth = authRaw;
+    }
 
     cases.push({
       id,
@@ -179,6 +187,7 @@ function parseRequest(
       ...(headers !== undefined ? { headers } : {}),
       ...(body !== undefined ? { body: body as string | JsonObject } : {}),
       ...(requirement_ref !== undefined ? { requirement_ref } : {}),
+      ...(auth !== undefined ? { auth } : {}),
     });
   }
 
@@ -199,6 +208,13 @@ function parseRequest(
         : {}),
       ...(typeof raw["bearer_token_secret_ref"] === "string" && raw["bearer_token_secret_ref"].trim().length > 0
         ? { bearer_token_secret_ref: raw["bearer_token_secret_ref"] }
+        : {}),
+      ...(typeof raw["alternate_bearer_token"] === "string" && raw["alternate_bearer_token"].trim().length > 0
+        ? { alternate_bearer_token: raw["alternate_bearer_token"] }
+        : {}),
+      ...(typeof raw["alternate_bearer_token_secret_ref"] === "string" &&
+      raw["alternate_bearer_token_secret_ref"].trim().length > 0
+        ? { alternate_bearer_token_secret_ref: raw["alternate_bearer_token_secret_ref"] }
         : {}),
       ...(typeof raw["basic_auth_username"] === "string" && raw["basic_auth_username"].trim().length > 0
         ? { basic_auth_username: raw["basic_auth_username"] }

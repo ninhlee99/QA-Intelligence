@@ -46,7 +46,7 @@ export type RegressionSuiteRuntimeExecutorDependencies = Readonly<{
   clock: { now(): Date };
   browserAuthorizer: WorkspaceAuthorizer;
   apiSmoke?: ExecuteApiSmoke;
-  credentials?: import("../credentials/workspace-credential-registry.js").InMemoryWorkspaceCredentialRegistry;
+  credentials?: import("../credentials/workspace-credential-registry.js").WorkspaceCredentialRegistry;
 }>;
 
 export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
@@ -298,8 +298,10 @@ export class OpenApiSmokeRuntimeExecutor implements AgentRunExecutor {
       };
     }
     const includeAuthz = input.start_request.input["include_authz_negatives"] === true;
+    const includeWrongRole = input.start_request.input["include_wrong_role_negatives"] === true;
     const converted = openApiToApiSmokeCases(doc as JsonObject, {
       ...(includeAuthz ? { include_authz_negatives: true } : {}),
+      ...(includeWrongRole ? { include_wrong_role_negatives: true } : {}),
     });
     if (!converted.ok) {
       return { ok: false, failure: failure("orchestration", "invalid_request", converted.message) };
@@ -310,7 +312,7 @@ export class OpenApiSmokeRuntimeExecutor implements AgentRunExecutor {
         output: {
           cases: converted.cases.map((item) => ({ ...item })),
           warnings: [...converted.warnings],
-          note: "Pass cases to execute_api_smoke with base_url. Path-template params are not substituted.",
+          note: "Pass cases to execute_api_smoke with base_url (+ alternate_bearer_token_secret_ref when cases use auth=alternate_bearer). Path-template params are not substituted.",
         },
         output_validated: true,
         satisfied_evidence_requirements: [],

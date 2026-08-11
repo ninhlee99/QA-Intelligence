@@ -14,7 +14,7 @@ import type { JsonObject, JsonValue, VersionReference } from "../requirement-rev
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
 import type { DiscoverAfterLogin } from "../discovery/discover-after-login.js";
 import { createLaunchBrowser, isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
-import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { SessionMemory } from "../memory/session-memory.js";
 import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
@@ -41,7 +41,7 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   /** Directory `output_path` is confined to. Defaults to the process's current working directory. */
   outputBaseDir?: string;
   /** Phase 6: resolves password_secret_ref / basic_auth_password_secret_ref. */
-  credentials?: InMemoryWorkspaceCredentialRegistry;
+  credentials?: WorkspaceCredentialRegistry;
   /** Phase 11: inject prior failure-avoidance hints into the report output. */
   sessionMemory?: SessionMemory;
 }>;

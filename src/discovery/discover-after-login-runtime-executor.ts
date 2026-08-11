@@ -1,5 +1,5 @@
 import type { JsonObject, VersionReference } from "../requirement-review/public.js";
-import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { DiscoverAfterLogin } from "./discover-after-login.js";
 import type { SemanticUiDiscoveryFailure, SemanticUiMap } from "./public.js";
@@ -17,7 +17,7 @@ export type DiscoverAfterLoginRuntimeExecutorDependencies = Readonly<{
   expected_skill: VersionReference;
   engine_ref: string;
   /** Phase 6: resolves password_secret_ref / basic_auth_password_secret_ref. */
-  credentials?: InMemoryWorkspaceCredentialRegistry;
+  credentials?: WorkspaceCredentialRegistry;
 }>;
 
 /** Mirrors `UiSurfaceDiscoveryRuntimeExecutor` — see that file for the composition pattern this repeats. */

@@ -44,7 +44,7 @@ import {
 } from "../bug-analysis/assess-defect-quality.js";
 import { DefectQualityRuntimeExecutor } from "../bug-analysis/runtime-executor.js";
 import { ExploratoryCharterRuntimeExecutor } from "../test-strategy/generate-exploratory-charter-runtime-executor.js";
-import { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import { FileBackedWorkspaceCredentialRegistry } from "../credentials/file-backed-workspace-credential-registry.js";
 import { CredentialRegistryRuntimeExecutor } from "../credentials/runtime-executor.js";
 import { InMemoryWorkspaceEnvironmentRegistry } from "../environments/workspace-environment-registry.js";
 import { EnvironmentRegistryRuntimeExecutor } from "../environments/runtime-executor.js";
@@ -352,9 +352,13 @@ export function buildDevFixture(options: {
     },
   });
 
-  // Phase 6 credential registry — demo password pre-registered so login
-  // flows can use password_secret_ref without putting the value on the wire.
-  const credentials = new InMemoryWorkspaceCredentialRegistry(clock);
+  // Phase 6 credential registry — file-backed under .qa-credentials/ so
+  // refs survive MCP restart (local disk, not Vault). Demo password
+  // pre-registered so login flows can use password_secret_ref.
+  const credentials = new FileBackedWorkspaceCredentialRegistry(
+    clock,
+    join(process.cwd(), ".qa-credentials"),
+  );
   credentials.register({
     workspace_id: workspaceId,
     secret_ref: DEMO_PASSWORD_SECRET_REF,
@@ -1381,6 +1385,10 @@ export function buildDevFixture(options: {
                 expected_text: { type: "string" },
                 expected_url_includes: { type: "string" },
                 expected_title_includes: { type: "string" },
+                option_label: { type: "string", description: "Required when AC binds a selectable field — never invented." },
+                wait_for_accessible_name: { type: "string" },
+                wait_for_accessible_role: { type: "string" },
+                wait_for_timeout_ms: { type: "number" },
                 expected_network: {
                   type: "object",
                   description: "UI→API coupling for the positive case (xhr/fetch).",
@@ -1466,6 +1474,10 @@ export function buildDevFixture(options: {
                 expected_text: { type: "string" },
                 expected_url_includes: { type: "string" },
                 expected_title_includes: { type: "string" },
+                option_label: { type: "string", description: "Required when AC binds a selectable field — never invented." },
+                wait_for_accessible_name: { type: "string" },
+                wait_for_accessible_role: { type: "string" },
+                wait_for_timeout_ms: { type: "number" },
                 expected_network: {
                   type: "object",
                   description: "UI→API coupling for the positive case (xhr/fetch).",
@@ -1640,12 +1652,12 @@ export function buildDevFixture(options: {
     {
       name: "register_workspace_secret",
       description:
-        "Phase 6: register a Workspace-scoped secret once (value never returned on later list/read). Prefer password_secret_ref / field_secret_refs on login and execute tools afterward so plaintext passwords stay off the MCP wire. secret_ref must look like workspace-secret:<name>.",
+        "Phase 6: register a Workspace-scoped secret (workspace-secret:<name>). Values persist under .qa-credentials/ (local disk, mode 0o600 when OS allows — not Vault/KMS). List returns metadata only — never the value. Prefer password_secret_ref / field_secret_refs afterward so plaintext stays off the MCP wire.",
       inputSchema: {
         type: "object",
         properties: {
           secret_ref: { type: "string", description: "e.g. workspace-secret:staging-password" },
-          value: { type: "string", description: "Secret value — stored in-process for this MCP session only (dev registry)." },
+          value: { type: "string", description: "Secret value — stored in .qa-credentials/ for this Workspace (dev registry, not Vault)." },
           kind: { type: "string", description: "password | api_token | basic_auth_password | other" },
           label: { type: "string" },
         },
@@ -1799,18 +1811,20 @@ export function buildDevFixture(options: {
     {
       name: "execute_api_smoke",
       description:
-        "Phase 8: HTTP API smoke/contract checks against a base_url. Each case asserts status and/or body/header substrings. Infrastructure faults (DNS/timeout/transport) are reported as infrastructure_error — never as product failed. Prefer bearer_token_secret_ref / basic_auth_password_secret_ref after register_workspace_secret. Does not invent OpenAPI or run load tests.",
+        "Phase 8: HTTP API smoke/contract checks against a base_url. Each case asserts status and/or body/header substrings. Cases may set auth=none|alternate_bearer|default. Prefer bearer_token_secret_ref / alternate_bearer_token_secret_ref / basic_auth_password_secret_ref after register_workspace_secret. Infrastructure faults never become product failed. Does not invent OpenAPI or run load tests.",
       inputSchema: {
         type: "object",
         properties: {
           base_url: { type: "string", description: "e.g. https://api.staging.example.com" },
           cases: {
             type: "array",
-            description: "Array of { id?, method, path, headers?, body?, expect:{status?,body_includes?,header?}, requirement_ref? }",
+            description: "Array of { id?, method, path, headers?, body?, auth?, expect:{status?,body_includes?,header?}, requirement_ref? }",
             items: { type: "object" },
           },
           bearer_token: { type: "string" },
           bearer_token_secret_ref: { type: "string" },
+          alternate_bearer_token: { type: "string", description: "Wrong-role bearer for cases with auth=alternate_bearer." },
+          alternate_bearer_token_secret_ref: { type: "string" },
           basic_auth_username: { type: "string" },
           basic_auth_password: { type: "string" },
           basic_auth_password_secret_ref: { type: "string" },
@@ -1830,6 +1844,8 @@ export function buildDevFixture(options: {
           cases: (args["cases"] as JsonValue | undefined) ?? [],
           bearer_token: (args["bearer_token"] as string | undefined) ?? "",
           bearer_token_secret_ref: (args["bearer_token_secret_ref"] as string | undefined) ?? "",
+          alternate_bearer_token: (args["alternate_bearer_token"] as string | undefined) ?? "",
+          alternate_bearer_token_secret_ref: (args["alternate_bearer_token_secret_ref"] as string | undefined) ?? "",
           basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
           basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
           basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
@@ -1839,7 +1855,7 @@ export function buildDevFixture(options: {
     {
       name: "run_depth_smokes",
       description:
-        "Phase 10: depth portfolio smokes on a live URL — a11y WCAG-subset heuristics (lang/title/img alt), navigation perf vs threshold, and light security heuristics (password-over-http, form→http, inline handlers). has_critical is explicit — never hide critical behind green counts. Not axe-core conformance or a pen-test. stages defaults to all three; browser defaults to chromium.",
+        "Phase 10: depth portfolio smokes on a live URL — a11y WCAG-subset heuristics (lang/title/img alt), optional axe-core (`stages` includes \"axe\"), navigation perf vs threshold, and light security heuristics. has_critical is explicit — never hide critical behind green counts. Default stages omit axe; axe is still not a full WCAG certification claim. stages subset: a11y_subset | axe | perf | security. browser defaults to chromium.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1847,7 +1863,7 @@ export function buildDevFixture(options: {
           stages: {
             type: "array",
             items: { type: "string" },
-            description: "Subset of a11y_subset | perf | security",
+            description: "Subset of a11y_subset | axe | perf | security",
           },
           browser: { type: "string" },
           perf_threshold_ms: { type: "number", description: "Default 3000." },
@@ -2342,12 +2358,13 @@ export function buildDevFixture(options: {
     {
       name: "generate_api_smoke_from_openapi",
       description:
-        "Generate ApiSmokeCase[] from OpenAPI 3 JSON (status asserts from documented responses). Set include_authz_negatives=true to add unauthenticated 401|403 cases for secured ops. Pass to execute_api_smoke. Does not invent bodies/tokens.",
+        "Generate ApiSmokeCase[] from OpenAPI 3 JSON (status asserts from documented responses). Set include_authz_negatives=true to add unauthenticated 401|403 cases (auth=none). Set include_wrong_role_negatives=true to add auth=alternate_bearer cases expecting documented 403 — supply alternate_bearer_token_secret_ref at execute_api_smoke. Does not invent bodies/tokens.",
       inputSchema: {
         type: "object",
         properties: {
           openapi: { type: "object" },
           include_authz_negatives: { type: "boolean" },
+          include_wrong_role_negatives: { type: "boolean" },
         },
         required: ["openapi"],
       },
@@ -2361,6 +2378,7 @@ export function buildDevFixture(options: {
         compactMcpInput({
           openapi: (args["openapi"] as JsonValue | undefined) ?? {},
           include_authz_negatives: args["include_authz_negatives"] === true,
+          include_wrong_role_negatives: args["include_wrong_role_negatives"] === true,
         }),
     },
     {

@@ -40,6 +40,13 @@ type CriterionOracles = Readonly<{
   expected_network?: NonNullable<TestCaseGeneratedAssertion["expected_network"]>;
 }>;
 
+type CriterionInteractionHints = Readonly<{
+  option_label?: string;
+  wait_for_accessible_name?: string;
+  wait_for_accessible_role?: string;
+  wait_for_timeout_ms?: number;
+}>;
+
 export interface IdFactory {
   next(scope: "test-case" | "finding"): string;
 }
@@ -237,8 +244,22 @@ export class GenerateTestCases {
       }
 
       const editableFields = matchedFields.filter((field) => field.interaction_hint === "editable");
+      const selectableFields = matchedFields.filter((field) => field.interaction_hint === "selectable");
       const expectedText = readString(criterion, "expected_text");
       const oracles = readCriterionOracles(criterion);
+      const interaction = readCriterionInteraction(criterion);
+
+      if (selectableFields.length > 0 && interaction.option_label === undefined) {
+        findings.push({
+          id: this.#dependencies.ids.next("finding"),
+          category: "missing_option_label",
+          message: `Acceptance criterion "${criterionId}" binds selectable field(s) but has no option_label — a select step was not invented (SPEC-207 §6).`,
+          evidence: [
+            `${request.requirement_ref}#${criterionId}`,
+            ...selectableFields.map((field) => `ui-element:${field.id}`),
+          ],
+        });
+      }
 
       const positive = this.#buildCase({
         request,
@@ -249,6 +270,7 @@ export class GenerateTestCases {
         fieldValues: undefined,
         expectedText,
         oracles,
+        interaction,
         variantField: undefined,
         forbiddenOverride: undefined,
       });
@@ -261,7 +283,8 @@ export class GenerateTestCases {
       // authoritative to assert "absent") and at least one editable field
       // to perturb — a pure navigation/click criterion has no input to
       // vary (SPEC-207 §3's "normal, alternate, boundary, and failure
-      // behavior" applies per input, not per click).
+      // behavior" applies per input, not per click). Selectable fields
+      // are not perturbed here — option labels are AC-authored, not invented.
       if (expectedText === undefined || editableFields.length === 0) continue;
 
       for (const field of editableFields) {
@@ -280,6 +303,7 @@ export class GenerateTestCases {
             fieldValues: new Map([[field.id, spec.value]]),
             expectedText,
             oracles: undefined,
+            interaction,
             variantField: field,
             forbiddenOverride: undefined,
           });
@@ -297,6 +321,7 @@ export class GenerateTestCases {
             fieldValues: new Map([[field.id, probe.value]]),
             expectedText,
             oracles: undefined,
+            interaction,
             variantField: field,
             forbiddenOverride: [probe.value, ...SYSTEM_ERROR_MARKERS],
           });
@@ -329,15 +354,45 @@ export class GenerateTestCases {
     expectedText: string | undefined;
     /** Positive only — copied from AC; never invented. */
     oracles: CriterionOracles | undefined;
+    interaction: CriterionInteractionHints;
     variantField: TestCaseGenerationUiElement | undefined;
     /** Set only for `adversarial` — the specific probe's own value plus system-error markers, never the whole probe list (see `ADVERSARIAL_PROBES`'s doc comment on why). */
     forbiddenOverride: readonly string[] | undefined;
   }>): Readonly<{ testCase: TestCase; assertion: TestCaseGeneratedAssertion | undefined; finding: TestCaseGenerationFinding | undefined }> {
-    const { request, criterionId, variant, matchedFields, matchedAction, fieldValues, expectedText, oracles, variantField, forbiddenOverride } = input;
+    const {
+      request,
+      criterionId,
+      variant,
+      matchedFields,
+      matchedAction,
+      fieldValues,
+      expectedText,
+      oracles,
+      interaction,
+      variantField,
+      forbiddenOverride,
+    } = input;
     const testCaseId = this.#dependencies.ids.next("test-case");
 
     const steps: TestCaseStep[] = [{ action: "navigate", input: { url: request.ui_map_source_url } }];
     for (const field of matchedFields) {
+      if (field.interaction_hint === "selectable") {
+        // Never invent option labels (SPEC-207 §6). Missing label already
+        // recorded as missing_option_label; skip the step here.
+        if (interaction.option_label === undefined) continue;
+        steps.push({
+          action: "select",
+          input: {
+            accessible_name: field.accessible_name ?? "",
+            accessible_role: field.accessible_role ?? "",
+            option_label: interaction.option_label,
+          },
+        });
+        continue;
+      }
+      // Only editable (or unspecified field hints treated as type targets)
+      // receive type steps — selectable handled above.
+      if (field.interaction_hint !== undefined && field.interaction_hint !== "editable") continue;
       const value = fieldValues?.get(field.id);
       steps.push({
         action: "type",
@@ -352,6 +407,20 @@ export class GenerateTestCases {
       steps.push({
         action: "click",
         input: { accessible_name: matchedAction.accessible_name ?? "", accessible_role: matchedAction.accessible_role ?? "" },
+      });
+    }
+    if (interaction.wait_for_accessible_name !== undefined) {
+      steps.push({
+        action: "wait_for",
+        input: {
+          accessible_name: interaction.wait_for_accessible_name,
+          ...(interaction.wait_for_accessible_role !== undefined
+            ? { accessible_role: interaction.wait_for_accessible_role }
+            : {}),
+          ...(interaction.wait_for_timeout_ms !== undefined
+            ? { timeout_ms: interaction.wait_for_timeout_ms }
+            : {}),
+        },
       });
     }
 
@@ -469,6 +538,23 @@ function readCriterionOracles(criterion: JsonObject): CriterionOracles {
     ...(expected_url_includes !== undefined ? { expected_url_includes } : {}),
     ...(expected_title_includes !== undefined ? { expected_title_includes } : {}),
     ...(expected_network !== undefined ? { expected_network } : {}),
+  };
+}
+
+function readCriterionInteraction(criterion: JsonObject): CriterionInteractionHints {
+  const option_label = readString(criterion, "option_label");
+  const wait_for_accessible_name = readString(criterion, "wait_for_accessible_name");
+  const wait_for_accessible_role = readString(criterion, "wait_for_accessible_role");
+  const timeoutRaw = criterion["wait_for_timeout_ms"];
+  const wait_for_timeout_ms =
+    typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw) && timeoutRaw > 0
+      ? timeoutRaw
+      : undefined;
+  return {
+    ...(option_label !== undefined ? { option_label } : {}),
+    ...(wait_for_accessible_name !== undefined ? { wait_for_accessible_name } : {}),
+    ...(wait_for_accessible_role !== undefined ? { wait_for_accessible_role } : {}),
+    ...(wait_for_timeout_ms !== undefined ? { wait_for_timeout_ms } : {}),
   };
 }
 

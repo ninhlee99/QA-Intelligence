@@ -82,7 +82,36 @@ test("openApiToApiSmokeCases can add authz negatives for secured ops", () => {
   assert.ok(result.cases.some((c) => c.id === "me"));
   const unauth = result.cases.find((c) => c.id === "me-unauth");
   assert.ok(unauth);
+  assert.equal(unauth?.auth, "none");
   assert.deepEqual(unauth?.expect.status, 401);
+});
+
+test("openApiToApiSmokeCases can add wrong-role negatives when 403 is documented", () => {
+  const result = openApiToApiSmokeCases(
+    {
+      openapi: "3.0.0",
+      security: [{ bearerAuth: [] }],
+      paths: {
+        "/admin": {
+          get: {
+            operationId: "admin",
+            responses: {
+              "200": { description: "ok" },
+              "401": { description: "unauth" },
+              "403": { description: "forbidden" },
+            },
+          },
+        },
+      },
+    },
+    { include_wrong_role_negatives: true },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const wrong = result.cases.find((c) => c.id === "admin-wrong-role");
+  assert.ok(wrong);
+  assert.equal(wrong?.auth, "alternate_bearer");
+  assert.equal(wrong?.expect.status, 403);
 });
 
 test("compareUiSurfaces reports only-A / only-B", () => {

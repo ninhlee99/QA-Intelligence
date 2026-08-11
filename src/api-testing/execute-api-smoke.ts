@@ -4,7 +4,7 @@
  * `failed` (SPEC-210 §4). Does not invent OpenAPI, load tests, or authz matrices.
  */
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
-import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { resolveBearerToken, resolveBasicAuthPassword } from "../credentials/resolve-secret-input.js";
 import type { ExecutionOutcome } from "../execution/public.js";
 import { FetchHttpClient, type HttpClient } from "./http-client.js";
@@ -25,6 +25,12 @@ export type ExecuteApiSmokeRequest = Readonly<{
   /** Optional Bearer token (literal or secret_ref). */
   bearer_token?: string;
   bearer_token_secret_ref?: string;
+  /**
+   * Wrong-role / alternate principal bearer for cases with
+   * `auth: "alternate_bearer"` — never invented from OpenAPI.
+   */
+  alternate_bearer_token?: string;
+  alternate_bearer_token_secret_ref?: string;
   basic_auth_username?: string;
   basic_auth_password?: string;
   basic_auth_password_secret_ref?: string;
@@ -37,7 +43,7 @@ export type ExecuteApiSmokeDependencies = Readonly<{
   clock: { now(): Date };
   ids: { next(scope: "suite" | "case"): string };
   http?: HttpClient;
-  credentials?: InMemoryWorkspaceCredentialRegistry;
+  credentials?: WorkspaceCredentialRegistry;
   engine_ref?: string;
 }>;
 
@@ -94,6 +100,10 @@ export class ExecuteApiSmoke {
     if (!authHeaders.ok) {
       return fail("configuration", authHeaders.message, false, ["api-smoke:auth-config"]);
     }
+    const alternateAuth = resolveAlternateBearer(request, this.#dependencies.credentials);
+    if (!alternateAuth.ok) {
+      return fail("configuration", alternateAuth.message, false, ["api-smoke:alternate-auth-config"]);
+    }
 
     const startedAt = this.#dependencies.clock.now();
     const timeoutMs =
@@ -101,11 +111,28 @@ export class ExecuteApiSmoke {
     const caseResults: ApiSmokeCaseResult[] = [];
 
     for (const smokeCase of request.cases) {
+      const caseAuth = resolveCaseAuthHeaders({
+        smokeCase,
+        defaultHeaders: authHeaders.headers,
+        alternateBearer: alternateAuth.value,
+      });
+      if (!caseAuth.ok) {
+        caseResults.push(
+          caseFail(
+            smokeCase.id.trim() || this.#dependencies.ids.next("case"),
+            "blocked",
+            caseAuth.message,
+            ["api-smoke:case-auth"],
+            smokeCase.requirement_ref,
+          ),
+        );
+        continue;
+      }
       caseResults.push(
         await this.#runCase({
           baseUrl,
           smokeCase,
-          authHeaders: authHeaders.headers,
+          authHeaders: caseAuth.headers,
           timeoutMs,
           ...(request.signal !== undefined ? { signal: request.signal } : {}),
         }),
@@ -224,7 +251,7 @@ export class ExecuteApiSmoke {
 
 function resolveAuthHeaders(
   request: ExecuteApiSmokeRequest,
-  registry: InMemoryWorkspaceCredentialRegistry | undefined,
+  registry: WorkspaceCredentialRegistry | undefined,
 ): Readonly<{ ok: true; headers: Readonly<Record<string, string>> }> | Readonly<{ ok: false; message: string }> {
   const headers: Record<string, string> = {};
 
@@ -260,6 +287,57 @@ function resolveAuthHeaders(
   }
 
   return { ok: true, headers };
+}
+
+function resolveAlternateBearer(
+  request: ExecuteApiSmokeRequest,
+  registry: WorkspaceCredentialRegistry | undefined,
+): Readonly<{ ok: true; value: string | undefined }> | Readonly<{ ok: false; message: string }> {
+  const bearer = resolveBearerToken({
+    registry,
+    workspaceId: request.workspace_id,
+    ...(request.alternate_bearer_token !== undefined ? { token: request.alternate_bearer_token } : {}),
+    ...(request.alternate_bearer_token_secret_ref !== undefined
+      ? { token_secret_ref: request.alternate_bearer_token_secret_ref }
+      : {}),
+  });
+  if (!bearer.ok) {
+    // resolveBearerToken treats "both omitted" as ok with undefined — only real errors fail.
+    return bearer;
+  }
+  return { ok: true, value: bearer.value };
+}
+
+function resolveCaseAuthHeaders(input: Readonly<{
+  smokeCase: ApiSmokeCase;
+  defaultHeaders: Readonly<Record<string, string>>;
+  alternateBearer: string | undefined;
+}>):
+  | Readonly<{ ok: true; headers: Readonly<Record<string, string>> }>
+  | Readonly<{ ok: false; message: string }> {
+  const mode = input.smokeCase.auth ?? "default";
+  if (mode === "none") {
+    const headers = { ...input.defaultHeaders };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "authorization") delete headers[key];
+    }
+    return { ok: true, headers };
+  }
+  if (mode === "alternate_bearer") {
+    if (input.alternateBearer === undefined || input.alternateBearer.length === 0) {
+      return {
+        ok: false,
+        message: `Case "${input.smokeCase.id}" requires alternate_bearer_token or alternate_bearer_token_secret_ref (auth=alternate_bearer).`,
+      };
+    }
+    const headers = { ...input.defaultHeaders };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "authorization") delete headers[key];
+    }
+    headers.authorization = `Bearer ${input.alternateBearer}`;
+    return { ok: true, headers };
+  }
+  return { ok: true, headers: input.defaultHeaders };
 }
 
 function resolveUrl(

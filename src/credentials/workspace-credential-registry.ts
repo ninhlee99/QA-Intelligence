@@ -29,8 +29,16 @@ export type RegisterCredentialInput = Readonly<{
 }>;
 
 export type RegisterCredentialResult =
-  | Readonly<{ ok: true; record: CredentialRecord }>
+  | Readonly<{ ok: true; record: CredentialRecord; persisted_path?: string }>
   | Readonly<{ ok: false; code: "invalid_ref" | "empty_value" | "workspace_mismatch"; message: string }>;
+
+/** Structural store used by MCP / Skills — in-memory or file-backed. */
+export type WorkspaceCredentialRegistry = {
+  register(input: RegisterCredentialInput): RegisterCredentialResult;
+  list(workspaceId: string): readonly CredentialRecord[];
+  resolve(secretRef: string, workspace: WorkspaceContext): Promise<string | undefined>;
+  resolveSync(secretRef: string, workspaceId: string): string | undefined;
+};
 
 const REF_PATTERN = /^workspace-secret:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 

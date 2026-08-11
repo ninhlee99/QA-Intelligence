@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
+import { FileBackedWorkspaceCredentialRegistry } from "../../src/credentials/file-backed-workspace-credential-registry.js";
 import { InMemoryWorkspaceCredentialRegistry } from "../../src/credentials/workspace-credential-registry.js";
 import {
   mergeFieldValuesWithSecrets,
@@ -95,4 +99,28 @@ test("mergeFieldValuesWithSecrets resolves refs and rejects conflicts", () => {
     field_secret_refs: { Password: "workspace-secret:demo-password" },
   });
   assert.equal(conflict.ok, false);
+});
+
+test("file-backed registry survives a second instance load from disk", () => {
+  const dir = mkdtempSync(join(tmpdir(), "qa-creds-"));
+  try {
+    const first = new FileBackedWorkspaceCredentialRegistry(clock, dir);
+    const registered = first.register({
+      workspace_id: "ws-1",
+      secret_ref: "workspace-secret:staging-pass",
+      value: "s3cret",
+      kind: "password",
+      label: "Staging",
+    });
+    assert.equal(registered.ok, true);
+    if (!registered.ok) return;
+    assert.ok(registered.persisted_path);
+
+    const second = new FileBackedWorkspaceCredentialRegistry(clock, dir);
+    assert.equal(second.resolveSync("workspace-secret:staging-pass", "ws-1"), "s3cret");
+    assert.equal(second.list("ws-1")[0]?.label, "Staging");
+    assert.ok(!JSON.stringify(second.list("ws-1")).includes("s3cret"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

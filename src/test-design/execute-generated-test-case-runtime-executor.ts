@@ -12,7 +12,7 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
-import type { InMemoryWorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { mergeFieldValuesWithSecrets, readStringMap } from "../credentials/resolve-secret-input.js";
 import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-browser-test.js";
 import type { JsonValue, VersionReference, WorkspaceAuthorizer } from "../requirement-review/public.js";
@@ -35,7 +35,7 @@ export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   launchBrowser?: () => Promise<Browser>;
   /** Directory failure screenshots are written under. Defaults to cwd/.qa-screenshots/<operation_id>. */
   screenshotBaseDir?: string;
-  credentials?: InMemoryWorkspaceCredentialRegistry;
+  credentials?: WorkspaceCredentialRegistry;
 }>;
 
 export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor {

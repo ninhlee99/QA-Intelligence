@@ -10,6 +10,11 @@ import type { JsonObject, JsonValue } from "../requirement-review/public.js";
 export type OpenApiToSmokeOptions = Readonly<{
   /** Add one unauthenticated case per protected operation (expect 401|403). */
   include_authz_negatives?: boolean;
+  /**
+   * Add one wrong-role case per protected op that documents 403.
+   * Caller must supply alternate_bearer at execute time — never invented here.
+   */
+  include_wrong_role_negatives?: boolean;
 }>;
 
 export type OpenApiToSmokeResult =
@@ -66,8 +71,25 @@ export function openApiToApiSmokeCases(
           id: `${opId}-unauth`,
           method,
           path: pathKey,
+          auth: "none",
           expect: { status: authzStatus },
         });
+      }
+      if (options.include_wrong_role_negatives === true && looksProtected(operation, rootSecurity, responses)) {
+        const forbidden = pickForbiddenStatus(responses);
+        if (forbidden !== undefined) {
+          cases.push({
+            id: `${opId}-wrong-role`,
+            method,
+            path: pathKey,
+            auth: "alternate_bearer",
+            expect: { status: forbidden },
+          });
+        } else {
+          warnings.push(
+            `${method} ${pathKey}: include_wrong_role_negatives skipped — no documented 403 response.`,
+          );
+        }
       }
     }
   }
@@ -78,6 +100,11 @@ export function openApiToApiSmokeCases(
   if (options.include_authz_negatives === true) {
     warnings.push(
       "Authz negatives call paths without credentials and expect 401|403 — skip if the route is intentionally public.",
+    );
+  }
+  if (options.include_wrong_role_negatives === true) {
+    warnings.push(
+      "Wrong-role negatives use auth=alternate_bearer — supply alternate_bearer_token_secret_ref at execute_api_smoke (never invent tokens).",
     );
   }
   return { ok: true, cases: cases.slice(0, 120), warnings };
@@ -109,6 +136,15 @@ function pickAuthzStatus(responses: JsonValue | undefined): number | readonly nu
     if (keys.includes("403")) return 403;
   }
   return [401, 403];
+}
+
+/** Prefer documented 403 for wrong-role; undefined when OpenAPI never claims 403. */
+function pickForbiddenStatus(responses: JsonValue | undefined): number | undefined {
+  if (responses !== null && typeof responses === "object" && !Array.isArray(responses)) {
+    const keys = Object.keys(responses as JsonObject);
+    if (keys.includes("403")) return 403;
+  }
+  return undefined;
 }
 
 function pickExpectedStatus(responses: JsonValue | undefined): number | undefined {

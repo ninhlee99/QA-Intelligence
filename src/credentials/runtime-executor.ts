@@ -3,7 +3,7 @@
  * accepts the value once; list returns metadata only. Resolve is never
  * exposed as an MCP tool — only Skills/engines call it out-of-band.
  */
-import type { InMemoryWorkspaceCredentialRegistry, CredentialKind } from "./workspace-credential-registry.js";
+import type { WorkspaceCredentialRegistry, CredentialKind } from "./workspace-credential-registry.js";
 import type { JsonValue, VersionReference, WorkspaceAuthorizer } from "../requirement-review/public.js";
 import type {
   AgentRunExecutor,
@@ -14,7 +14,7 @@ import { failure } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 
 export type CredentialRegistryRuntimeExecutorDependencies = Readonly<{
-  registry: InMemoryWorkspaceCredentialRegistry;
+  registry: WorkspaceCredentialRegistry;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   mode: "register" | "list";
@@ -124,6 +124,8 @@ export class CredentialRegistryRuntimeExecutor implements AgentRunExecutor {
           kind: registered.record.kind,
           label: registered.record.label,
           registered_at: registered.record.registered_at,
+          ...(registered.persisted_path !== undefined ? { persisted_path: registered.persisted_path } : {}),
+          note: "Values never returned by list/read tools. File-backed registries persist under .qa-credentials/ (local disk — not Vault).",
         },
         output_validated: true,
         satisfied_evidence_requirements: [],

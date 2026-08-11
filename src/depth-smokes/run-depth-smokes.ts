@@ -1,15 +1,16 @@
 /**
- * Phase 10 depth portfolio smokes: WCAG-subset heuristics, navigation
- * perf threshold, and light security heuristics. Not a pen-test, not axe
- * conformance, not a load platform. Critical findings are never hidden by
- * green counts (SPEC-212 §6 pattern).
+ * Phase 10 depth portfolio smokes: WCAG-subset heuristics, optional
+ * axe-core stage, navigation perf threshold, and light security
+ * heuristics. Not a pen-test, not full WCAG certification. Critical
+ * findings are never hidden by green counts (SPEC-212 §6 pattern).
  */
+import AxeBuilder from "@axe-core/playwright";
 import { chromium, type Browser, type Page } from "playwright";
 
 import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
 
-export type DepthSmokeStage = "a11y_subset" | "perf" | "security";
+export type DepthSmokeStage = "a11y_subset" | "axe" | "perf" | "security";
 
 export type DepthSmokeSeverity = "critical" | "high" | "medium" | "low";
 
@@ -67,7 +68,9 @@ export type RunDepthSmokesDependencies = Readonly<{
   launchBrowser?: () => Promise<Browser>;
 }>;
 
-const ALL_STAGES: readonly DepthSmokeStage[] = ["a11y_subset", "perf", "security"];
+/** Default portfolio — axe is opt-in (`stages` includes `"axe"`). */
+const DEFAULT_STAGES: readonly DepthSmokeStage[] = ["a11y_subset", "perf", "security"];
+const KNOWN_STAGES: readonly DepthSmokeStage[] = ["a11y_subset", "axe", "perf", "security"];
 
 export class RunDepthSmokes {
   readonly #dependencies: RunDepthSmokesDependencies;
@@ -86,9 +89,9 @@ export class RunDepthSmokes {
     if (!url || !/^(https?:|data:)/i.test(url)) {
       return fail("configuration", "url must be an http(s) or data: URL.", false, ["depth-smoke:invalid-url"]);
     }
-    const stages = request.stages?.length ? [...new Set(request.stages)] : [...ALL_STAGES];
+    const stages = request.stages?.length ? [...new Set(request.stages)] : [...DEFAULT_STAGES];
     for (const stage of stages) {
-      if (!ALL_STAGES.includes(stage)) {
+      if (!KNOWN_STAGES.includes(stage)) {
         return fail("configuration", `Unknown depth stage "${stage}".`, false, ["depth-smoke:bad-stage"]);
       }
     }
@@ -137,13 +140,17 @@ export class RunDepthSmokes {
     const findings: DepthSmokeFinding[] = [];
     let perf: DepthSmokeReport["perf"];
     try {
-      const page = await browser.newPage();
+      const context = await browser.newContext();
+      const page = await context.newPage();
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
         await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
 
         if (stages.includes("a11y_subset")) {
           findings.push(...(await collectA11ySubset(page, this.#dependencies.ids, url)));
+        }
+        if (stages.includes("axe")) {
+          findings.push(...(await collectAxe(page, this.#dependencies.ids, url)));
         }
         if (stages.includes("perf")) {
           const threshold = request.perf_threshold_ms ?? 3_000;
@@ -156,6 +163,7 @@ export class RunDepthSmokes {
         }
       } finally {
         await page.close();
+        await context.close();
       }
     } catch (error) {
       return fail(
@@ -191,7 +199,9 @@ export class RunDepthSmokes {
         has_critical: summary.critical > 0,
         ...(perf !== undefined ? { perf } : {}),
         limitations: [
-          "Not axe-core / full WCAG conformance — heuristic subset only.",
+          stages.includes("axe")
+            ? "axe-core stage reports engine violations — still not a full WCAG certification claim."
+            : "Not axe-core / full WCAG conformance — heuristic subset only (pass stages:[\"axe\"] for axe-core).",
           "Perf uses PerformanceNavigationTiming when available; SPA soft-nav may under-report.",
           "Security heuristics are smoke-level — not a penetration test.",
           "Critical findings MUST block a cheerful green summary (SPEC-212 §6 pattern).",
@@ -254,6 +264,36 @@ async function collectA11ySubset(
       severity: "critical",
       message: `${snapshot.missingAlt} of ${snapshot.imageCount} <img> element(s) lack an alt attribute (WCAG 1.1.1 — subset).`,
       evidence: [`url:${url}`, `a11y:img-missing-alt:${snapshot.missingAlt}`],
+    });
+  }
+  return findings;
+}
+
+async function collectAxe(
+  page: Page,
+  ids: { next(scope: "report" | "finding"): string },
+  url: string,
+): Promise<DepthSmokeFinding[]> {
+  const results = await new AxeBuilder({ page }).analyze();
+  const findings: DepthSmokeFinding[] = [];
+  for (const violation of results.violations) {
+    const impact = violation.impact ?? "moderate";
+    const severity: DepthSmokeSeverity =
+      impact === "critical" ? "critical" : impact === "serious" ? "high" : impact === "moderate" ? "medium" : "low";
+    const nodes = violation.nodes.length;
+    findings.push({
+      id: ids.next("finding"),
+      stage: "axe",
+      category: `axe:${violation.id}`,
+      severity,
+      message: `${violation.help} (${nodes} node(s); axe impact=${impact}).`,
+      evidence: [
+        `url:${url}`,
+        `axe:rule:${violation.id}`,
+        `axe:impact:${impact}`,
+        `axe:nodes:${nodes}`,
+        ...(violation.tags.slice(0, 4).map((tag) => `axe:tag:${tag}`)),
+      ],
     });
   }
   return findings;
