@@ -26,6 +26,6 @@ No “safe to merge” unless MCP `expert_checklist.claim_pass_allowed` is true 
 2. AC from **source**; note code↔comment conflicts  
 3. G0 + learning hints  
 4. **G0d:** `bootstrap_domain_pack` on this product repo (`product_root` + request/source context)  
-5. `run_auto_qa` (or Strategy B retest). Suite auto-registers — use `suite_id`; skip second `register_regression_suite` when present. Pass `role_b` / `openapi` / `include_workflow_journeys` when E2 applies.  
+5. Prefer `run_expert_qa` with `product_root` = this repo (or `bootstrap_domain_pack` + `run_auto_qa`). Suite auto-registers — use `suite_id`. Pass `role_b` / `openapi` / `include_workflow_journeys` when E2 applies. Read `flake_taxonomy` + `learning`.  
 6. Output contract — `Command: dev`  
 7. After fix: targeted retest only  

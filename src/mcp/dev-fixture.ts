@@ -38,6 +38,7 @@ import { GenerateTestCases } from "../test-design/generate-test-cases.js";
 import { GenerateTestCasesRuntimeExecutor } from "../test-design/runtime-executor.js";
 import { ExecuteGeneratedTestCaseRuntimeExecutor } from "../test-design/execute-generated-test-case-runtime-executor.js";
 import { RunAutoQaPipelineRuntimeExecutor } from "../test-design/run-auto-qa-pipeline-runtime-executor.js";
+import { RunExpertQaRuntimeExecutor } from "../test-design/run-expert-qa-runtime-executor.js";
 import { DomainPackBootstrapRuntimeExecutor } from "../domain-pack/bootstrap-domain-pack-runtime-executor.js";
 import {
   AssessDefectQuality,
@@ -158,6 +159,8 @@ export const AUTO_QA_AGENT = { id: "auto-qa-pipeline-agent", version: "0.1.0" } 
 export const AUTO_QA_SKILL = { id: "run-auto-qa-pipeline", version: "0.1.0" } as const;
 export const DOMAIN_PACK_BOOTSTRAP_AGENT = { id: "domain-pack-bootstrap-agent", version: "0.1.0" } as const;
 export const DOMAIN_PACK_BOOTSTRAP_SKILL = { id: "bootstrap-domain-pack", version: "0.1.0" } as const;
+export const EXPERT_QA_AGENT = { id: "expert-qa-facade-agent", version: "0.1.0" } as const;
+export const EXPERT_QA_SKILL = { id: "run-expert-qa", version: "0.1.0" } as const;
 export const A11Y_SMOKE_AGENT = { id: "ui-accessibility-smoke-agent", version: "0.1.0" } as const;
 export const A11Y_SMOKE_SKILL = { id: "assess-ui-accessibility-smoke", version: "0.1.0" } as const;
 export const EXPLORATORY_AGENT = { id: "exploratory-charter-agent", version: "0.1.0" } as const;
@@ -755,6 +758,21 @@ export function buildDevFixture(options: {
   const ids: IdFactory = {
     next: (kind: "run" | "event"): string => (kind === "run" ? `run-${++runSequence}` : `event-${++eventSequence}`),
   };
+  const autoQaExecutor = new RunAutoQaPipelineRuntimeExecutor({
+    clock,
+    authorizer,
+    discoverUiSurface: uiDiscoverySkill,
+    discoverAfterLogin: discoverAfterLoginSkill,
+    generator: testCaseGenerator,
+    expected_agent: AUTO_QA_AGENT,
+    expected_skill: AUTO_QA_SKILL,
+    credentials,
+    regressionRegistry: regressionSuites,
+    discoverUiWorkflow: uiWorkflowSkill,
+    candidateRepository,
+    ...(sessionMemory !== undefined ? { sessionMemory } : {}),
+  });
+
   const executorMap = new Map<string, AgentRunExecutor>([
       [
         AGENT.id,
@@ -816,25 +834,23 @@ export function buildDevFixture(options: {
       ],
       [
         AUTO_QA_AGENT.id,
-        new RunAutoQaPipelineRuntimeExecutor({
-          clock,
-          authorizer,
-          discoverUiSurface: uiDiscoverySkill,
-          discoverAfterLogin: discoverAfterLoginSkill,
-          generator: testCaseGenerator,
-          expected_agent: AUTO_QA_AGENT,
-          expected_skill: AUTO_QA_SKILL,
-          credentials,
-          regressionRegistry: regressionSuites,
-          discoverUiWorkflow: uiWorkflowSkill,
-          ...(sessionMemory !== undefined ? { sessionMemory } : {}),
-        }),
+        autoQaExecutor,
       ],
       [
         DOMAIN_PACK_BOOTSTRAP_AGENT.id,
         new DomainPackBootstrapRuntimeExecutor({
           expected_agent: DOMAIN_PACK_BOOTSTRAP_AGENT,
           expected_skill: DOMAIN_PACK_BOOTSTRAP_SKILL,
+        }),
+      ],
+      [
+        EXPERT_QA_AGENT.id,
+        new RunExpertQaRuntimeExecutor({
+          autoQa: autoQaExecutor,
+          expected_agent: EXPERT_QA_AGENT,
+          expected_skill: EXPERT_QA_SKILL,
+          auto_qa_agent: AUTO_QA_AGENT,
+          auto_qa_skill: AUTO_QA_SKILL,
         }),
       ],
       [
@@ -1765,6 +1781,88 @@ export function buildDevFixture(options: {
           product_root: (args["product_root"] as string | undefined) ?? "",
           request_context: (args["request_context"] as string | undefined) ?? "",
           pack_dirname: (args["pack_dirname"] as string | undefined) ?? "",
+        }),
+    },
+    {
+      name: "run_expert_qa",
+      description:
+        "Expert facade (P4): optional bootstrap_domain_pack via product_root + full run_auto_qa (auto suite, E2 hooks, flake_taxonomy, learning). Prefer this for :test/:dev when product workspace path is known. Same inputs as run_auto_qa plus product_root / request_context / pack_dirname.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          acceptance_criteria: { type: "array", items: { type: "object" } },
+          product_root: {
+            type: "string",
+            description: "Absolute product workspace path — bootstraps domain-knowledge/ before QA.",
+          },
+          request_context: { type: "string", description: "Optional; defaults from url + AC statements." },
+          pack_dirname: { type: "string" },
+          requirement_ref: { type: "string" },
+          requirement_title: { type: "string" },
+          login_url: { type: "string" },
+          username_field_name: { type: "string" },
+          username: { type: "string" },
+          password_field_name: { type: "string" },
+          password: { type: "string" },
+          password_secret_ref: { type: "string" },
+          submit_action_name: { type: "string" },
+          basic_auth_username: { type: "string" },
+          basic_auth_password: { type: "string" },
+          basic_auth_password_secret_ref: { type: "string" },
+          output_path: { type: "string" },
+          browser: { type: "string" },
+          auto_register_suite: { type: "boolean" },
+          suite_label: { type: "string" },
+          openapi: { type: "object" },
+          openapi_path: { type: "string" },
+          include_authz_negatives: { type: "boolean" },
+          include_wrong_role_negatives: { type: "boolean" },
+          role_b: { type: "object" },
+          include_workflow_journeys: { type: "boolean" },
+        },
+        required: ["url", "acceptance_criteria"],
+      },
+      agent: EXPERT_QA_AGENT,
+      purpose: "Expert one-shot: domain pack + auto QA + suite + checklist",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [EXPERT_QA_SKILL],
+      allowed_tools: [
+        { id: "playwright-dom-pipeline", version: "0.1.0" },
+        { id: "playwright-execution-engine", version: "0.1.0" },
+      ],
+      budgets: { max_steps: 24, max_duration_seconds: 360, max_tool_calls: 36, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+          requirement_title: (args["requirement_title"] as string | undefined) ?? "",
+          acceptance_criteria: (args["acceptance_criteria"] as JsonValue | undefined) ?? [],
+          product_root: (args["product_root"] as string | undefined) ?? "",
+          request_context: (args["request_context"] as string | undefined) ?? "",
+          pack_dirname: (args["pack_dirname"] as string | undefined) ?? "",
+          login_url: (args["login_url"] as string | undefined) ?? "",
+          username_field_name: (args["username_field_name"] as string | undefined) ?? "",
+          username: (args["username"] as string | undefined) ?? "",
+          password_field_name: (args["password_field_name"] as string | undefined) ?? "",
+          password: (args["password"] as string | undefined) ?? "",
+          password_secret_ref: (args["password_secret_ref"] as string | undefined) ?? "",
+          submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
+          basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
+          basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
+          basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
+          output_path: (args["output_path"] as string | undefined) ?? "",
+          browser: (args["browser"] as string | undefined) ?? "",
+          auto_register_suite:
+            typeof args["auto_register_suite"] === "boolean" ? args["auto_register_suite"] : undefined,
+          suite_label: (args["suite_label"] as string | undefined) ?? "",
+          openapi: (args["openapi"] as JsonValue | undefined) ?? {},
+          openapi_path: (args["openapi_path"] as string | undefined) ?? "",
+          include_authz_negatives: args["include_authz_negatives"] === true ? true : undefined,
+          include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
+          role_b: (args["role_b"] as JsonValue | undefined) ?? {},
+          include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
         }),
     },
     {

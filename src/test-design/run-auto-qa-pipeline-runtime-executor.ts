@@ -20,12 +20,14 @@ import type { SessionMemory } from "../memory/session-memory.js";
 import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-runtime-executor.js";
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
 import { expertChecklistFromQaRunReport } from "../reporting/expert-checklist.js";
+import { deriveFlakeTaxonomy, flakeTaxonomyJson } from "../reporting/flake-taxonomy.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
-import type { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
 import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
 import type { InMemoryRegressionSuiteRegistry, RegressionCase } from "./regression-suite-registry.js";
 import type { GenerateTestCases } from "./generate-test-cases.js";
 import { runExpertHooks } from "./run-auto-qa-expert-hooks.js";
+import type { CandidateRepository } from "../candidate-repository/public.js";
+import type { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
 import type {
   AgentRunExecutor,
   AgentRunExecutorInput,
@@ -55,6 +57,8 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   regressionRegistry?: RegressionSuiteRegistry;
   /** Optional: enable include_workflow_journeys hook. */
   discoverUiWorkflow?: DiscoverUiWorkflow;
+  /** P5: surface learning candidates alongside failure-avoidance hints. */
+  candidateRepository?: CandidateRepository;
 }>;
 
 export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
@@ -244,7 +248,8 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     }
 
     const report = result.value.report;
-    const html = renderQaRunReportHtml(report);
+    const flakeTaxonomy = deriveFlakeTaxonomy(report);
+    const html = renderQaRunReportHtml(report, flakeTaxonomy);
     let writtenPath: string | undefined;
     if (outputPath !== undefined) {
       try {
@@ -335,19 +340,52 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     const priorHints =
       this.#dependencies.sessionMemory?.list(input.reference.workspace_id, FAILURE_AVOIDANCE_KEY_PREFIX) ?? [];
 
+    let learningCandidates: JsonObject[] = [];
+    if (this.#dependencies.candidateRepository !== undefined) {
+      try {
+        const queried = await this.#dependencies.candidateRepository.query({
+          context: input.execution.workspace_context,
+          discovery_source: "mistake-recurrence",
+        });
+        if (queried.ok) {
+          learningCandidates = queried.value.slice(0, 20).map((candidate) => ({
+            id: candidate.id,
+            status: candidate.status,
+            discovery_source: candidate.discovery_source,
+            rationale: candidate.rationale,
+            supporting_evidence_refs: [...(candidate.supporting_evidence_refs ?? [])],
+          }));
+        }
+      } catch {
+        learningCandidates = [];
+      }
+    }
+
     const evidence = [
       `capture:${report.discovery_capture_id}`,
       ...report.test_cases.flatMap((testCase) => testCase.evidence),
       ...(autoSuite && "suite_id" in autoSuite ? [`suite:${autoSuite.suite_id}`] : []),
     ];
 
-    const reportJson = qaRunReportJson(report, html, writtenPath, autoSuite);
+    const reportJson = qaRunReportJson(report, html, writtenPath, autoSuite, flakeTaxonomy);
     return {
       ok: true,
       value: {
         output: {
           ...reportJson,
           expert_extensions: hooks.extensions,
+          learning: {
+            failure_avoidance_hints: priorHints.map((entry) => ({
+              key: entry.key,
+              causal_mistake: entry.value,
+              source_ref: entry.source_ref,
+              retained_at: entry.retained_at,
+              expires_at: entry.expires_at,
+            })),
+            learning_candidates: learningCandidates,
+            note: "Always present (may be empty). Hints/candidates are advisory — not confirmed_cause.",
+          },
+          /** @deprecated Prefer learning.failure_avoidance_hints — kept for host compat. */
           prior_failure_avoidance_hints: priorHints.map((entry) => ({
             key: entry.key,
             causal_mistake: entry.value,
@@ -477,6 +515,7 @@ function qaRunReportJson(
     | Readonly<{ suite_id: string; persisted_path?: string; case_count: number; label: string }>
     | Readonly<{ skipped: true; reason: string }>
     | undefined,
+  flakeTaxonomy: ReturnType<typeof deriveFlakeTaxonomy>,
 ): JsonObject {
   const gaps = deriveCoverageGaps(report);
   const retest = deriveSmartRetestSuggestion(report);
@@ -563,6 +602,7 @@ function qaRunReportJson(
         }
       : retest,
     auto_registered_suite: autoSuite ?? null,
+    flake_taxonomy: flakeTaxonomyJson(flakeTaxonomy),
     expert_checklist: expertChecklistFromQaRunReport(
       report,
       gaps.length,

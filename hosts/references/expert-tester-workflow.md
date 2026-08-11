@@ -127,11 +127,9 @@ Skip only with explicit reason in G6.
 
 ```
 G0 + learning hints
-→ bootstrap_domain_pack
-→ register_requirement (if AC)
-→ discover… (optional when run_auto_qa covers screen)
-→ run_auto_qa   # auto-registers suite; optional role_b / openapi / include_workflow_journeys
-→ use auto_registered_suite.suite_id   # do NOT register_regression_suite again if suite_id present
+→ run_expert_qa(product_root, url, AC, [role_b|openapi|journeys])
+   # OR: bootstrap_domain_pack → run_auto_qa
+→ use auto_registered_suite.suite_id + flake_taxonomy + learning
 → [optional] capture baselines first time
 ```
 

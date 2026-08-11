@@ -19,6 +19,7 @@ import type {
   ResidualRiskNote,
   VariantCoverageRow,
 } from "./qa-professional-analysis.js";
+import { deriveFlakeTaxonomy, type FlakeTaxonomy } from "./flake-taxonomy.js";
 
 export type QaRunTestCaseOutcome = "passed" | "failed" | "cancelled" | "not_executed" | "flaky";
 
@@ -107,6 +108,31 @@ export function withProfessionalAnalysis(
 
 import { expertChecklistHtml, expertChecklistFromQaRunReport } from "./expert-checklist.js";
 
+function flakeTaxonomyHtml(taxonomy: FlakeTaxonomy): string {
+  if (taxonomy.flaky_count === 0) {
+    return `<h2>Flake taxonomy</h2><p class="meta">${escapeHtml(taxonomy.note)}</p>`;
+  }
+  const rows = taxonomy.cases
+    .map(
+      (entry) => `    <tr>
+      <td><code>${escapeHtml(entry.test_case_id)}</code></td>
+      <td>${escapeHtml(entry.category)}</td>
+      <td>${escapeHtml(entry.confidence)}</td>
+      <td>${escapeHtml(entry.signals.join("; "))}</td>
+      <td>${escapeHtml(entry.host_hint)}</td>
+    </tr>`,
+    )
+    .join("\n");
+  return `<h2>Flake taxonomy</h2>
+<p class="meta">${escapeHtml(taxonomy.note)}</p>
+<table>
+  <thead><tr><th>Case</th><th>Category</th><th>Confidence</th><th>Signals</th><th>Host hint</th></tr></thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>`;
+}
+
 /** Derives an explicit coverage gap summary for the HTML report. */
 function coverageGapsHtml(report: QaRunReport): string {
   const items: string[] = [];
@@ -153,7 +179,8 @@ function expertChecklistSection(report: QaRunReport): string {
 }
 
 /** Renders a self-contained HTML report — no external stylesheet/script, safe to open directly from disk. */
-export function renderQaRunReportHtml(report: QaRunReport): string {
+export function renderQaRunReportHtml(report: QaRunReport, flakeTaxonomy?: FlakeTaxonomy): string {
+  const taxonomy = flakeTaxonomy ?? deriveFlakeTaxonomy(report);
   const rows = report.test_cases.map(testCaseRow).join("\n");
   const findings =
     report.generation_findings.length > 0
@@ -266,6 +293,7 @@ ${report.draft_defects.map(defectRow).join("\n")}
 </div>
 ${coverage}
 ${coverageGapsHtml(report)}
+${flakeTaxonomyHtml(taxonomy)}
 ${expertChecklistSection(report)}
 <h2>Test cases</h2>
 <table>
