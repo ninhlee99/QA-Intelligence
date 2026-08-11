@@ -1,175 +1,234 @@
 # Host Integration Packages
 
-This is the canonical root for QA Intelligence's **Host Integration
-Packages** as defined by ADR-016 §3 — installable Codex, Claude Code,
-Cursor, or similar bundles that connect a host to QA Intelligence. This is
-a distinct concept from a **Platform Plugin** (SPEC-503, `plugins/`), which
-is an adapter from the Core Platform to an external technology
-(Playwright, GitHub, ...). Host Integration Packages own no QA business
-logic, policy, accepted knowledge, evaluation verdicts, runtime lifecycle,
-or final-result authority (ADR-016 §2) — they only carry host metadata and
-MCP connection configuration.
+MCP connection configs and Skills for Claude Code, Cursor, and Codex.
+These packages carry **no QA business logic** — they only connect a host
+to the QA Intelligence MCP server (ADR-016 §2).
 
-The authoritative execution path (ADR-016 §2) is:
-
-```text
-Host -> Host Integration Package -> QA Intelligence MCP Interface -> Agent Runtime / Evaluation Engine
+```
+Host  →  Host Integration Package  →  QA Intelligence MCP  →  Agent Runtime
 ```
 
-## Status: development only
+## Status: `0.1.0-dev`
 
-Every package here points at `dist/src/mcp/dev-entrypoint.js`
-(`src/mcp/dev-entrypoint.ts`), an explicitly non-production MCP server:
+Development-only server. Auth is a fixture verifier (stdio) or self-minted
+OIDC (remote) — not a real IdP. Knowledge Store is in-memory seed.
+Production blocked on GOV-012 G2–G6.
 
-- authorization uses a deterministic fixture verifier, not OIDC (ADR-014's
-  production identity work is still pending)
-- the Knowledge Store is an in-memory seed with one example requirement
-  (`REQ-DEMO-001`)
-- the Reasoning Provider is a scripted replay adapter with an empty
-  script — an indeterminate deterministic-rule outcome will not be
-  resolved by a real model
+---
 
-This matches ADR-016 §8: "Development MAY add an in-process or `stdio`
-MCP adapter after the relevant core capability is vertically complete."
-Production MCP enablement remains blocked until the Agent/Skill passes
-GOV-012 G1-G4 and the transport itself passes security, isolation,
-approval, cancellation, evidence, and operational conformance (ADR-016
-§8) — none of which any package here claims.
+## Install (one-time, per host)
 
-## Transport
+**Prerequisites:** `npm run build` from repo root first.
 
-All packages use the official `@modelcontextprotocol/sdk` (ADR-023,
-superseding ADR-019's prior in-house implementation) via
-`src/mcp/sdk-mcp-server.ts` and `src/mcp/stdio-transport.ts`. The wire
-protocol is standard MCP (`2025-06-18`), so any compliant host can connect
-regardless of which implementation produced the message — migrating off
-the hand-rolled transport changed no host-visible behavior.
+### Claude Code
 
-## Remote transport (shared/team profile, development only)
-
-`src/mcp/remote-dev-entrypoint.ts` (compiled to
-`dist/src/mcp/remote-dev-entrypoint.js`) wires the same Agent Runtime,
-reviewer, and seeded `REQ-DEMO-001` requirement `dev-entrypoint.ts` uses,
-but exposes them over ADR-020's `StreamableHttpTransport`
-(`src/mcp/remote/streamable-http-transport.ts`) with **real** cryptographic
-identity instead of a fixture proof: it mints its own ephemeral RSA
-keypair, serves its own local JWKS endpoint standing in for an upstream
-IdP, and issues real signed OIDC ID tokens through
-`OidcWorkspaceContextIssuer` — the same production identity seam ADR-014
-proved, not a shortcut. Run it directly:
+Install the plugin by pointing Claude Code at `hosts/claude-code/` as the
+plugin root. The `skills/` directory ships automatically — no separate
+registration.
 
 ```sh
-npm run build
-node dist/src/mcp/remote-dev-entrypoint.js
+# CLI install
+claude plugin install ./hosts/claude-code
 ```
 
-It listens on `http://127.0.0.1:8787/mcp` by default (override with
-`QA_INTELLIGENCE_DEV_REMOTE_PORT`/`QA_INTELLIGENCE_DEV_REMOTE_HOST`) and
-prints a real, signed demo bearer token to stderr on startup — paste it
-into `cursor/mcp-remote.json.example`'s `Authorization` header (copy that
-file into your Cursor MCP settings) to connect a real host over the remote
-transport. The inline single-actor membership fixture and the
-self-signed JWKS server are still explicitly non-production (ADR-014's
-real governed membership store remains unbuilt), and production enablement
-is blocked on GOV-012 G1-G4 regardless (ADR-016 §8, ADR-020 §4) — but this
-is a real, working remote MCP round trip a host can actually connect to
-today, not only conformance tests (`tests/mcp/remote/`).
+Or add to `.mcp.json` / `~/.claude.json`:
+```json
+{
+  "mcpServers": {
+    "qa-intelligence": {
+      "command": "node",
+      "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
+      "env": { "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-dev" }
+    }
+  }
+}
+```
 
-## Directories
+### Cursor
 
-- `claude-code/.claude-plugin/plugin.json` — Claude Code plugin manifest (local `stdio`)
-- `claude-code/skills/` — Claude Code Skills bundled with this plugin
-  (`dev/SKILL.md` → `/qa-intelligence:dev`, `test/SKILL.md` →
-  `/qa-intelligence:test`). Claude Code auto-discovers any
-  `skills/*/SKILL.md` under a plugin's root, so installing the plugin
-  installs these Skills too — no separate registration step.
-- `codex/.codex-plugin/plugin.json` — Codex plugin manifest (local `stdio`)
-- `cursor/mcp.json.example` — Cursor MCP server config for local `stdio`
-  (copy into your Cursor MCP settings and replace the absolute path)
-- `cursor/mcp-remote.json.example` — Cursor MCP server config for the
-  remote Streamable HTTP transport (see "Remote transport" below)
+Copy `hosts/cursor/mcp.json.example` into Cursor MCP settings.
+Replace the placeholder with an **absolute** path (Cursor does not accept relative paths):
 
-## Installing the Claude Code plugin
+```json
+{
+  "mcpServers": {
+    "qa-intelligence": {
+      "command": "node",
+      "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
+      "env": { "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev" }
+    }
+  }
+}
+```
 
-Two ways to get the MCP server and the bundled Skills at once:
+Restart Cursor after saving. Check Output → MCP if tools don't appear.
 
-- **Local plugin directory** — point Claude Code's plugin settings directly
-  at `hosts/claude-code/` as the plugin root. No marketplace needed; the
-  `skills/` directory ships with it automatically.
-- **Marketplace** — this repo's root `.claude-plugin/marketplace.json`
-  declares the same `hosts/claude-code` directory as the `qa-intelligence`
-  plugin's `source`, so `claude plugin install qa-intelligence` (or adding
-  this repo as a marketplace) installs the MCP connection and the Skills
-  together, the same way the local-directory path does.
+### Codex
 
-## Before use
+Install plugin from `hosts/codex/` or add to `~/.codex/config.yaml`:
 
-Run `npm run build` from the repository root first — the packages launch
-the compiled `dist/src/mcp/dev-entrypoint.js`, not the TypeScript source.
+```yaml
+mcpServers:
+  qa-intelligence:
+    command: node
+    args:
+      - /absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js
+    env:
+      QA_INTELLIGENCE_DEV_WORKSPACE_ID: workspace-codex-dev
+```
 
-## Exposed tools (development)
+### Remote transport (shared/team)
 
-The shared fixture (`src/mcp/dev-fixture.ts`) currently registers these MCP tools
-on both stdio and remote transports:
+Start the HTTP server:
+```sh
+node dist/src/mcp/remote-dev-entrypoint.js
+# Prints a signed demo bearer token to stderr
+# Listens on http://127.0.0.1:8787/mcp
+```
+
+Then connect with the printed token — see `hosts/cursor/mcp-remote.json.example`.
+
+---
+
+## Skills (Claude Code)
+
+Two skills ship with the claude-code plugin:
+
+| Trigger | When to use |
+|---------|-------------|
+| `/qa-intelligence:test` | URL + spec — full expert tester workflow |
+| `/qa-intelligence:dev` | Local source + localhost — developer self-QA before push |
+
+Cursor and Codex equivalents in `hosts/cursor/skills/` and `hosts/codex/skills/`.
+
+---
+
+## MCP Tool Catalog
+
+### Core pipeline
 
 | Tool | Purpose |
 |------|---------|
-| `assess_requirement_quality` | SPEC-203/202 requirement quality review (seeded `REQ-DEMO-001`) |
-| `discover_product_context` | SPEC-201 Knowledge Store discovery by objective |
-| `discover_ui_surface` | Live-page Semantic UI Map (Page/Field/Action); optional `browser` |
-| `discover_ui_surface_after_login` | Same, after semantic login (+ optional HTTP Basic Auth) |
+| `run_auto_qa` | Full pipeline: discover → a11y smoke → generate variants → execute → HTML report + `coverage_gaps` + `smart_retest_suggestion` + release gate |
+| `run_regression_suite` | Re-run a saved suite; subset by `case_ids` or `related_defect_ids` |
+| `register_regression_suite` / `list_regression_suites` | Persist + list test suites |
+
+### Discovery
+
+| Tool | Purpose |
+|------|---------|
+| `discover_ui_surface` | Semantic element map for one page |
+| `discover_ui_surface_after_login` | Same, with semantic login (+ SSO/MFA) |
+| `discover_ui_workflow` | Multi-page crawl; returns pages + edges + `network_hints`; persists hints cross-run |
+| `discover_and_compare_role_ui_surfaces` | Dual sessions (role A vs B) + named-control diff |
+| `compare_ui_surfaces` | Diff two surface captures manually |
+| `discover_product_context` | Knowledge Store discovery by objective |
+
+### Test design & execution
+
+| Tool | Purpose |
+|------|---------|
 | `generate_test_cases` | SPEC-207 variants from AC + UI map |
-| `execute_generated_test_case` | Execute one generated TestCase object |
-| `run_auto_qa` | Discover → a11y naming smoke → generate → execute → HTML/JSON report + draft defects + release gate + prior avoidance hints |
-| `assess_ui_accessibility_smoke` | Naming a11y smoke (missing/duplicate names) — not full WCAG; also embedded in `run_auto_qa` |
+| `execute_generated_test_case` | Execute one test case (Playwright) |
+| `generate_journey_test_cases` | E2E click journeys from workflow edges |
 | `generate_exploratory_charter` | Time-boxed exploratory charter from a surface |
-| `execute_exploratory_session` | Phase 9: capture + auto oracles + optional bounded live probes (≤2 clicks; not free explore) + multi-browser compare |
-| `assess_defect_quality` | SPEC-211 defect-document quality review |
-| `draft_defects_from_qa_run` | SPEC-211 draft defects from failed/flaky outcomes (standalone) |
-| `assess_execution_record_quality` | SPEC-210 ExecutionRecord document quality |
-| `execute_browser_test` | **DEMO ONLY** seeded plans (`TC-DEMO-001` / `TC-DEMO-002`) — not for real targets |
-| `register_workspace_secret` | Phase 6: register Workspace secret (value never listed back) |
-| `list_workspace_secrets` | Phase 6: list secret refs/metadata only |
-| `assess_business_analysis_quality` | Phase 7 / SPEC-204: Workflow document quality |
-| `assess_risk_quality` | Phase 7 / SPEC-205: Risk document quality |
-| `assess_test_strategy_quality` | Phase 7 / SPEC-206: Test Strategy document quality |
-| `assess_test_case_quality` | Phase 7 / SPEC-207: Test Case document quality |
-| `assess_test_dataset_quality` | Phase 7 / SPEC-208: Test Dataset document quality |
-| `assess_automation_asset_quality` | Phase 7 / SPEC-209: Automation Asset document quality |
-| `assess_report_quality` | Phase 7 / SPEC-212: Report document quality |
-| `execute_api_smoke` | Phase 8: HTTP API smoke/contract (status/body/header); infra ≠ product fail |
-| `run_depth_smokes` | Phase 10: a11y WCAG-subset + perf threshold + security heuristics (`has_critical`) |
-| `list_failure_avoidance_hints` | Phase 11: Session Memory `avoid:*` hints from prior `run_auto_qa` drafts |
-| `register_workspace_environment` | SPEC-512 §12: register allowlisted target `environment:…` + `base_url` |
-| `list_workspace_environments` | List registered target environments |
-| `generate_business_analysis_stub` | SPEC-204: Workflow stub from UI map / URL |
-| `generate_risk_stub` | SPEC-205: Risk stubs from UI map / URL |
-| `generate_test_strategy_stub` | SPEC-206: Test Strategy **stub** from UI map (heuristic — not a professional strategy) |
-| `file_defects_to_tracker` | Optional Jira/Linear/webhook filing (dry-run default; `confirm_file=true` to POST) |
-| `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
-| `register_test_dataset` / `list_test_datasets` / `resolve_test_dataset_fields` | SPEC-208: synthetic field_samples + resolve fills (no secrets) |
-| `create_automation_asset` | SPEC-209: AutomationAsset stub → `.qa-automation-assets/`; default bind `mcp:run_regression_suite` |
-| `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
-| `compare_ui_surfaces` | Role/permission thin: diff two UI maps (admin vs viewer) |
-| `register_requirement` / `list_requirements` | SPEC-202 ingest real Requirements for generate/run_auto_qa |
-| `discover_ui_workflow` | Multi-page crawl (pages + edges + optional network_hints) |
-| `register_regression_suite` / `list_regression_suites` / `run_regression_suite` | Persist + re-run packs; run returns defects + release gate; subset via case_ids |
-| `discover_and_compare_role_ui_surfaces` | Dual after-login sessions + named-control diff |
-| `generate_api_smoke_from_openapi` | OpenAPI 3 → ApiSmokeCase[] (status; optional authz negatives) |
-| `generate_journey_test_cases` | E2E click journeys from `discover_ui_workflow` edges (+ optional `expected_network`) |
-| `export_defects_for_tracker` | Markdown/Jira text + evidence pack (no tracker API call) |
+| `execute_exploratory_session` | Bounded live probes + multi-browser compare |
+| `run_depth_smokes` | a11y WCAG-subset + perf threshold + security heuristics |
+
+### API testing
+
+| Tool | Purpose |
+|------|---------|
+| `generate_api_smoke_from_openapi` | OpenAPI 3 → smoke cases (+ authz negatives) |
+| `execute_api_smoke` | HTTP smoke/contract (status/body/header checks) |
+
+### Defects & reporting
+
+| Tool | Purpose |
+|------|---------|
+| `assess_ui_accessibility_smoke` | Naming a11y smoke (unlabeled/duplicate) — not full WCAG |
+| `draft_defects_from_qa_run` | SPEC-211 draft from failed/flaky runs |
+| `assess_defect_quality` | SPEC-211 defect document quality review |
+| `export_defects_for_tracker` | Markdown/Jira text + evidence pack + `quality_warnings` pre-check |
+| `file_defects_to_tracker` | Optional live filing (dry-run default; `confirm_file=true` to POST) |
+
+### Baselines & learning
+
+| Tool | Purpose |
+|------|---------|
 | `capture_ui_baseline` / `compare_ui_baseline` | Exact PNG hash+dims under `.qa-baselines/` (observation only) |
-| `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` | Named-control drift vs `.qa-surface-baselines/` |
-| `list_learning_candidates` | Read Learning candidates (never auto-promotes); durable under `.qa-learning-candidates/` |
-| *(fail evidence)* | Screenshots + Playwright traces under `.qa-screenshots/` / `.qa-traces/` (fail-only) |
+| `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` | Named-control drift under `.qa-surface-baselines/` |
+| `list_failure_avoidance_hints` | Session Memory `avoid:*` hints from prior runs (durable) |
+| `list_learning_candidates` | Learning candidates raised by recurrence (never auto-promotes) |
+| `raise_mistake_recurrence_candidate` | Manually flag a recurring mistake |
 
-**Release posture:** `0.1.0-dev` host packages are the supported **development release**.
-Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate record under `governance/reviews/`.
+### Setup & credentials
 
-Prefer `password_secret_ref` / `field_secret_refs` after `register_workspace_secret` (demo seed: `workspace-secret:demo-password`).
-Prefer `environment_ref` after `register_workspace_environment` (demo seeds: `environment:dev-fixture-page` / `environment:dev-fixture-login`). Non-loopback http(s) URLs must match the allowlist; `data:` and loopback remain fixture escapes.
-For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`. On AC, set `expected_url_includes` / `expected_title_includes` / `expected_network` — generator copies them onto the positive `generated_assertion` (xhr/fetch url+status+body snippet after UI submit).
+| Tool | Purpose |
+|------|---------|
+| `register_workspace_environment` | Register allowlisted target (`environment:…` + `base_url`) |
+| `list_workspace_environments` | List registered environments |
+| `register_workspace_secret` | Register secret (value never listed back) |
+| `list_workspace_secrets` | List secret refs/metadata only |
+| `register_requirement` / `list_requirements` | Ingest real requirements for generate/run_auto_qa |
+| `register_test_dataset` / `list_test_datasets` / `resolve_test_dataset_fields` | Synthetic field samples + resolve fills |
+| `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
+| `create_automation_asset` | AutomationAsset stub → `.qa-automation-assets/` |
 
-Host Skills: `claude-code/skills/dev` (code-first) and `claude-code/skills/test`
-(UI/spec-first Senior QA workflow). Run `npm run mcp:dev` or `npm run mcp:remote`
-after clone.
+### Document assessors (Phase 7)
+
+| Tool | Purpose |
+|------|---------|
+| `assess_requirement_quality` | SPEC-203/202 requirement review |
+| `assess_business_analysis_quality` | SPEC-204 BA document review |
+| `assess_risk_quality` | SPEC-205 Risk document review |
+| `assess_test_strategy_quality` | SPEC-206 Test Strategy review |
+| `assess_test_case_quality` | SPEC-207 Test Case review |
+| `assess_test_dataset_quality` | SPEC-208 Test Dataset review |
+| `assess_automation_asset_quality` | SPEC-209 Automation Asset review |
+| `assess_report_quality` | SPEC-212 Report review |
+| `assess_execution_record_quality` | SPEC-210 Execution Record review |
+
+### Stub generators
+
+| Tool | Purpose |
+|------|---------|
+| `generate_business_analysis_stub` | Heuristic BA stub from UI map — not a professional document |
+| `generate_risk_stub` | Heuristic risk stubs from UI map |
+| `generate_test_strategy_stub` | Heuristic strategy stub from UI map |
+
+### Demo only
+
+| Tool | Purpose |
+|------|---------|
+| `execute_browser_test` | **DEMO ONLY** — seeded plans `TC-DEMO-001`/`TC-DEMO-002` |
+| `evaluate_test_case_quality_skill` | SPEC-213 dogfood evaluation |
+
+---
+
+## Durable state (survives MCP restart)
+
+| Directory | Contents |
+|-----------|----------|
+| `.qa-baselines/` | PNG visual baselines |
+| `.qa-surface-baselines/` | UI surface baselines |
+| `.qa-traces/` | Playwright fail-only trace zips (open with `npx playwright show-trace`) |
+| `.qa-screenshots/` | Failure screenshots |
+| `.qa-avoidance-hints/` | Durable `avoid:*` session memory entries |
+| `.qa-learning-candidates/` | Learning candidates raised by recurrence |
+| `.qa-mistake-occurrences/` | Mistake occurrence counts |
+| `.qa-regression-suites/` | Persisted regression suites |
+| `.qa-knowledge/` | Durable knowledge records |
+| `.qa-automation-assets/` | Automation asset stubs |
+| `.qa-test-datasets/` | Test dataset registry |
+| `.qa-credentials/` | Workspace credential registry |
+
+---
+
+## Tips
+
+- **Credentials:** always `register_workspace_secret` first, then use `password_secret_ref` / `field_secret_refs` — never plain passwords in tool input.
+- **Environments:** non-loopback URLs need `register_workspace_environment` first.
+- **API testing:** use `bearer_token_secret_ref` / `basic_auth_password_secret_ref` on `execute_api_smoke`.
+- **Oracles:** set `expected_url_includes` / `expected_title_includes` / `expected_network` on AC — generator copies them onto the positive `generated_assertion`.
+- **Trace debugging:** `npx playwright show-trace .qa-traces/<file>.zip`

@@ -336,6 +336,48 @@ precisely so the system never claims false confidence).
 
 ---
 
+---
+
+## Expert QA Upgrade — Post Phase 11
+
+**Status: done (2026-08-11).** Elevates the agent from "runs a script" to "thinks like a Senior/Expert QA". These changes are additive to existing phases — no phase was broken or removed.
+
+### Group A — Thinking layer
+
+- **A1:** Rewrote `test/SKILL.md` + `dev/SKILL.md` — risk-first triage, 3 strategies (Full/Regression/Exploratory), 5 pre-task assessment questions, tool map by purpose. No more step-by-step checklist.
+- **A2:** `run_auto_qa` output includes `coverage_gaps` — explicitly states what was NOT tested (not-executed cases, unbindable AC, unlabeled fields, scope limits). Expert QA rule: never claim pass by silence.
+- **A3:** `run_auto_qa` output includes `smart_retest_suggestion` — exact `case_ids`/`related_defect_ids` for targeted retest after a fix. Never re-run full suite when only subset failed.
+
+### Group B — Evidence & feedback quality
+
+- **B1:** HTML report renders trace `.zip` as clickable link with `npx playwright show-trace` hint.
+- **B2:** `discover_ui_workflow` persists `network_hints` to `SessionMemory` cross-run; subsequent runs expose `prior_network_hints` for AC authoring without re-discovering.
+- **B3:** `export_defects_for_tracker` includes `quality_warnings` pre-export gate — flags `confirmed_cause` set (pipeline never confirms cause), no evidence, non-draft status.
+
+### Group C — Multi-host coverage
+
+- **C1+C2:** Added `hosts/cursor/skills/` and `hosts/codex/skills/` with `test/SKILL.md` + `dev/SKILL.md` for each.
+
+### Current state (as of 2026-08-11)
+
+The MCP server covers the full expert QA loop end-to-end:
+- UI discovery (single page, multi-page workflow, dual-role comparison)
+- Risk-based test design (positive/negative/boundary/adversarial variants)
+- Execution with Playwright (flake detection, screenshots, trace-on-fail)
+- API contract testing (OpenAPI → smoke + authz negatives)
+- Defect drafting with evidence (no fabricated root cause)
+- Release gate (do_not_release / changes_required / recommend_release)
+- Coverage gap reporting (explicit — never silent)
+- Smart retest suggestions (targeted subset, not full suite)
+- Durable learning (avoidance hints, candidates, mistake occurrences across restarts)
+- Visual/surface baselines for regression comparison
+- Quality gates on documents (BA, risk, strategy, test case, dataset, automation, report)
+- Multi-host Skills (Claude Code, Cursor, Codex)
+
+**What remains blocked:** production deployment (GOV-012 G2–G6), real OIDC IdP (ADR-014), Vault/KMS, axe-core full WCAG, load testing, pen-testing.
+
+---
+
 ## Sequencing notes for whoever picks this up next
 
 - **Pro-tester follow-up (2026-08-10):** requirement ingest, `discover_ui_workflow`, regression suites, OpenAPI→API smoke, defect tracker export text, UI surface compare, URL/title oracles — still Explicitly not: SSO/MFA, axe-core full, load/pen-test, Jira API filing, Vault, GOV-012 production.
