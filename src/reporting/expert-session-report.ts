@@ -6,6 +6,7 @@
 import type { JsonObject } from "../requirement-review/public.js";
 import type { AcQualityReview } from "./ac-quality-review.js";
 import type { DomainPackGateInput } from "./expert-checklist.js";
+import type { ExpertJudgment } from "./expert-judgment.js";
 import type { ExpertRiskMatrix } from "./expert-risk-matrix.js";
 import type { ExpertMandateBlocker, ExpertRiskSignals, ExpertHookCoverage } from "./expert-risk-signals.js";
 import type { QaRunReport } from "./qa-run-report.js";
@@ -26,6 +27,7 @@ export type ExpertSessionReportInput = Readonly<{
   risk_matrix?: ExpertRiskMatrix;
   ac_quality?: AcQualityReview;
   git_blast_radius?: GitBlastRadius;
+  judgment?: ExpertJudgment;
   extension_execution?: Readonly<{
     skipped: boolean;
     api_ran: boolean;
@@ -60,9 +62,11 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     ? `Gate ${gate} — automation green with gaps recorded (human sign-off still required)`
     : `Gate ${gate} — NOT ready to claim pass (${input.blockers.length} blocker(s))`;
 
-  const verdict_paragraph = input.claim_pass_allowed
-    ? `As a Senior Expert Tester I would say: the scoped UI/AC automation gate is green (${report.summary.passed} passed, 0 fail/flaky/not_executed). I still would not personally sign a release without human product owner confirmation — novel domain, pen-test, and business judgment are outside this run.`
-    : `As a Senior Expert Tester I would refuse a pass claim. Gate is "${gate}". Blockers: ${input.blockers.slice(0, 8).join("; ")}${input.blockers.length > 8 ? "…" : ""}. Lead with this gate — never with a pass-count.`;
+  const verdict_paragraph = input.judgment?.senior_verdict_line
+    ? input.judgment.senior_verdict_line
+    : input.claim_pass_allowed
+      ? `As a Senior Expert Tester I would say: the scoped UI/AC automation gate is green (${report.summary.passed} passed, 0 fail/flaky/not_executed). I still would not personally sign a release without human product owner confirmation — novel domain, pen-test, and business judgment are outside this run.`
+      : `As a Senior Expert Tester I would refuse a pass claim. Gate is "${gate}". Blockers: ${input.blockers.slice(0, 8).join("; ")}${input.blockers.length > 8 ? "…" : ""}. Lead with this gate — never with a pass-count.`;
 
   const critical_findings: string[] = [];
   for (const defect of report.draft_defects.slice(0, 8)) {
@@ -185,6 +189,16 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
   } else {
     next_actions.push("Automation gate green — still request human release_signoff before ship language.");
   }
+  if (input.judgment?.stopping.continue_with) {
+    for (const step of input.judgment.stopping.continue_with.slice(0, 5)) {
+      if (!next_actions.includes(step)) next_actions.push(step);
+    }
+  }
+  if (input.judgment?.next_exploratory_charter) {
+    next_actions.push(
+      `Follow-up exploratory (${input.judgment.next_exploratory_charter.time_box_minutes}m): ${input.judgment.next_exploratory_charter.objective}`,
+    );
+  }
   if (next_actions.length === 0) {
     next_actions.push("No urgent automation follow-ups; keep suite_id for future regression.");
   }
@@ -220,6 +234,55 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
           ...input.ac_quality.findings.map((f) => `- [${f.severity}] ${f.message}`),
         ];
 
+  const judgmentMd =
+    input.judgment === undefined
+      ? []
+      : [
+          "",
+          `## Session charter`,
+          "",
+          `**Mission:** ${input.judgment.charter.mission}`,
+          "",
+          `Time-box mindset: ~${input.judgment.charter.time_box_mindset_minutes} minutes.`,
+          "",
+          "In scope:",
+          ...input.judgment.charter.in_scope.map((line) => `- ${line}`),
+          "",
+          "Out of scope:",
+          ...input.judgment.charter.out_of_scope.map((line) => `- ${line}`),
+          "",
+          `## Confidence`,
+          "",
+          `- Band: **${input.judgment.confidence.band}** (${input.judgment.confidence.score_0_to_100}/100)`,
+          ...input.judgment.confidence.reasons.map((r) => `- ${r}`),
+          "",
+          `## Stopping rule`,
+          "",
+          `- ${input.judgment.stopping.reason}`,
+          `- stop_automation_loop=${input.judgment.stopping.stop_automation_loop}; diminishing_returns=${input.judgment.stopping.diminishing_returns}`,
+          "",
+          `## Oracle strength`,
+          "",
+          ...input.judgment.oracle_strength.rows.map(
+            (r) => `- ${r.ac_id}: **${r.strength}** — ${r.reasons.join("; ")}`,
+          ),
+        ];
+
+  const nextExploratoryMd =
+    input.judgment?.next_exploratory_charter === undefined || input.judgment.next_exploratory_charter === null
+      ? []
+      : [
+          "",
+          `## Next exploratory charter`,
+          "",
+          `**${input.judgment.next_exploratory_charter.title}** (${input.judgment.next_exploratory_charter.time_box_minutes}m)`,
+          "",
+          input.judgment.next_exploratory_charter.objective,
+          "",
+          "Focus:",
+          ...input.judgment.next_exploratory_charter.focus_areas.map((f) => `- ${f}`),
+        ];
+
   const markdown = [
     `# Expert Tester session — ${report.target_url}`,
     "",
@@ -242,6 +305,8 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     ...what_was_not_tested.map((line) => `- ${line}`),
     ...riskMatrixMd,
     ...acMd,
+    ...judgmentMd,
+    ...nextExploratoryMd,
     "",
     `## Next actions`,
     "",

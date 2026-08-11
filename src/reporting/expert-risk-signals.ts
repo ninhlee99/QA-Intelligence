@@ -145,6 +145,7 @@ export function buildExpertObservations(input: {
   mandate_blockers: readonly ExpertMandateBlocker[];
   summary: Readonly<{ passed: number; failed: number; flaky: number; not_executed: number }>;
   release_recommendation: string;
+  extension_executed?: Readonly<{ api_ran: boolean; journey_ran: boolean }>;
 }): JsonObject {
   const observations: string[] = [];
   observations.push(
@@ -157,7 +158,16 @@ export function buildExpertObservations(input: {
   }
   if (input.coverage.role_compare_ran) observations.push("Role surface compare ran (named-control diff only).");
   if (input.coverage.openapi_cases_added) observations.push("OpenAPI smoke cases merged into suite.");
-  if (input.coverage.journey_cases_added) observations.push("Workflow journey cases merged into suite (not executed this pass).");
+  if (input.coverage.journey_cases_added) {
+    observations.push(
+      input.extension_executed?.journey_ran
+        ? "Workflow journey cases merged and a capped subset executed this pass."
+        : "Workflow journey cases merged into suite (execution deferred or skipped this pass).",
+    );
+  }
+  if (input.extension_executed?.api_ran) {
+    observations.push("API smoke capped subset executed this Expert pass.");
+  }
   if (input.coverage.any_expected_network_on_ac) observations.push("At least one AC carries expected_network UI→API oracle.");
   for (const blocker of input.mandate_blockers) {
     observations.push(`UNTESTED like a human Expert would flag: ${blocker.message}`);

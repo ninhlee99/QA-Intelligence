@@ -1737,6 +1737,12 @@ export function buildDevFixture(options: {
             type: "number",
             description: "Cap journey browser cases executed this pass (default 3, max 8).",
           },
+          risk_waives: {
+            type: "array",
+            description:
+              "Optional structured waives: [{risk_id, reason_code, rationale≥12 chars}]. Recorded in expert_judgment.waives — never silent.",
+            items: { type: "object" },
+          },
           product_root: {
             type: "string",
             description:
@@ -1796,6 +1802,7 @@ export function buildDevFixture(options: {
             typeof args["max_extension_api"] === "number" ? args["max_extension_api"] : undefined,
           max_extension_browser:
             typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
+          risk_waives: (args["risk_waives"] as JsonValue | undefined) ?? [],
           product_root: (args["product_root"] as string | undefined) ?? "",
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
@@ -1877,6 +1884,7 @@ export function buildDevFixture(options: {
           api_base_url: { type: "string" },
           max_extension_api: { type: "number" },
           max_extension_browser: { type: "number" },
+          risk_waives: { type: "array", items: { type: "object" } },
           acknowledge_domain_pack_absent: { type: "boolean" },
           domain_high_risk_confirmed: { type: "boolean" },
         },
@@ -1929,6 +1937,7 @@ export function buildDevFixture(options: {
             typeof args["max_extension_api"] === "number" ? args["max_extension_api"] : undefined,
           max_extension_browser:
             typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
+          risk_waives: (args["risk_waives"] as JsonValue | undefined) ?? [],
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
         }),

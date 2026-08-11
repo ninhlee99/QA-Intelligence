@@ -38,6 +38,11 @@ import {
   reviewAcceptanceCriteriaQuality,
 } from "../reporting/ac-quality-review.js";
 import {
+  buildExpertJudgment,
+  expertJudgmentJson,
+  oracleStrengthPassBlockers,
+} from "../reporting/expert-judgment.js";
+import {
   draftExpertSessionReport,
   expertSessionReportJson,
 } from "../reporting/expert-session-report.js";
@@ -418,9 +423,30 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     });
     const productRoot = readOptionalString(input.start_request.input["product_root"]);
     const gitBlast = await assessGitBlastRadius(productRoot);
+    const declaredWaives = readDeclaredWaives(input.start_request.input["risk_waives"]);
+    const oraclePreview = buildExpertJudgment({
+      report,
+      risk_signals: riskSignals,
+      hook_coverage: hookCoverage,
+      mandate_blockers: mandateBlockers,
+      risk_matrix: riskMatrix,
+      ac_quality: acQuality,
+      acceptance_criteria: acceptanceCriteria,
+      domain_pack: domainPack,
+      git_blast_radius: gitBlast,
+      claim_pass_allowed: false,
+      extension_execution: {
+        api_ran: extensionExec.api_ran,
+        journey_ran: extensionExec.journey_ran,
+        api_attempted: extensionExec.api_attempted,
+        journey_attempted: extensionExec.journey_attempted,
+      },
+      ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
+    });
     const extraPassBlockers = [
       ...riskMatrixPassBlockers(riskMatrix),
       ...acQualityPassBlockers(acQuality),
+      ...oracleStrengthPassBlockers(oraclePreview),
     ];
     const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
     const gapExtras: CoverageGapExtras = {
@@ -433,6 +459,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       stateful_lifecycle_uncovered: true,
       git_blast_radius: gitBlast,
       ac_quality_high_count: acQuality.findings.filter((f) => f.severity === "high").length,
+      oracle_none_count: oraclePreview.oracle_strength.rows.filter((r) => r.strength === "none").length,
     };
     const gaps = deriveCoverageGaps(report, gapExtras);
     const retest = deriveSmartRetestSuggestion(report);
@@ -449,9 +476,29 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       String(retest["action"] ?? "unknown"),
       checklistOptions,
     );
+    const claimPass = expertChecklist["claim_pass_allowed"] === true;
+    const judgment = buildExpertJudgment({
+      report,
+      risk_signals: riskSignals,
+      hook_coverage: hookCoverage,
+      mandate_blockers: mandateBlockers,
+      risk_matrix: riskMatrix,
+      ac_quality: acQuality,
+      acceptance_criteria: acceptanceCriteria,
+      domain_pack: domainPack,
+      git_blast_radius: gitBlast,
+      claim_pass_allowed: claimPass,
+      extension_execution: {
+        api_ran: extensionExec.api_ran,
+        journey_ran: extensionExec.journey_ran,
+        api_attempted: extensionExec.api_attempted,
+        journey_attempted: extensionExec.journey_attempted,
+      },
+      ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
+    });
     const sessionReport = draftExpertSessionReport({
       report,
-      claim_pass_allowed: expertChecklist["claim_pass_allowed"] === true,
+      claim_pass_allowed: claimPass,
       blockers: Array.isArray(expertChecklist["blockers"])
         ? (expertChecklist["blockers"] as unknown[]).map(String)
         : [],
@@ -464,6 +511,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       risk_matrix: riskMatrix,
       ac_quality: acQuality,
       git_blast_radius: gitBlast,
+      judgment,
       extension_execution: {
         skipped: extensionExec.skipped,
         api_ran: extensionExec.api_ran,
@@ -527,6 +575,10 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       mandate_blockers: mandateBlockers,
       summary: report.summary,
       release_recommendation: report.release_recommendation,
+      extension_executed: {
+        api_ran: extensionExec.api_ran,
+        journey_ran: extensionExec.journey_ran,
+      },
     });
 
     const reportJson = qaRunReportJson(
@@ -548,6 +600,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
           expert_extensions: hooks.extensions,
           expert_observations: expertObservations,
           expert_session_report: expertSessionReportJson(sessionReport),
+          expert_judgment: expertJudgmentJson(judgment),
           expert_risk_matrix: expertRiskMatrixJson(riskMatrix),
           ac_quality_review: {
             schema_version: acQuality.schema_version,
@@ -858,6 +911,7 @@ type CoverageGapExtras = Readonly<{
   stateful_lifecycle_uncovered?: boolean;
   git_blast_radius?: Awaited<ReturnType<typeof assessGitBlastRadius>>;
   ac_quality_high_count?: number;
+  oracle_none_count?: number;
 }>;
 
 /**
@@ -927,6 +981,15 @@ function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): re
       gap: "ac_quality_high",
       count: highCount,
       message: `${highCount} high-severity AC quality finding(s) — Expert pushback required before pass claims.`,
+    });
+  }
+
+  if ((extras?.oracle_none_count ?? 0) > 0) {
+    const noneCount = extras!.oracle_none_count ?? 0;
+    gaps.push({
+      gap: "oracle_strength_none",
+      count: noneCount,
+      message: `${noneCount} AC have no executable oracle — Senior Expert refuses unverifiable pass.`,
     });
   }
 
@@ -1010,4 +1073,22 @@ function mergeExtensionResultsIntoReport(
     release_recommendation: analysis.release_recommendation,
     release_recommendation_rationale: analysis.release_recommendation_rationale,
   };
+}
+
+function readDeclaredWaives(
+  value: JsonValue | undefined,
+): readonly Readonly<{ risk_id: string; reason_code: string; rationale: string }>[] {
+  if (!Array.isArray(value)) return [];
+  const out: Array<{ risk_id: string; reason_code: string; rationale: string }> = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const obj = entry as JsonObject;
+    const risk_id = typeof obj["risk_id"] === "string" ? obj["risk_id"].trim() : "";
+    const reason_code = typeof obj["reason_code"] === "string" ? obj["reason_code"].trim() : "";
+    const rationale = typeof obj["rationale"] === "string" ? obj["rationale"].trim() : "";
+    if (risk_id && reason_code && rationale.length >= 12) {
+      out.push({ risk_id, reason_code, rationale });
+    }
+  }
+  return out;
 }

@@ -145,14 +145,21 @@ function profileFor(result: QaRunTestCaseResult): SeverityProfile {
         suspected_cause: "Encoding mishandling or overly strict charset validation.",
       };
     case "positive":
-    default:
+    default: {
+      const isApi = result.variant === "api_smoke";
+      const isJourney = result.variant === "journey";
       return {
         severity: "high",
-        priority: "p1",
+        priority: isApi ? "p0" : "p1",
         classification: "product_defect",
-        severity_rationale: "Happy-path assertion failed against stated acceptance authority.",
+        severity_rationale: isApi
+          ? "API smoke failed — UI may look fine while contract/authz is broken."
+          : isJourney
+            ? "Multi-page journey failed — hop/state loss likely user-visible."
+            : "Happy-path assertion failed against stated acceptance authority.",
         suspected_cause: "Regression against the acceptance criterion, or environment/data mismatch.",
       };
+    }
   }
 }
 
@@ -165,11 +172,13 @@ function summarize(result: QaRunTestCaseResult): string {
 
 function observed(result: QaRunTestCaseResult): string {
   const evidenceBit = evidenceSummary(result);
+  const impact = impactIfShipped(result);
   if (result.outcome === "flaky") {
     return [
       `Case ${result.test_case_id} (${result.variant}) flipped pass/fail across flake trials.`,
       `What the tester intended to verify: ${result.purpose}`,
       `Evidence anchors: ${evidenceBit}`,
+      `Impact if ignored: ${impact}`,
       "Senior note: do not mark as confirmed product defect until a stable reproduction exists.",
     ].join(" ");
   }
@@ -177,6 +186,7 @@ function observed(result: QaRunTestCaseResult): string {
     `Case ${result.test_case_id} (${result.variant}) failed its executable assertion.`,
     `What the tester intended to verify: ${result.purpose}`,
     `Evidence anchors: ${evidenceBit}`,
+    `Impact if shipped as-is: ${impact}`,
     "Senior note: suspected_cause below is a hypothesis only — confirmed_cause stays unset.",
   ].join(" ");
 }
@@ -187,6 +197,29 @@ function expected(result: QaRunTestCaseResult): string {
     `Purpose under test: ${result.purpose}`,
     "If the AC itself is wrong, update the requirement — do not silently reinterpret the failure as pass.",
   ].join(" ");
+}
+
+function impactIfShipped(result: QaRunTestCaseResult): string {
+  switch (result.variant) {
+    case "adversarial":
+      return "Security exposure may reach production users; block release until triaged.";
+    case "boundary":
+      return "Edge users or oversized payloads may corrupt state or crash a path.";
+    case "negative":
+    case "empty":
+    case "whitespace":
+    case "type_confusion":
+      return "Invalid data may be accepted — data integrity / downstream failures.";
+    case "api_smoke":
+      return "API contract or authz may be wrong while UI looks fine.";
+    case "journey":
+      return "Multi-step workflow may strand users mid-flow with lost state.";
+    case "flaky":
+      return "Intermittent production pain; trust in the suite erodes.";
+    case "positive":
+    default:
+      return "Stated happy-path behavior may be broken for real users on this screen.";
+  }
 }
 
 function evidenceSummary(result: QaRunTestCaseResult): string {

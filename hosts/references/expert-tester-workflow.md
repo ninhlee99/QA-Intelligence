@@ -120,7 +120,9 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 | UI layout regression concern | `compare_ui_baseline` and/or `compare_ui_surface_to_baseline` |
 | Security-sensitive surface | Consider `run_depth_smokes`; never claim pen-test |
 | Code change in product_root | Read `git_blast_radius` in output — aim retest; filenames ≠ oracles |
-| Vague / oracle-less AC | Read `ac_quality_review` — push back; high findings block pass |
+| Vague / oracle-less AC | Read `ac_quality_review` + `expert_judgment.oracle_strength` — push back; none-oracle blocks pass |
+| End of session | Honor `expert_judgment.stopping` + paste `next_exploratory_charter` when present |
+| Residual risk accept | Only via `risk_waives[{risk_id,reason_code,rationale}]` — never silent waive |
 
 Skip only with explicit reason in G6.
 

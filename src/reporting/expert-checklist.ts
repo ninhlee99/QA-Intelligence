@@ -56,6 +56,7 @@ const PASS_BLOCKING_PREFIXES = [
   "e2_",
   "risk_matrix_",
   "ac_quality:",
+  "oracle_weak:",
 ] as const;
 
 export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
@@ -168,6 +169,11 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
   if (blockers.some((b) => b.startsWith("ac_quality:"))) {
     host_actions.unshift(
       "AC quality findings are high — push back on vague/missing-oracle criteria before claiming pass.",
+    );
+  }
+  if (blockers.some((b) => b.startsWith("oracle_weak:"))) {
+    host_actions.unshift(
+      "One or more AC have no executable oracle — Expert refuses unverifiable pass; add expected_text/url/title/network.",
     );
   }
   if (input.smart_retest_action === "targeted_retest") {
