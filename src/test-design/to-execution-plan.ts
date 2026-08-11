@@ -15,6 +15,7 @@ import type {
   PlaywrightExecutionPlan,
   PlaywrightInteractionStep,
 } from "../adapters/playwright/playwright-execution-engine.js";
+import { networkOracleSatisfied } from "../adapters/playwright/network-oracle.js";
 import type { CleanedDomNode } from "../dom-cleaner/public.js";
 import type { TestCase, TestCaseGeneratedAssertion } from "./public.js";
 
@@ -132,6 +133,7 @@ export function testCaseToExecutionPlan(
 
   const expectedUrl = assertion.expected_url_includes;
   const expectedTitle = assertion.expected_title_includes;
+  const expectedNetwork = assertion.expected_network;
 
   if (assertion.expected_text !== undefined) {
     const expectedText = assertion.expected_text;
@@ -141,7 +143,9 @@ export function testCaseToExecutionPlan(
         url,
         steps,
         assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
-          hasText(cleaned, expectedText) && urlTitleOk(context, expectedUrl, expectedTitle),
+          hasText(cleaned, expectedText) &&
+          urlTitleOk(context, expectedUrl, expectedTitle) &&
+          networkOk(context, expectedNetwork),
       },
     };
   }
@@ -156,9 +160,18 @@ export function testCaseToExecutionPlan(
       assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
         forbidden.every((text) => !hasText(cleaned, text)) &&
         (!expectNoDialog || !context.dialog_triggered) &&
-        urlTitleOk(context, expectedUrl, expectedTitle),
+        urlTitleOk(context, expectedUrl, expectedTitle) &&
+        networkOk(context, expectedNetwork),
     },
   };
+}
+
+function networkOk(
+  context: PlaywrightAssertContext,
+  expected: TestCaseGeneratedAssertion["expected_network"],
+): boolean {
+  if (expected === undefined) return true;
+  return networkOracleSatisfied(context.network, expected);
 }
 
 function urlTitleOk(

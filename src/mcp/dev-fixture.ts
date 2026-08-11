@@ -1400,7 +1400,7 @@ export function buildDevFixture(options: {
     {
       name: "execute_generated_test_case",
       description:
-        "Closes the generate->execute loop: takes the exact test_case and generated_assertion objects a prior generate_test_cases call returned and runs them via ExecuteBrowserTest (flake-aware). Prefer field_secret_refs (Phase 6) over putting passwords in field_values.",
+        "Closes the generate->execute loop: takes the exact test_case and generated_assertion objects a prior generate_test_cases call returned and runs them via ExecuteBrowserTest (flake-aware). Prefer field_secret_refs (Phase 6) over putting passwords in field_values. Assertion may include expected_network (xhr/fetch url_includes + optional method/status/body_includes) to couple UI submit→API in the same run.",
       inputSchema: {
         type: "object",
         properties: {

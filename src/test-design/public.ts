@@ -172,6 +172,16 @@ export type TestCaseGeneratedAssertion = Readonly<{
   expected_url_includes?: string;
   /** Document title must include this substring (richer oracle). */
   expected_title_includes?: string;
+  /**
+   * UI→API coupling: at least one xhr/fetch during the run must match.
+   * Bodies are truncated snippets from the Playwright capture — never invent.
+   */
+  expected_network?: Readonly<{
+    url_includes: string;
+    method?: string;
+    status?: number | readonly number[];
+    body_includes?: string;
+  }>;
 }>;
 
 export type TestCaseGenerationUiElement = Readonly<{

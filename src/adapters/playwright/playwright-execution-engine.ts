@@ -35,6 +35,12 @@ import type {
 } from "../../requirement-review/public.js";
 import { DeterministicDomCleaner } from "../dom-cleaner/deterministic-dom-cleaner.js";
 import { extractRawDom } from "./extract-raw-dom.js";
+import {
+  pushNetworkObservation,
+  readBodySnippet,
+  shouldCaptureNetworkResponse,
+  type PlaywrightNetworkObservation,
+} from "./network-oracle.js";
 
 export interface Clock {
   now(): Date;
@@ -88,6 +94,11 @@ export type PlaywrightAssertContext = Readonly<{
   url: string;
   /** Document title after steps. */
   title: string;
+  /**
+   * xhr/fetch responses observed from navigation through assertion.
+   * Bodies truncated; no request Authorization headers retained.
+   */
+  network: readonly PlaywrightNetworkObservation[];
 }>;
 
 export type PlaywrightExecutionPlan = Readonly<{
@@ -309,6 +320,23 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
           dialogTriggered = true;
           void dialog.dismiss();
         });
+        const networkObservations: PlaywrightNetworkObservation[] = [];
+        const pendingNetworkReads: Promise<void>[] = [];
+        page.on("response", (response) => {
+          const request = response.request();
+          if (!shouldCaptureNetworkResponse(request.resourceType(), response.url())) return;
+          pendingNetworkReads.push(
+            (async () => {
+              const body_snippet = await readBodySnippet(response.headers()["content-type"], () => response.text());
+              pushNetworkObservation(networkObservations, {
+                method: request.method(),
+                url: response.url(),
+                status: response.status(),
+                body_snippet,
+              });
+            })(),
+          );
+        });
         await page.goto(plan.url);
         // See DiscoverUiSurface for why: a single-page app's real content
         // often renders after `load` fires, and Phase 2's interaction
@@ -338,6 +366,10 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             },
           });
         } else {
+          // Let late xhr/fetch start after the last click, then drain body
+          // readers so observations are complete before assert.
+          await page.waitForTimeout(150);
+          await Promise.all(pendingNetworkReads);
           const raw = await extractRawDom(page);
           emit("progress", { stage: "dom_captured" });
 
@@ -377,12 +409,19 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             } else {
               const pageUrl = page.url();
               const pageTitle = await page.title().catch(() => "");
+              const network = Object.freeze([...networkObservations]);
               const passed = plan.assert(cleaned.value.sanitized_tree, {
                 dialog_triggered: dialogTriggered,
                 url: pageUrl,
                 title: pageTitle,
+                network,
               });
-              emit("assertion_result", { passed, dialog_triggered: dialogTriggered, url: pageUrl });
+              emit("assertion_result", {
+                passed,
+                dialog_triggered: dialogTriggered,
+                url: pageUrl,
+                network_count: network.length,
+              });
 
               const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
               if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });
@@ -394,7 +433,11 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                 ok: true,
                 value: {
                   outcome: passed ? "passed" : "failed",
-                  evidence: [cleaned.value.capture_id, ...screenshotEvidence],
+                  evidence: [
+                    cleaned.value.capture_id,
+                    ...screenshotEvidence,
+                    ...(network.length > 0 ? [`network-obs:${network.length}`] : []),
+                  ],
                   assertion_results: [{ assertion: "plan.assert", result: passed ? "pass" : "fail" }],
                   resource_usage: {},
                   timing: {

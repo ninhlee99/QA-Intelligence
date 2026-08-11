@@ -161,7 +161,7 @@ Production enablement remains blocked on GOV-012 G2–G6 (ADR-016 §8). See gate
 
 Prefer `password_secret_ref` / `field_secret_refs` after `register_workspace_secret` (demo seed: `workspace-secret:demo-password`).
 Prefer `environment_ref` after `register_workspace_environment` (demo seeds: `environment:dev-fixture-page` / `environment:dev-fixture-login`). Non-loopback http(s) URLs must match the allowlist; `data:` and loopback remain fixture escapes.
-For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`. Generated assertions may also set `expected_url_includes` / `expected_title_includes`.
+For API smoke prefer `bearer_token_secret_ref` / `basic_auth_password_secret_ref`. Generated assertions may also set `expected_url_includes` / `expected_title_includes` / `expected_network` (xhr/fetch url+status+body snippet after UI submit).
 
 Host Skills: `claude-code/skills/dev` (code-first) and `claude-code/skills/test`
 (UI/spec-first Senior QA workflow). Run `npm run mcp:dev` or `npm run mcp:remote`

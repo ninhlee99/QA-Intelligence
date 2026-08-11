@@ -29,6 +29,8 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
    `expected_text`; accessible names as UI exposes them. Note code↔comment
    conflicts; don't silently pick one. Optional URL/title oracles when
    navigation changes (`expected_url_includes` / `expected_title_includes`).
+   When submit triggers an API, add `expected_network` (`url_includes` +
+   status/`body_includes`) so UI and API are asserted in one run.
 3. **`register_requirement`** with derived AC (scope stays this Workspace).
    Keep the returned `requirement_ref` (`id@version`) for later tools.
 4. **Discover.** `discover_ui_surface` on the local URL. If the change spans
