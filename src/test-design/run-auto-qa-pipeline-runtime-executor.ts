@@ -21,6 +21,11 @@ import { FAILURE_AVOIDANCE_KEY_PREFIX } from "../memory/failure-avoidance-hints-
 import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeline.js";
 import { expertChecklistFromQaRunReport } from "../reporting/expert-checklist.js";
 import { renderQaRunReportHtml, type QaRunReport } from "../reporting/qa-run-report.js";
+import type { DiscoverUiWorkflow } from "../discovery/discover-ui-workflow.js";
+import type { FileBackedRegressionSuiteRegistry } from "./file-backed-regression-suite-registry.js";
+import type { InMemoryRegressionSuiteRegistry, RegressionCase } from "./regression-suite-registry.js";
+import type { GenerateTestCases } from "./generate-test-cases.js";
+import { runExpertHooks } from "./run-auto-qa-expert-hooks.js";
 import type {
   AgentRunExecutor,
   AgentRunExecutorInput,
@@ -28,7 +33,8 @@ import type {
 } from "../runtime/executor.js";
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
-import type { GenerateTestCases } from "./generate-test-cases.js";
+
+type RegressionSuiteRegistry = InMemoryRegressionSuiteRegistry | FileBackedRegressionSuiteRegistry;
 
 export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   clock: { now(): Date };
@@ -45,6 +51,10 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   credentials?: WorkspaceCredentialRegistry;
   /** Phase 11: inject prior failure-avoidance hints into the report output. */
   sessionMemory?: SessionMemory;
+  /** When set, serious runs auto-register a durable regression suite (Expert loop). */
+  regressionRegistry?: RegressionSuiteRegistry;
+  /** Optional: enable include_workflow_journeys hook. */
+  discoverUiWorkflow?: DiscoverUiWorkflow;
 }>;
 
 export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
@@ -233,7 +243,8 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       };
     }
 
-    const html = renderQaRunReportHtml(result.value);
+    const report = result.value.report;
+    const html = renderQaRunReportHtml(report);
     let writtenPath: string | undefined;
     if (outputPath !== undefined) {
       try {
@@ -248,20 +259,95 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       }
     }
 
+    const hooks = await runExpertHooks({
+      operation_id: input.execution.operation_id,
+      workspace_id: input.reference.workspace_id,
+      context: input.execution.workspace_context,
+      target_url: url.trim(),
+      requirement_ref: requirementRef,
+      raw_input: input.start_request.input,
+      ...(loginFields !== undefined
+        ? {
+            login_a: {
+              login_url: loginFields.login_url,
+              username_field_name: loginFields.username_field_name,
+              username: loginFields.username,
+              password_field_name: loginFields.password_field_name,
+              submit_action_name: loginFields.submit_action_name,
+              ...(loginFields.password !== undefined ? { password: loginFields.password } : {}),
+              ...(loginFields.password_secret_ref !== undefined
+                ? { password_secret_ref: loginFields.password_secret_ref }
+                : {}),
+            },
+          }
+        : {}),
+      discoverAfterLogin: this.#dependencies.discoverAfterLogin,
+      ...(this.#dependencies.discoverUiWorkflow !== undefined
+        ? { discoverUiWorkflow: this.#dependencies.discoverUiWorkflow }
+        : {}),
+      ...(this.#dependencies.credentials !== undefined
+        ? { credentials: this.#dependencies.credentials }
+        : {}),
+    });
+
+    const suiteCases: RegressionCase[] = [
+      ...result.value.regression_browser_cases,
+      ...hooks.extra_regression_cases,
+    ];
+
+    const skipAutoSuite = input.start_request.input["auto_register_suite"] === false;
+    let autoSuite:
+      | Readonly<{ suite_id: string; persisted_path?: string; case_count: number; label: string }>
+      | Readonly<{ skipped: true; reason: string }>
+      | undefined;
+    if (!skipAutoSuite && this.#dependencies.regressionRegistry !== undefined) {
+      if (suiteCases.length === 0) {
+        autoSuite = { skipped: true, reason: "no_executable_cases_for_suite" };
+      } else {
+        const label =
+          readOptionalString(input.start_request.input["suite_label"]) ??
+          `auto-qa:${requirementTitle}`.slice(0, 120);
+        const registered = this.#dependencies.regressionRegistry.register({
+          workspace_id: input.reference.workspace_id,
+          label,
+          cases: suiteCases,
+          base_url: url.trim(),
+        });
+        if (registered.ok) {
+          autoSuite = {
+            suite_id: registered.suite.id,
+            case_count: registered.suite.cases.length,
+            label: registered.suite.label,
+            ...("persisted_path" in registered && typeof registered.persisted_path === "string"
+              ? { persisted_path: registered.persisted_path }
+              : {}),
+          };
+        } else {
+          autoSuite = { skipped: true, reason: registered.message };
+        }
+      }
+    } else if (skipAutoSuite) {
+      autoSuite = { skipped: true, reason: "auto_register_suite=false" };
+    } else {
+      autoSuite = { skipped: true, reason: "regression_registry_not_configured" };
+    }
+
     const priorHints =
       this.#dependencies.sessionMemory?.list(input.reference.workspace_id, FAILURE_AVOIDANCE_KEY_PREFIX) ?? [];
 
     const evidence = [
-      `capture:${result.value.discovery_capture_id}`,
-      ...result.value.test_cases.flatMap((testCase) => testCase.evidence),
+      `capture:${report.discovery_capture_id}`,
+      ...report.test_cases.flatMap((testCase) => testCase.evidence),
+      ...(autoSuite && "suite_id" in autoSuite ? [`suite:${autoSuite.suite_id}`] : []),
     ];
 
-    const reportJson = qaRunReportJson(result.value, html, writtenPath);
+    const reportJson = qaRunReportJson(report, html, writtenPath, autoSuite);
     return {
       ok: true,
       value: {
         output: {
           ...reportJson,
+          expert_extensions: hooks.extensions,
           prior_failure_avoidance_hints: priorHints.map((entry) => ({
             key: entry.key,
             causal_mistake: entry.value,
@@ -296,7 +382,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
               : [],
         },
         policy_events: [],
-        usage: { steps: 3, duration_seconds: 0, tool_calls: result.value.test_cases.length + 1, retries: 0 },
+        usage: { steps: 3, duration_seconds: 0, tool_calls: report.test_cases.length + 1, retries: 0 },
         evidence: unique(evidence),
         cleanup_status: "not_required",
         knowledge_candidates: [],
@@ -383,7 +469,18 @@ function readAcceptanceCriteriaArray(value: JsonValue | undefined): readonly Jso
   return objects;
 }
 
-function qaRunReportJson(report: QaRunReport, html: string, writtenPath: string | undefined): JsonObject {
+function qaRunReportJson(
+  report: QaRunReport,
+  html: string,
+  writtenPath: string | undefined,
+  autoSuite:
+    | Readonly<{ suite_id: string; persisted_path?: string; case_count: number; label: string }>
+    | Readonly<{ skipped: true; reason: string }>
+    | undefined,
+): JsonObject {
+  const gaps = deriveCoverageGaps(report);
+  const retest = deriveSmartRetestSuggestion(report);
+  const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
   return {
     schema_version: report.schema_version,
     workspace_id: report.workspace_id,
@@ -454,17 +551,24 @@ function qaRunReportJson(report: QaRunReport, html: string, writtenPath: string 
       message: finding.message,
       evidence: [...finding.evidence],
     })),
-    coverage_gaps: deriveCoverageGaps(report),
-    smart_retest_suggestion: deriveSmartRetestSuggestion(report),
-    expert_checklist: (() => {
-      const gaps = deriveCoverageGaps(report);
-      const retest = deriveSmartRetestSuggestion(report);
-      return expertChecklistFromQaRunReport(
-        report,
-        gaps.length,
-        String(retest["action"] ?? "unknown"),
-      );
-    })(),
+    coverage_gaps: gaps,
+    smart_retest_suggestion: suitePresent
+      ? {
+          ...retest,
+          suite_id: (autoSuite as { suite_id: string }).suite_id,
+          recommended_call: {
+            tool: "run_regression_suite",
+            hint: `Use suite_id ${(autoSuite as { suite_id: string }).suite_id} with case_ids / related_defect_ids from this suggestion.`,
+          },
+        }
+      : retest,
+    auto_registered_suite: autoSuite ?? null,
+    expert_checklist: expertChecklistFromQaRunReport(
+      report,
+      gaps.length,
+      String(retest["action"] ?? "unknown"),
+      suitePresent,
+    ),
     report_html: html,
     report_path: writtenPath ?? null,
   };

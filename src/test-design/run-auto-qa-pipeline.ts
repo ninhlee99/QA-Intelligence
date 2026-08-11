@@ -57,8 +57,14 @@ export type RunAutoQaPipelineFailure = Readonly<{
   evidence: readonly string[];
 }>;
 
+export type RunAutoQaPipelineSuccess = Readonly<{
+  report: QaRunReport;
+  /** Browser cases eligible for durable regression retest (paired assertion required). */
+  regression_browser_cases: readonly import("./regression-suite-registry.js").BrowserRegressionCase[];
+}>;
+
 export type RunAutoQaPipelineResult =
-  | Readonly<{ ok: true; value: QaRunReport }>
+  | Readonly<{ ok: true; value: RunAutoQaPipelineSuccess }>
   | Readonly<{ ok: false; failure: RunAutoQaPipelineFailure }>;
 
 type Dependencies = Readonly<{
@@ -164,7 +170,16 @@ export class RunAutoQaPipeline {
       analysis,
     );
 
-    return { ok: true, value: report };
+    const assertionByCaseId = new Map(
+      generated.value.generated_assertions.map((assertion) => [assertion.test_case_id, assertion] as const),
+    );
+    const regression_browser_cases = generated.value.test_cases.flatMap((testCase) => {
+      const assertion = assertionByCaseId.get(testCase.id);
+      if (assertion === undefined) return [];
+      return [{ kind: "browser" as const, test_case: testCase, generated_assertion: assertion }];
+    });
+
+    return { ok: true, value: { report, regression_browser_cases } };
   }
 
   async #executeOne(

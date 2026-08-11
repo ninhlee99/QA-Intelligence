@@ -72,6 +72,7 @@ const EXPECTED_TOOLS = [
   "generate_test_cases",
   "execute_generated_test_case",
   "run_auto_qa",
+  "bootstrap_domain_pack",
   "assess_ui_accessibility_smoke",
   "generate_exploratory_charter",
   "execute_exploratory_session",

@@ -38,6 +38,7 @@ import { GenerateTestCases } from "../test-design/generate-test-cases.js";
 import { GenerateTestCasesRuntimeExecutor } from "../test-design/runtime-executor.js";
 import { ExecuteGeneratedTestCaseRuntimeExecutor } from "../test-design/execute-generated-test-case-runtime-executor.js";
 import { RunAutoQaPipelineRuntimeExecutor } from "../test-design/run-auto-qa-pipeline-runtime-executor.js";
+import { DomainPackBootstrapRuntimeExecutor } from "../domain-pack/bootstrap-domain-pack-runtime-executor.js";
 import {
   AssessDefectQuality,
   DefectQualityRuleEngine,
@@ -155,6 +156,8 @@ export const EXECUTE_GENERATED_AGENT = { id: "execute-generated-test-case-agent"
 export const EXECUTE_GENERATED_SKILL = { id: "execute-generated-test-case", version: "0.1.0" } as const;
 export const AUTO_QA_AGENT = { id: "auto-qa-pipeline-agent", version: "0.1.0" } as const;
 export const AUTO_QA_SKILL = { id: "run-auto-qa-pipeline", version: "0.1.0" } as const;
+export const DOMAIN_PACK_BOOTSTRAP_AGENT = { id: "domain-pack-bootstrap-agent", version: "0.1.0" } as const;
+export const DOMAIN_PACK_BOOTSTRAP_SKILL = { id: "bootstrap-domain-pack", version: "0.1.0" } as const;
 export const A11Y_SMOKE_AGENT = { id: "ui-accessibility-smoke-agent", version: "0.1.0" } as const;
 export const A11Y_SMOKE_SKILL = { id: "assess-ui-accessibility-smoke", version: "0.1.0" } as const;
 export const EXPLORATORY_AGENT = { id: "exploratory-charter-agent", version: "0.1.0" } as const;
@@ -822,7 +825,16 @@ export function buildDevFixture(options: {
           expected_agent: AUTO_QA_AGENT,
           expected_skill: AUTO_QA_SKILL,
           credentials,
+          regressionRegistry: regressionSuites,
+          discoverUiWorkflow: uiWorkflowSkill,
           ...(sessionMemory !== undefined ? { sessionMemory } : {}),
+        }),
+      ],
+      [
+        DOMAIN_PACK_BOOTSTRAP_AGENT.id,
+        new DomainPackBootstrapRuntimeExecutor({
+          expected_agent: DOMAIN_PACK_BOOTSTRAP_AGENT,
+          expected_skill: DOMAIN_PACK_BOOTSTRAP_SKILL,
         }),
       ],
       [
@@ -1650,6 +1662,37 @@ export function buildDevFixture(options: {
           basic_auth_password_secret_ref: { type: "string" },
           output_path: { type: "string", description: "When given, the self-contained HTML report is also written to this local file path (parent directories are created as needed). Must resolve inside the server's configured output directory — a path that escapes it (e.g. via ../) is rejected." },
           browser: { type: "string", description: "Phase 9: chromium (default) | firefox | webkit for discovery + execution." },
+          auto_register_suite: {
+            type: "boolean",
+            description: "Default true. When false, skip durable suite registration even if registry is configured.",
+          },
+          suite_label: { type: "string", description: "Optional label for the auto-registered regression suite." },
+          openapi: {
+            type: "object",
+            description: "Optional OpenAPI 3 JSON — generates API smoke (+ optional authz negatives) and merges into auto-registered suite.",
+          },
+          openapi_path: {
+            type: "string",
+            description: "Absolute path to OpenAPI 3 JSON file (alternative to openapi object).",
+          },
+          include_authz_negatives: {
+            type: "boolean",
+            description: "With openapi/openapi_path: include authz-negative API smoke cases.",
+          },
+          include_wrong_role_negatives: {
+            type: "boolean",
+            description: "With openapi/openapi_path: include wrong-role API smoke cases.",
+          },
+          role_b: {
+            type: "object",
+            description:
+              "Optional second role for E2 role surface compare (requires login_* as role A). Fields: login_url, username_field_name, username, password_field_name, password|password_secret_ref, submit_action_name, optional target_url/label.",
+          },
+          include_workflow_journeys: {
+            type: "boolean",
+            description:
+              "When true, discover multi-page workflow from url, generate journey cases, merge into auto-registered suite (journeys not executed in this pass).",
+          },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1660,24 +1703,69 @@ export function buildDevFixture(options: {
       allowed_skills: [AUTO_QA_SKILL],
       allowed_tools: [{ id: "playwright-dom-pipeline", version: "0.1.0" }, { id: "playwright-execution-engine", version: "0.1.0" }],
       budgets: { max_steps: 20, max_duration_seconds: 300, max_tool_calls: 30, max_retries: 1 },
-      buildInput: (args) => ({
-        url: (args["url"] as string | undefined) ?? "",
-        requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
-        requirement_title: (args["requirement_title"] as string | undefined) ?? "",
-        acceptance_criteria: (args["acceptance_criteria"] as JsonValue | undefined) ?? [],
-        login_url: (args["login_url"] as string | undefined) ?? "",
-        username_field_name: (args["username_field_name"] as string | undefined) ?? "",
-        username: (args["username"] as string | undefined) ?? "",
-        password_field_name: (args["password_field_name"] as string | undefined) ?? "",
-        password: (args["password"] as string | undefined) ?? "",
-        password_secret_ref: (args["password_secret_ref"] as string | undefined) ?? "",
-        submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
-        basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
-        basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
-        basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
-        output_path: (args["output_path"] as string | undefined) ?? "",
-        browser: (args["browser"] as string | undefined) ?? "",
-      }),
+      buildInput: (args) =>
+        compactMcpInput({
+          url: (args["url"] as string | undefined) ?? "",
+          requirement_ref: (args["requirement_ref"] as string | undefined) ?? "",
+          requirement_title: (args["requirement_title"] as string | undefined) ?? "",
+          acceptance_criteria: (args["acceptance_criteria"] as JsonValue | undefined) ?? [],
+          login_url: (args["login_url"] as string | undefined) ?? "",
+          username_field_name: (args["username_field_name"] as string | undefined) ?? "",
+          username: (args["username"] as string | undefined) ?? "",
+          password_field_name: (args["password_field_name"] as string | undefined) ?? "",
+          password: (args["password"] as string | undefined) ?? "",
+          password_secret_ref: (args["password_secret_ref"] as string | undefined) ?? "",
+          submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
+          basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
+          basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
+          basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
+          output_path: (args["output_path"] as string | undefined) ?? "",
+          browser: (args["browser"] as string | undefined) ?? "",
+          auto_register_suite:
+            typeof args["auto_register_suite"] === "boolean" ? args["auto_register_suite"] : undefined,
+          suite_label: (args["suite_label"] as string | undefined) ?? "",
+          openapi: (args["openapi"] as JsonValue | undefined) ?? {},
+          openapi_path: (args["openapi_path"] as string | undefined) ?? "",
+          include_authz_negatives: args["include_authz_negatives"] === true ? true : undefined,
+          include_wrong_role_negatives: args["include_wrong_role_negatives"] === true ? true : undefined,
+          role_b: (args["role_b"] as JsonValue | undefined) ?? {},
+          include_workflow_journeys: args["include_workflow_journeys"] === true ? true : undefined,
+        }),
+    },
+    {
+      name: "bootstrap_domain_pack",
+      description:
+        "Expert G0d: create or update domain-knowledge/ (or .qa-domain/) under an absolute product_root from hosts/templates/domain-knowledge, seeding stubs from request_context (URL/AC/roles/money keywords). Prefer this over manual cp. Does not overwrite existing template files except additive append to business.md when pack already exists.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          product_root: {
+            type: "string",
+            description: "Absolute path to the product workspace (app under test).",
+          },
+          request_context: {
+            type: "string",
+            description: "URL, AC, ticket text — used to seed INDEX/business/permissions/money stubs.",
+          },
+          pack_dirname: {
+            type: "string",
+            description: "domain-knowledge (default) or .qa-domain",
+          },
+        },
+        required: ["product_root"],
+      },
+      agent: DOMAIN_PACK_BOOTSTRAP_AGENT,
+      purpose: "Bootstrap product domain-knowledge pack",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [DOMAIN_PACK_BOOTSTRAP_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          product_root: (args["product_root"] as string | undefined) ?? "",
+          request_context: (args["request_context"] as string | undefined) ?? "",
+          pack_dirname: (args["pack_dirname"] as string | undefined) ?? "",
+        }),
     },
     {
       name: "assess_ui_accessibility_smoke",

@@ -61,16 +61,15 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
   const host_actions: string[] = [
     "State release_recommendation as the first verdict — never lead with pass-count.",
     "Paste coverage_gaps (and domain risks not tested) into the user-facing result.",
-    "Follow smart_retest_suggestion for targeted retest after fixes.",
+    "Follow smart_retest_suggestion for targeted retest after fixes (suite_id is auto-registered when present).",
     "On next session G0: call list_failure_avoidance_hints (and list_learning_candidates).",
-    "If product repo lacks domain-knowledge/: bootstrap from hosts/templates/domain-knowledge/ using this request (do not ask user to cp).",
-    "If domain-knowledge/ exists: read and additively update from this request before G4.",
+    "Call bootstrap_domain_pack (or Skill auto-write) for product domain-knowledge/ from this request.",
     "Human still required for release sign-off, pen-test, and novel domain without a pack.",
   ];
 
   if (input.context === "run_auto_qa" && input.suite_id_present !== true) {
     host_actions.unshift(
-      "After this run: register_regression_suite so case/screen retest is possible (required for serious Expert runs).",
+      "Suite was not auto-registered — call register_regression_suite or re-run with registry configured.",
     );
   }
 
@@ -106,6 +105,7 @@ export function expertChecklistFromQaRunReport(
   report: QaRunReport,
   coverageGapCount: number,
   smartRetestAction: string,
+  suiteIdPresent = false,
 ): JsonObject {
   return deriveExpertChecklist({
     release_recommendation: report.release_recommendation,
@@ -115,6 +115,7 @@ export function expertChecklistFromQaRunReport(
     draft_defect_count: report.draft_defects.length,
     coverage_gap_count: coverageGapCount,
     smart_retest_action: smartRetestAction,
+    suite_id_present: suiteIdPresent,
     context: "run_auto_qa",
   });
 }

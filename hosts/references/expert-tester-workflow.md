@@ -17,8 +17,8 @@ Agent **MUST NOT** say ready / ship / all good / pass unless **all** true:
 2. `release_recommendation` quoted from MCP (not invented)
 3. `coverage_gaps` stated — including scope NOT covered
 4. Retest plan: follow `smart_retest_suggestion` / `expert_checklist.host_actions`
-5. Serious Strategy A → `suite_id` from `register_regression_suite`
-6. If domain pack exists → G0d completed
+5. Serious Strategy A → `suite_id` from `run_auto_qa.auto_registered_suite` (or `register_regression_suite` if auto-register skipped)
+6. Domain pack → G0d via `bootstrap_domain_pack` (or equivalent write)
 
 If `claim_pass_allowed` is **false** → status = **blocked / incomplete** — list `expert_checklist.blockers`. Never green-wash.
 
@@ -97,11 +97,10 @@ Do **not** treat hints as confirmed cause.
 
 See `hosts/references/domain-pack.md`.
 
-1. Find pack at product workspace: `domain-knowledge/` or `.qa-domain/`
-2. **If missing** → agent creates it from `hosts/templates/domain-knowledge/` into the **product** root and fills stubs from **this request** (URL, AC, roles, money/auth keywords). User does **not** run `cp` manually.
-3. **If present** → read; add new risks from this request if needed (additive)
-4. High-risk tags (`money` | `permission` | `legacy` | `pii`) must appear in G6 as tested or not tested
-5. Ambiguous money/permission TODOs → one short confirm question; do not stall the whole run forever — record as gap if unanswered
+1. Resolve product workspace root (app under test)
+2. Call MCP `bootstrap_domain_pack` with absolute `product_root` + `request_context` (URL/AC/ticket). Prefer tool over manual file copy.
+3. Read returned `pack_path`; high-risk tags (`money` | `permission` | `legacy` | `pii`) must appear in G6 as tested or not tested
+4. Ambiguous money/permission TODOs → one short confirm; record as gap if unanswered
 
 Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 
@@ -111,8 +110,9 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 
 | Signal | MUST |
 |--------|------|
-| ≥2 roles matter | `discover_and_compare_role_ui_surfaces` (or two discovers + compare) — authz gaps in G6 |
-| OpenAPI / HTTP API in scope | `generate_api_smoke_from_openapi` with `include_authz_negatives: true` when protected + `execute_api_smoke` |
+| ≥2 roles matter | Prefer `run_auto_qa` with `role_b` (auto role compare in `expert_extensions`) **or** `discover_and_compare_role_ui_surfaces` — authz gaps in G6 |
+| OpenAPI / HTTP API in scope | Prefer `run_auto_qa` with `openapi`/`openapi_path` + `include_authz_negatives: true` (cases merge into suite) **or** `generate_api_smoke_from_openapi` + `execute_api_smoke` |
+| Multi-page journey | Prefer `run_auto_qa` with `include_workflow_journeys: true` **or** discover_ui_workflow → generate_journey_test_cases |
 | AC has submit→API | Prefer `expected_network` on AC / assertion |
 | UI layout regression concern | `compare_ui_baseline` and/or `compare_ui_surface_to_baseline` |
 | Security-sensitive surface | Consider `run_depth_smokes`; never claim pen-test |
@@ -126,13 +126,12 @@ Skip only with explicit reason in G6.
 ### A — Full pipeline
 
 ```
-G0 + G0d + learning hints
+G0 + learning hints
+→ bootstrap_domain_pack
 → register_requirement (if AC)
-→ discover…
-→ [roles] role compare
-→ run_auto_qa
-→ [API] openapi + execute_api_smoke (E2)
-→ register_regression_suite   # REQUIRED serious run
+→ discover… (optional when run_auto_qa covers screen)
+→ run_auto_qa   # auto-registers suite; optional role_b / openapi / include_workflow_journeys
+→ use auto_registered_suite.suite_id   # do NOT register_regression_suite again if suite_id present
 → [optional] capture baselines first time
 ```
 
@@ -154,7 +153,7 @@ Default after fix: use prior `smart_retest_suggestion` — **do not** full suite
 discover → generate_exploratory_charter → execute_exploratory_session
 → list AC candidates + manual_follow_up
 → STOP for human confirm on AC
-→ Strategy A + register_regression_suite
+→ Strategy A (run_auto_qa → suite_id)
 ```
 
 **Forbidden:** end at exploratory observations and claim “tested”. Expert closes loop into AC + suite.

@@ -25,15 +25,11 @@ No pass unless MCP `expert_checklist.claim_pass_allowed` is true (when present) 
 1. **Entry:** URL, AC/spec (or exploratory), secrets, full vs retest  
 2. **G0:** 5 questions  
 3. **G0 learning:** `list_failure_avoidance_hints` (+ `list_learning_candidates`)  
-4. **G0d Domain pack (AI does this — user does not `cp`):**  
-   - Product workspace root = app under test  
-   - Missing `domain-knowledge/` → create from `hosts/templates/domain-knowledge/`, fill INDEX/business/permissions/… from **this request** (URL, AC, roles, money/auth keywords)  
-   - Exists → read + additive update from this request  
-   - High-risk TODOs → short confirm if needed; else record as gap  
+4. **G0d Domain pack:** call `bootstrap_domain_pack` with absolute `product_root` + `request_context` (URL/AC). Do **not** ask user to `cp` templates.  
 5. **G1–G3:** env from URL; discover; bind AC  
-6. **G4:** A / B retest / C→A; E2 role + API mandates  
-7. **G5–G8:** Output contract; honor `expert_checklist`  
-8. Serious A → `register_regression_suite`
+6. **G4 Strategy A:** `run_auto_qa` (suite auto-registers — use returned `auto_registered_suite.suite_id`; do **not** re-call `register_regression_suite` when suite_id present). Optional on same call: `role_b`, `openapi`/`openapi_path`, `include_workflow_journeys` for E2.  
+7. **G4 B:** targeted retest via `run_regression_suite` + `smart_retest_suggestion`  
+8. **G5–G8:** Output contract; honor `expert_checklist`  
 
 ## Exploratory (C)
 

@@ -112,7 +112,9 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 |------|---------|
 | `run_auto_qa` | Full pipeline: discover → a11y smoke → generate variants → execute → HTML report + `coverage_gaps` + `smart_retest_suggestion` + release gate |
 | `run_regression_suite` | Re-run a saved suite; subset by `case_ids` or `related_defect_ids` |
-| `register_regression_suite` / `list_regression_suites` | Persist + list test suites |
+| `run_auto_qa` | Discover→generate→execute→gate; **auto-registers** suite; optional `role_b` / `openapi` / journeys |
+| `bootstrap_domain_pack` | Create/update product `domain-knowledge/` from templates + request |
+| `register_regression_suite` / `list_regression_suites` | Persist + list test suites (manual; usually skipped when auto suite_id present) |
 
 ### Discovery
 
