@@ -31,18 +31,23 @@ Retest: by `case_ids`, defect ids, or one screen URL — see [`hosts/references/
 ```sh
 git clone https://github.com/ninhlee99/QA-Intelligence.git
 cd QA-Intelligence
-npm install && npm run build
+npm install
+npx playwright install chromium
+npm run build
 ```
 
-Connect one host:
+**Hướng dẫn chi tiết (cài MCP, Skill, dùng tool, đọc report):**  
+**[docs/GUIDE.md](docs/GUIDE.md)**
+
+Connect one host (tóm tắt — chi tiết trong GUIDE):
 
 | Host | Setup |
 |------|--------|
-| **Claude Code** | Plugin: `hosts/claude-code/` → `:test` / `:dev` |
-| **Cursor** | Copy `hosts/cursor/mcp.json.example` (absolute path) |
+| **Claude Code** | Plugin: `hosts/claude-code/` → `:test` / `:dev` + MCP entrypoint |
+| **Cursor** | Copy `hosts/cursor/mcp.json.example` (**absolute** path) + Skills `hosts/cursor/skills/` |
 | **Codex** | Plugin / config: `hosts/codex/` |
 
-Full install: **[docs/GUIDE.md](docs/GUIDE.md)**
+**Scope:** Skill + MCP = **test + report** only (no SNS / Slack notify).
 
 ## Why this exists
 
@@ -61,14 +66,17 @@ Rules: **[RULES.md](RULES.md)** · Idea: **[docs/PRODUCT.md](docs/PRODUCT.md)** 
 
 | Tool | Use when |
 |------|----------|
-| `run_auto_qa` | Full pipeline on a URL + AC |
+| `run_expert_qa` | **Preferred** Expert entry: domain pack + full pipeline |
+| `run_auto_qa` | Full pipeline on a URL + AC (auto suite, optional E2 hooks) |
+| `validate_expert_claim` | Before any pass/ready/ship wording |
 | `run_regression_suite` | Retest after fix (`case_ids` / `related_defect_ids`) |
 | `discover_ui_workflow` | Multi-page product |
 | `discover_and_compare_role_ui_surfaces` | Permission / role gaps |
-| `execute_api_smoke` | HTTP contract checks |
-| `export_defects_for_tracker` | Paste-ready defects + quality warnings |
+| `execute_api_smoke` | HTTP contract checks (or via `openapi` on run_auto_qa) |
+| `export_defects_for_tracker` | Paste-ready defect **text** (tester pastes tracker manually) |
 
-Full catalog: **[hosts/README.md](hosts/README.md)**
+Full catalog + durable dirs: **[hosts/README.md](hosts/README.md)**  
+Install & usage (detailed): **[docs/GUIDE.md](docs/GUIDE.md)**
 
 ## Repo layout
 

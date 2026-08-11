@@ -8,6 +8,11 @@ to the QA Intelligence MCP server (ADR-016 §2).
 Host  →  Host Integration Package  →  QA Intelligence MCP  →  Agent Runtime
 ```
 
+**Scope:** test + report only. No SNS / Slack / email notify integrations.
+
+> **Hướng dẫn cài đặt & sử dụng chi tiết (tiếng Việt):**  
+> [`docs/GUIDE.md`](../docs/GUIDE.md)
+
 ## Status: `0.1.0-dev`
 
 Development-only server. Auth is a fixture verifier (stdio) or self-minted
@@ -18,7 +23,9 @@ Production blocked on GOV-012 G2–G6.
 
 ## Install (one-time, per host)
 
-**Prerequisites:** `npm run build` from repo root first.
+**Prerequisites:** `npm run build` from repo root first. Prefer Node 24 + `npx playwright install chromium`.
+
+Chi tiết từng bước (Cursor / Claude Code / Codex / remote): xem **[docs/GUIDE.md §5–§6](../docs/GUIDE.md)**.
 
 ### Claude Code
 
@@ -110,11 +117,10 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 
 | Tool | Purpose |
 |------|---------|
-| `run_auto_qa` | Full pipeline: discover → a11y smoke → generate variants → execute → HTML report + `coverage_gaps` + `smart_retest_suggestion` + release gate |
+| `run_auto_qa` | Full pipeline: discover → a11y smoke → generate variants → execute → HTML report + `coverage_gaps` + `smart_retest_suggestion` + release gate + Expert judgment/hardening |
 | `run_regression_suite` | Re-run a saved suite; subset by `case_ids` or `related_defect_ids` |
 | `run_expert_qa` | **Preferred Expert entry:** domain pack + `run_auto_qa` (suite, E2 hooks, flake taxonomy, learning) |
 | `validate_expert_claim` | Hard refuse pass/ready/ship wording when `claim_pass_allowed` is false |
-| `run_auto_qa` | Discover→generate→execute→gate; **auto-registers** suite; optional `role_b` / `openapi` / journeys |
 | `bootstrap_domain_pack` | Create/update product `domain-knowledge/` from templates + request |
 | `register_regression_suite` / `list_regression_suites` | Persist + list test suites (manual; usually skipped when auto suite_id present) |
 
@@ -154,8 +160,8 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 | `assess_ui_accessibility_smoke` | Naming a11y smoke (unlabeled/duplicate) — not full WCAG |
 | `draft_defects_from_qa_run` | SPEC-211 draft from failed/flaky runs |
 | `assess_defect_quality` | SPEC-211 defect document quality review |
-| `export_defects_for_tracker` | Markdown/Jira text + evidence pack + `quality_warnings` pre-check |
-| `file_defects_to_tracker` | Optional live filing (dry-run default; `confirm_file=true` to POST) |
+| `export_defects_for_tracker` | Markdown/Jira **text** + evidence pack + `quality_warnings` — tester pastes into tracker manually (no SNS) |
+| `file_defects_to_tracker` | Optional live filing (dry-run default; `confirm_file=true` to POST) — not a notification bus |
 
 ### Baselines & learning
 
@@ -227,6 +233,23 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 | `.qa-automation-assets/` | Automation asset stubs |
 | `.qa-test-datasets/` | Test dataset registry |
 | `.qa-credentials/` | Workspace credential registry |
+
+---
+
+## Expert output fields (read in this order)
+
+After `run_expert_qa` / `run_auto_qa`, hosts should surface:
+
+1. `release_recommendation`
+2. `expert_checklist` (`claim_pass_allowed`, `blockers`)
+3. `coverage_gaps`
+4. `expert_session_report.markdown` (primary user-facing write-up)
+5. `smart_retest_suggestion`
+6. Then: `expert_judgment`, `expert_senior_hardening`, `expert_risk_matrix`, `ac_quality_review`, `draft_defects`, `suite_id`
+
+Before any pass/ready/ship sentence: call `validate_expert_claim`.
+
+Full Vietnamese walkthrough: [`docs/GUIDE.md`](../docs/GUIDE.md) §8–§11.
 
 ---
 
