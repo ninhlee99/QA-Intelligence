@@ -1371,13 +1371,26 @@ export function buildDevFixture(options: {
           url: { type: "string", description: "Any real, reachable URL, e.g. https://example.com/login" },
           acceptance_criteria: {
             type: "array",
-            description: "Inline ad hoc criteria (advisory consequence class — bypasses the seeded Requirement Resolver entirely). Each item needs at least id, statement, and expected_text.",
+            description:
+              "Inline ad hoc criteria (advisory consequence class — bypasses the seeded Requirement Resolver entirely). Each item needs id, statement, and at least one executable oracle: expected_text and/or expected_url_includes / expected_title_includes / expected_network (copied onto the positive generated_assertion).",
             items: {
               type: "object",
               properties: {
                 id: { type: "string" },
                 statement: { type: "string" },
                 expected_text: { type: "string" },
+                expected_url_includes: { type: "string" },
+                expected_title_includes: { type: "string" },
+                expected_network: {
+                  type: "object",
+                  description: "UI→API coupling for the positive case (xhr/fetch).",
+                  properties: {
+                    url_includes: { type: "string" },
+                    method: { type: "string" },
+                    status: {},
+                    body_includes: { type: "string" },
+                  },
+                },
               },
             },
           },
@@ -1434,7 +1447,7 @@ export function buildDevFixture(options: {
     {
       name: "run_auto_qa",
       description:
-        "One call that runs the whole pipeline: discovers a page's Semantic UI Map, runs accessibility naming smoke on that capture, generates TestCases (positive/negative/boundary/adversarial per bindable, expected_text-bearing acceptance criterion — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine (with flake detection), drafts SPEC-211 Defect records from failed/flaky outcomes (suspected_cause only), builds variant coverage + residual-risk notes, and returns a QA run report with a Senior-QA release_recommendation — both as JSON and, when output_path is given, written to that path as a self-contained HTML file. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt distinct from the in-page login form), also supply basic_auth_username + basic_auth_password together. acceptance_criteria is required (this tool never invents what a page should do) — each item needs at least id, statement, and expected_text; statement should mention a field/action name the target page is expected to have.",
+        "One call that runs the whole pipeline: discovers a page's Semantic UI Map, runs accessibility naming smoke on that capture, generates TestCases (positive/negative/boundary/adversarial per bindable criterion with executable oracles — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine (with flake detection), drafts SPEC-211 Defect records from failed/flaky outcomes (suspected_cause only), builds variant coverage + residual-risk notes, and returns a QA run report with a Senior-QA release_recommendation — both as JSON and, when output_path is given, written to that path as a self-contained HTML file. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt distinct from the in-page login form), also supply basic_auth_username + basic_auth_password together. acceptance_criteria is required (this tool never invents what a page should do) — each item needs id, statement, and at least one oracle (expected_text and/or expected_url_includes / expected_title_includes / expected_network); statement should mention a field/action name the target page is expected to have.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1443,13 +1456,26 @@ export function buildDevFixture(options: {
           requirement_title: { type: "string", description: "Optional label for the report; defaults to url." },
           acceptance_criteria: {
             type: "array",
-            description: "Required. Each item needs at least id, statement, and expected_text.",
+            description:
+              "Required. Each item needs id, statement, and at least one executable oracle: expected_text and/or expected_url_includes / expected_title_includes / expected_network (copied onto the positive generated_assertion).",
             items: {
               type: "object",
               properties: {
                 id: { type: "string" },
                 statement: { type: "string" },
                 expected_text: { type: "string" },
+                expected_url_includes: { type: "string" },
+                expected_title_includes: { type: "string" },
+                expected_network: {
+                  type: "object",
+                  description: "UI→API coupling for the positive case (xhr/fetch).",
+                  properties: {
+                    url_includes: { type: "string" },
+                    method: { type: "string" },
+                    status: {},
+                    body_includes: { type: "string" },
+                  },
+                },
               },
             },
           },

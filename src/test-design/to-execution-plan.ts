@@ -6,9 +6,10 @@
  * translation — it does not reinterpret intent (SPEC-207 §7: "a
  * tool-specific implementation SHALL NOT become a second source of test
  * meaning"). A `TestCase` with no corresponding `TestCaseGeneratedAssertion`
- * (no `expected_text` — see `generate-test-cases.ts`) SHALL NOT be
- * convertible: returning a plan whose `assert` always passes or always
- * fails would silently fabricate a result SPEC-210 §4 forbids.
+ * (no `expected_text` / url / title / network oracle — see
+ * `generate-test-cases.ts`) SHALL NOT be convertible: returning a plan whose
+ * `assert` always passes or always fails would silently fabricate a result
+ * SPEC-210 §4 forbids.
  */
 import type {
   PlaywrightAssertContext,

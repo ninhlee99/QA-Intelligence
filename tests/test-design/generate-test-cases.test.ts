@@ -256,3 +256,97 @@ test("reports ambiguous_criterion instead of silently binding when two same-kind
   assert.equal(result.value.findings.length, 1);
   assert.equal(result.value.findings[0]!.category, "ambiguous_criterion");
 });
+
+test("copies AC url/title/network oracles onto the positive generated_assertion only", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        {
+          id: "AC-1",
+          statement: "The Sign in action authenticates the user.",
+          expected_text: "Welcome",
+          expected_url_includes: "/home",
+          expected_title_includes: "Home",
+          expected_network: {
+            url_includes: "/api/login",
+            method: "POST",
+            status: 200,
+            body_includes: "token",
+          },
+        },
+      ],
+      ui_map_elements: [
+        { id: "action-sign-in", kind: "action", accessible_name: "Sign in", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const positive = result.value.test_cases.find((testCase) => testCase.tags?.includes("positive"));
+  assert.ok(positive);
+  const assertion = result.value.generated_assertions.find((a) => a.test_case_id === positive!.id);
+  assert.ok(assertion);
+  assert.equal(assertion!.expected_text, "Welcome");
+  assert.equal(assertion!.expected_url_includes, "/home");
+  assert.equal(assertion!.expected_title_includes, "Home");
+  assert.deepEqual(assertion!.expected_network, {
+    url_includes: "/api/login",
+    method: "POST",
+    status: 200,
+    body_includes: "token",
+  });
+});
+
+test("network-only AC (no expected_text) still yields an executable positive assertion", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        {
+          id: "AC-1",
+          statement: "The Sign in action posts credentials.",
+          expected_network: { url_includes: "/api/login", method: "POST", status: [200, 201] },
+        },
+      ],
+      ui_map_elements: [
+        { id: "action-sign-in", kind: "action", accessible_name: "Sign in", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.findings.filter((f) => f.category === "missing_expected_result").length, 0);
+  const positive = result.value.test_cases.find((testCase) => testCase.tags?.includes("positive"));
+  assert.ok(positive);
+  const assertion = result.value.generated_assertions.find((a) => a.test_case_id === positive!.id);
+  assert.ok(assertion);
+  assert.equal(assertion!.expected_text, undefined);
+  assert.deepEqual(assertion!.expected_network, {
+    url_includes: "/api/login",
+    method: "POST",
+    status: [200, 201],
+  });
+});
+
+test("AC with neither expected_text nor richer oracles still reports missing_expected_result", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [{ id: "AC-1", statement: "The Sign in action works." }],
+      ui_map_elements: [
+        { id: "action-sign-in", kind: "action", accessible_name: "Sign in", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.generated_assertions.length, 0);
+  assert.equal(result.value.findings[0]!.category, "missing_expected_result");
+});

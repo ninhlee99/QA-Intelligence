@@ -9,12 +9,10 @@
  * Runtime executor wiring in `runtime-executor.ts` can follow the same
  * pattern `RequirementReviewRuntimeExecutor` already established.
  *
- * Scope note (docs/proposals/SPEC-512-mcp-test-execution-tool.md): the
- * underlying engine only navigates and asserts against the Semantic UI
- * tree (ADR-022 §4, ADR-003) — it does not type, click, or authenticate.
- * A flow requiring login is out of scope until a governed interaction
- * capability is accepted; this Skill SHALL NOT attempt to work around that
- * by reaching past the engine into raw Playwright.
+ * Scope note: the engine navigates and asserts against the Semantic UI
+ * tree (ADR-022 §4, ADR-003) and runs semantic interaction steps
+ * (`type` / `click` / `select` / `wait_for`) plus Workspace-scoped
+ * `secret_ref` resolution — never raw CSS/XPath selectors.
  */
 import type {
   ExecutionEngine,

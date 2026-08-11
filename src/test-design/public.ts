@@ -141,9 +141,10 @@ export type TestCaseGenerationFinding = Readonly<{
 /**
  * A structured, executable counterpart to `TestCase.expected_results[].assertion`
  * (which stays free text per SPEC-207 §2). This generator SHALL NOT infer
- * `expected_text` from the assertion prose — that would be exactly the
- * "invented expected result" SPEC-207 §6 forbids. It exists only when the
- * source acceptance criterion explicitly carried an `expected_text` field
+ * oracle fields from assertion prose — that would be exactly the
+ * "invented expected result" SPEC-207 §6 forbids. Oracles exist only when
+ * the source acceptance criterion explicitly carried `expected_text` and/or
+ * `expected_url_includes` / `expected_title_includes` / `expected_network`
  * (see `generate-test-cases.ts`); otherwise the criterion still produces a
  * `TestCase` but with a `missing_expected_result` finding and no generated
  * assertion, so it cannot be executed unattended.

@@ -51,7 +51,8 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
 5. **Reconcile spec ↔ UI.** Bind each AC to a real accessible name. Flag
    unbound AC — never force a fake binding. Prefer
    `expected_text` plus optional `expected_url_includes` /
-   `expected_title_includes` / `expected_network` (xhr/fetch after submit:
+   `expected_title_includes` / `expected_network` on the AC — generator
+   copies them onto the positive `generated_assertion` (xhr/fetch:
    `url_includes` + optional method/status/`body_includes`).
 6. **Run the professional UI pipeline.** Prefer `run_auto_qa` with
    reconciled `acceptance_criteria` + `output_path` (+ `requirement_ref`
