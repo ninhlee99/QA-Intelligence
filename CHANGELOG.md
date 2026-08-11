@@ -16,6 +16,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI slimmed to typecheck + test + audit (+ optional schema examples); dropped SPEC-index gate from default `validate`
 - README rewritten for GitHub: badges, quick start, core tools, clear status
 
+### Expert Tester Skills — local / staging / tester (2026-08-11)
+
+- Shared gates G0–G8: `hosts/references/expert-tester-workflow.md`
+- Skills: `local`, `staging`, `test`, `dev` (router) on Claude Code, Cursor, Codex
+- Same Expert process for every role; only AC provenance + env hygiene differ
+- Raises process maturity (forced gate/gaps/retest); evidence still via MCP tools
+
 ### Expert QA upgrade (2026-08-11)
 
 **Thinking layer**

@@ -90,16 +90,21 @@ Then connect with the printed token — see `hosts/cursor/mcp-remote.json.exampl
 
 ---
 
-## Skills (Claude Code)
+## Skills (Expert Tester — all roles)
 
-Two skills ship with the claude-code plugin:
+Canonical process: [`references/expert-tester-workflow.md`](references/expert-tester-workflow.md) (gates **G0–G8**).
 
-| Trigger | When to use |
-|---------|-------------|
-| `/qa-intelligence:test` | URL + spec — full expert tester workflow |
-| `/qa-intelligence:dev` | Local source + localhost — developer self-QA before push |
+| Trigger | Skill | Use |
+|---------|-------|-----|
+| `/qa-intelligence:local` | `local` | Dev QA on localhost (AC from source) |
+| `/qa-intelligence:staging` | `staging` | Shared staging (env + secrets required) |
+| `/qa-intelligence:test` | `test` | Tester: URL + spec, no source required |
+| `/qa-intelligence:dev` | `dev` | Router → local or staging |
 
-Cursor and Codex equivalents in `hosts/cursor/skills/` and `hosts/codex/skills/`.
+Same honesty rules for every role. Only **inputs** change (source vs ticket; loopback vs allowlisted URL).  
+Command map: [`commands/README.md`](commands/README.md).
+
+Claude Code ships Skills under `claude-code/skills/`. Cursor/Codex mirrors under `cursor/skills/` and `codex/skills/`.
 
 ---
 

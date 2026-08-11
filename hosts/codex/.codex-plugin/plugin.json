@@ -1,7 +1,7 @@
 {
   "name": "qa-intelligence",
   "version": "0.1.0-dev",
-  "description": "QA Intelligence MCP (0.1.0-dev): Senior QA catalog — UI auto-QA, API smoke, depth smokes, document assessors, credentials, exploratory session. Development slice only (ADR-016 §8). See hosts/README.md.",
+  "description": "QA Intelligence Expert Tester MCP (0.1.0-dev): local/staging/tester Skills + MCP evidence. See hosts/references/expert-tester-workflow.md.",
   "mcp": {
     "servers": {
       "qa-intelligence": {
