@@ -55,6 +55,12 @@ export type TestDataset = Readonly<{
   contains_sensitive_fields?: boolean;
   sensitive_field_controls?: readonly string[];
   ai_evaluation_metadata?: TestDatasetAiEvaluationMetadata;
+  /**
+   * Synthetic fill map (accessible_name → value) for execute/regression.
+   * Registry MAY store only when classification is synthetic and values
+   * pass credential-shape checks — never passwords/tokens.
+   */
+  field_samples?: Readonly<Record<string, string>>;
 }>;
 
 export type TestDatasetFindingCategory = "completeness" | "traceability" | "privacy_and_isolation" | "lifecycle";

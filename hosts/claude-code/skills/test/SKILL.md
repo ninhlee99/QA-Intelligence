@@ -120,6 +120,9 @@ over opinions. Never fabricate a pass. Never invent acceptance criteria.
   or manual two discoveries + `compare_ui_surfaces`.
 - Tracker export: `export_defects_for_tracker` includes evidence pack
   (screenshot/capture/outcome) — still paste-only unless `file_defects_to_tracker`.
+- Datasets: `register_test_dataset` with synthetic `field_samples`, then
+  `resolve_test_dataset_fields` → pass `field_values` into execute/regression.
+  Passwords stay in `register_workspace_secret` / `field_secret_refs`.
 
 ## Triage rules
 

@@ -48,7 +48,7 @@ import { FileBackedWorkspaceCredentialRegistry } from "../credentials/file-backe
 import { CredentialRegistryRuntimeExecutor } from "../credentials/runtime-executor.js";
 import { InMemoryWorkspaceEnvironmentRegistry } from "../environments/workspace-environment-registry.js";
 import { EnvironmentRegistryRuntimeExecutor } from "../environments/runtime-executor.js";
-import { InMemoryWorkspaceDatasetRegistry } from "../test-data/workspace-dataset-registry.js";
+import { FileBackedWorkspaceDatasetRegistry } from "../test-data/file-backed-workspace-dataset-registry.js";
 import { DatasetRegistryRuntimeExecutor } from "../test-data/dataset-registry-runtime-executor.js";
 import { AutomationAssetStubRuntimeExecutor } from "../automation/create-automation-asset-runtime-executor.js";
 import { generateWorkflowStub } from "../business-analysis/generate-workflow-stub.js";
@@ -202,6 +202,8 @@ export const DATASET_REGISTER_AGENT = { id: "dataset-registry-agent", version: "
 export const DATASET_REGISTER_SKILL = { id: "register-test-dataset", version: "0.1.0" } as const;
 export const DATASET_LIST_AGENT = { id: "dataset-list-agent", version: "0.1.0" } as const;
 export const DATASET_LIST_SKILL = { id: "list-test-datasets", version: "0.1.0" } as const;
+export const DATASET_RESOLVE_AGENT = { id: "dataset-resolve-agent", version: "0.1.0" } as const;
+export const DATASET_RESOLVE_SKILL = { id: "resolve-test-dataset-fields", version: "0.1.0" } as const;
 export const AUTOMATION_STUB_AGENT = { id: "create-automation-asset-agent", version: "0.1.0" } as const;
 export const AUTOMATION_STUB_SKILL = { id: "create-automation-asset", version: "0.1.0" } as const;
 export const SKILL_QUALITY_EVAL_AGENT = { id: "evaluate-test-case-quality-skill-agent", version: "0.1.0" } as const;
@@ -392,7 +394,10 @@ export function buildDevFixture(options: {
     base_url: demoLoginPageUrl,
     label: "Dev fixture login",
   });
-  const datasets = new InMemoryWorkspaceDatasetRegistry(clock);
+  const datasets = new FileBackedWorkspaceDatasetRegistry(
+    clock,
+    join(process.cwd(), ".qa-test-datasets"),
+  );
   const candidateRepository = new InMemoryCandidateRepository(clock);
 
   // Tracer bullet (docs/proposals/SPEC-512-mcp-test-execution-tool.md).
@@ -1141,6 +1146,16 @@ export function buildDevFixture(options: {
       expected_agent: DATASET_LIST_AGENT,
       expected_skill: DATASET_LIST_SKILL,
       mode: "list",
+      authorizer,
+    }),
+  );
+  executorMap.set(
+    DATASET_RESOLVE_AGENT.id,
+    new DatasetRegistryRuntimeExecutor({
+      registry: datasets,
+      expected_agent: DATASET_RESOLVE_AGENT,
+      expected_skill: DATASET_RESOLVE_SKILL,
+      mode: "resolve",
       authorizer,
     }),
   );
@@ -2174,7 +2189,7 @@ export function buildDevFixture(options: {
     {
       name: "register_test_dataset",
       description:
-        "SPEC-208 create path: register TestDataset governance metadata (synthetic by default). No secret row payloads.",
+        "SPEC-208: register TestDataset under .qa-test-datasets/. Optional field_samples (accessible_name→value) only when classification=synthetic; rejects credential-shaped keys/values. Secrets stay in register_workspace_secret.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2184,6 +2199,10 @@ export function buildDevFixture(options: {
           owner: { type: "string" },
           id: { type: "string" },
           environment_scope: { type: "string" },
+          field_samples: {
+            type: "object",
+            description: "Synthetic fills only — e.g. {\"Username\":\"demo-user\",\"Email\":\"qa@example.test\"}.",
+          },
         },
         required: ["purpose"],
       },
@@ -2201,11 +2220,12 @@ export function buildDevFixture(options: {
           owner: (args["owner"] as string | undefined) ?? "",
           id: (args["id"] as string | undefined) ?? "",
           environment_scope: (args["environment_scope"] as string | undefined) ?? "",
+          field_samples: (args["field_samples"] as JsonValue | undefined) ?? {},
         }),
     },
     {
       name: "list_test_datasets",
-      description: "List registered TestDataset metadata for the Workspace.",
+      description: "List registered TestDataset metadata for the Workspace (field_sample_keys only — not values).",
       inputSchema: { type: "object", properties: {}, required: [] },
       agent: DATASET_LIST_AGENT,
       purpose: "List TestDatasets",
@@ -2214,6 +2234,26 @@ export function buildDevFixture(options: {
       allowed_skills: [DATASET_LIST_SKILL],
       budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
       buildInput: () => ({}),
+    },
+    {
+      name: "resolve_test_dataset_fields",
+      description:
+        "Return synthetic field_values map for a dataset_id — pass into execute_generated_test_case / run_regression_suite. Empty if dataset has no samples.",
+      inputSchema: {
+        type: "object",
+        properties: { dataset_id: { type: "string" } },
+        required: ["dataset_id"],
+      },
+      agent: DATASET_RESOLVE_AGENT,
+      purpose: "Resolve TestDataset field samples",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [DATASET_RESOLVE_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 2, max_retries: 1 },
+      buildInput: (args) =>
+        compactMcpInput({
+          dataset_id: (args["dataset_id"] as string | undefined) ?? "",
+        }),
     },
     {
       name: "create_automation_asset",

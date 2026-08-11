@@ -98,6 +98,7 @@ const EXPECTED_TOOLS = [
   "generate_test_strategy_stub",
   "register_test_dataset",
   "list_test_datasets",
+  "resolve_test_dataset_fields",
   "create_automation_asset",
   "evaluate_test_case_quality_skill",
   "raise_mistake_recurrence_candidate",

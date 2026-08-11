@@ -62,6 +62,17 @@ test("dataset registry stores metadata only", () => {
   assert.equal(registry.list("ws-1").length, 1);
 });
 
+test("dataset registry rejects field_samples on non-synthetic classification", () => {
+  const registry = new InMemoryWorkspaceDatasetRegistry({ now: () => new Date("2026-08-10T00:00:00.000Z") });
+  const registered = registry.register({
+    workspace_id: "ws-1",
+    purpose: "Should fail",
+    classification: "adversarial_and_boundary",
+    field_samples: { Username: "x" },
+  });
+  assert.equal(registered.ok, false);
+});
+
 test("createAutomationAssetStub requires test case refs", () => {
   const bad = createAutomationAssetStub({ workspace_id: "ws-1", implemented_test_case_refs: [] });
   assert.equal(bad.ok, false);

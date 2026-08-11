@@ -4,6 +4,7 @@
 
 ### Added
 
+- P4.5: synthetic `field_samples` on `register_test_dataset` (credential-shape reject); durable `.qa-test-datasets/`; `resolve_test_dataset_fields` → `field_values` for execute/regression
 - P4 slices: `run_regression_suite` subset (`case_ids` / `related_defect_ids`) + `field_values` + draft defects / release gate; workflow `network_hints`; `discover_and_compare_role_ui_surfaces`; defect evidence pack on tracker export
 - P3 slices: exploratory bounded live probes (`include_live_probes`); journey `expected_network` passthrough; `ScriptedReasoningProvider([])` fail-soft; `create_automation_asset` → `.qa-automation-assets/` + `mcp:run_regression_suite` bind; roadmap Ground truth refresh
 - P2 slices: `file_defects_to_tracker` (dry-run default / confirm_file); `generate_test_strategy_stub` rename; durable `.qa-knowledge/` + `register_knowledge_record`; SSO/MFA wait path on `discover_ui_surface_after_login`

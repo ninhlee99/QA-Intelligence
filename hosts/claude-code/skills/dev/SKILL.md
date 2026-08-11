@@ -48,6 +48,8 @@ Act like a careful QA peer-reviewer for your own change — not a green-CI cheer
    local rebuild can `run_regression_suite` without regenerating everything.
    Optional: `create_automation_asset` + `regression_suite_id` for governance
    bind (persists under `.qa-automation-assets/`).
+   Optional fills: `register_test_dataset` (`field_samples`, synthetic) →
+   `resolve_test_dataset_fields` → pass `field_values` on execute/regression.
 8. **API (when this screen calls your HTTP API).** If OpenAPI/JSON exists in
    repo, `generate_api_smoke_from_openapi` (`include_authz_negatives: true`
    when secured) → `execute_api_smoke` on local base URL.

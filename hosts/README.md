@@ -147,7 +147,7 @@ on both stdio and remote transports:
 | `generate_test_strategy_stub` | SPEC-206: Test Strategy **stub** from UI map (heuristic — not a professional strategy) |
 | `file_defects_to_tracker` | Optional Jira/Linear/webhook filing (dry-run default; `confirm_file=true` to POST) |
 | `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
-| `register_test_dataset` / `list_test_datasets` | SPEC-208: dataset governance metadata (no secret rows) |
+| `register_test_dataset` / `list_test_datasets` / `resolve_test_dataset_fields` | SPEC-208: synthetic field_samples + resolve fills (no secrets) |
 | `create_automation_asset` | SPEC-209: AutomationAsset stub → `.qa-automation-assets/`; default bind `mcp:run_regression_suite` |
 | `evaluate_test_case_quality_skill` | SPEC-213 dogfood: EvaluationManager over Assess Test Case Quality |
 | `compare_ui_surfaces` | Role/permission thin: diff two UI maps (admin vs viewer) |
