@@ -15,8 +15,20 @@ import {
 } from "../../src/mcp/document-assessor-runtime-executor.js";
 import {
   buildDevFixture,
+  AUTOMATION_QUALITY_AGENT,
+  AUTOMATION_QUALITY_SKILL,
+  BA_QUALITY_AGENT,
+  BA_QUALITY_SKILL,
+  DATASET_QUALITY_AGENT,
+  DATASET_QUALITY_SKILL,
+  REPORT_QUALITY_AGENT,
+  REPORT_QUALITY_SKILL,
   RISK_QUALITY_AGENT,
   RISK_QUALITY_SKILL,
+  STRATEGY_QUALITY_AGENT,
+  STRATEGY_QUALITY_SKILL,
+  TEST_CASE_QUALITY_AGENT,
+  TEST_CASE_QUALITY_SKILL,
 } from "../../src/mcp/dev-fixture.js";
 import type { Risk } from "../../src/risk-analysis/public.js";
 import type { AgentRunExecutorInput } from "../../src/runtime/executor.js";
@@ -147,6 +159,48 @@ function executorInput(risk: Risk): AgentRunExecutorInput {
   } as unknown as AgentRunExecutorInput;
 }
 
+function executorInputFor(
+  documentKey: string,
+  document: Record<string, unknown>,
+  expectedAgent: Readonly<{ id: string; version: string }>,
+  expectedSkill: Readonly<{ id: string; version: string }>,
+): AgentRunExecutorInput {
+  const { context } = authorizerAndContext();
+  return {
+    reference: {
+      schema_version: "1.0.0",
+      run_id: "run-1",
+      workspace_id: WORKSPACE_ID,
+    },
+    start_request: {
+      schema_version: "1.0.0",
+      operation_id: "operation-1",
+      workspace_id: WORKSPACE_ID,
+      actor_id: "tester-1",
+      workspace_context: context,
+      agent: expectedAgent,
+      purpose: "Assess document quality via MCP",
+      consequence_class: "advisory",
+      policy_version: POLICY_VERSION,
+      allowed_skills: [expectedSkill],
+      input: { [documentKey]: document },
+      budgets: { max_steps: 8, max_duration_seconds: 60, max_tool_calls: 5, max_retries: 1 },
+      deadline: "2026-08-10T09:00:00.000Z",
+    },
+    execution: {
+      schema_version: "1.0.0",
+      operation_id: "operation-1",
+      workspace_id: WORKSPACE_ID,
+      actor_id: "tester-1",
+      policy_version: POLICY_VERSION,
+      workspace_context: context,
+      expected_revision: 1,
+      idempotency_key: "idem-1",
+    },
+    signal: new AbortController().signal,
+  } as unknown as AgentRunExecutorInput;
+}
+
 test("Phase 7 fixture registers all document-quality MCP tools", () => {
   const { clock, authorizer } = authorizerAndContext();
   const { tools } = buildDevFixture({
@@ -166,6 +220,41 @@ test("Phase 7 fixture registers all document-quality MCP tools", () => {
     "assess_report_quality",
   ]) {
     assert.equal(names.has(name), true, `missing tool ${name}`);
+  }
+});
+
+test("Phase 7 DoD: every document assessor returns governed findings when given a document object", async () => {
+  const fixtures = [
+    { key: "workflow", agent: BA_QUALITY_AGENT, skill: BA_QUALITY_SKILL },
+    { key: "risk", agent: RISK_QUALITY_AGENT, skill: RISK_QUALITY_SKILL },
+    { key: "test_strategy", agent: STRATEGY_QUALITY_AGENT, skill: STRATEGY_QUALITY_SKILL },
+    { key: "test_case", agent: TEST_CASE_QUALITY_AGENT, skill: TEST_CASE_QUALITY_SKILL },
+    { key: "test_dataset", agent: DATASET_QUALITY_AGENT, skill: DATASET_QUALITY_SKILL },
+    { key: "automation_asset", agent: AUTOMATION_QUALITY_AGENT, skill: AUTOMATION_QUALITY_SKILL },
+    { key: "report", agent: REPORT_QUALITY_AGENT, skill: REPORT_QUALITY_SKILL },
+  ] as const;
+
+  for (const item of fixtures) {
+    const executor = new DocumentQualityRuntimeExecutor({
+      expected_agent: item.agent,
+      expected_skill: item.skill,
+      document_key: item.key,
+      review: async () => ({
+        ok: true,
+        value: {
+          id: `assessment:${item.key}`,
+          verdict: "pass",
+          findings: [],
+          evidence: [`doc:${item.key}`],
+        },
+      }),
+    });
+    const input = executorInputFor(item.key, { id: `${item.key}-1` }, item.agent, item.skill);
+    const result = await executor.execute(input);
+    assert.equal(result.ok, true, `${item.key} should return governed output`);
+    if (!result.ok) continue;
+    assert.equal(result.value.output["verdict"], "pass");
+    assert.ok(Array.isArray(result.value.output["findings"]), `${item.key} findings must be array`);
   }
 });
 
