@@ -43,6 +43,12 @@ import {
   oracleStrengthPassBlockers,
 } from "../reporting/expert-judgment.js";
 import {
+  applyStructuredWaivesToBlockers,
+  buildSeniorHardeningBundle,
+  seniorHardeningJson,
+} from "../reporting/expert-senior-hardening.js";
+import { RunDepthSmokes } from "../depth-smokes/run-depth-smokes.js";
+import {
   draftExpertSessionReport,
   expertSessionReportJson,
 } from "../reporting/expert-session-report.js";
@@ -412,6 +418,112 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     );
     const mandateBlockers = deriveExpertMandateBlockers(riskSignals, hookCoverage);
     const acQuality = reviewAcceptanceCriteriaQuality(acceptanceCriteria);
+    const productRoot = readOptionalString(input.start_request.input["product_root"]);
+    const gitBlast = await assessGitBlastRadius(productRoot);
+    const declaredWaives = readDeclaredWaives(input.start_request.input["risk_waives"]);
+    const priorSuite = findPriorSuite(
+      this.#dependencies.regressionRegistry,
+      input.reference.workspace_id,
+      autoSuite && "suite_id" in autoSuite ? autoSuite.suite_id : undefined,
+    );
+    const includeDepth =
+      input.start_request.input["include_depth_smokes"] === true
+        ? true
+        : input.start_request.input["include_depth_smokes"] === false
+          ? false
+          : undefined;
+
+    const hardeningPreview = buildSeniorHardeningBundle({
+      domain_pack: domainPack,
+      extensions: hooks.extensions as JsonObject,
+      extension_cases: hooks.extra_regression_cases.map((c) => {
+        if (c.kind !== "api") return { kind: "browser" as const };
+        return {
+          kind: "api" as const,
+          case: {
+            id: c.case.id,
+            ...(c.case.auth !== undefined ? { auth: c.case.auth } : {}),
+          },
+        };
+      }),
+      signals: riskSignals,
+      hook_coverage: {
+        openapi_cases_added: hookCoverage.openapi_cases_added,
+        journey_cases_added: hookCoverage.journey_cases_added,
+      },
+      api_ran: extensionExec.api_ran,
+      current_case_count: suiteCases.length,
+      ...(priorSuite !== undefined ? { prior_suite: priorSuite } : {}),
+      git: gitBlast,
+      stateful_lifecycle_documented: input.start_request.input["stateful_lifecycle_documented"] === true,
+      ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
+      ...(includeDepth !== undefined ? { include_depth_smokes: includeDepth } : {}),
+    });
+
+    let depthSmokeJson: JsonObject | null = null;
+    let depthSmokesRan = false;
+    if (hardeningPreview.depth_smoke_recommended) {
+      try {
+        let depthReportSeq = 0;
+        let depthFindingSeq = 0;
+        const depth = new RunDepthSmokes({
+          authorizer: this.#dependencies.authorizer,
+          clock: this.#dependencies.clock,
+          ids: {
+            next: (scope) =>
+              scope === "report" ? `depth-report-${++depthReportSeq}` : `depth-finding-${++depthFindingSeq}`,
+          },
+          ...(this.#dependencies.launchBrowser !== undefined
+            ? { launchBrowser: this.#dependencies.launchBrowser }
+            : {}),
+        });
+        const depthResult = await depth.run({
+          operation_id: `${input.execution.operation_id}:depth`,
+          workspace_id: input.reference.workspace_id,
+          context: input.execution.workspace_context,
+          url: url.trim(),
+          stages: ["a11y_subset", "perf", "security"],
+        });
+        if (depthResult.ok) {
+          depthSmokesRan = true;
+          depthSmokeJson = {
+            ok: true,
+            has_critical: depthResult.value.has_critical,
+            summary: { ...depthResult.value.summary },
+            stages: [...depthResult.value.stages],
+            findings: depthResult.value.findings.slice(0, 30).map((f) => ({
+              id: f.id,
+              stage: f.stage,
+              category: f.category,
+              severity: f.severity,
+              message: f.message,
+              evidence: [...f.evidence],
+            })),
+            limitations: [...depthResult.value.limitations],
+          };
+          if (depthResult.value.has_critical) {
+            // Critical depth findings become mandate-style blockers via hardening gaps
+          }
+        } else {
+          depthSmokeJson = {
+            ok: false,
+            message: depthResult.failure.message,
+            note: hardeningPreview.depth_smoke_reason,
+          };
+        }
+      } catch (error) {
+        depthSmokeJson = {
+          ok: false,
+          message: `depth smoke failed: ${(error as Error).message}`,
+          note: hardeningPreview.depth_smoke_reason,
+        };
+      }
+    }
+
+    const roleDiffTriaged =
+      !hardeningPreview.role_diff.material_diff ||
+      declaredWaives.some((w) => w.risk_id === "e2_role_surface_diff_untriaged");
+
     const riskMatrix = buildExpertRiskMatrix({
       signals: riskSignals,
       domain_pack: domainPack,
@@ -420,10 +532,44 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         api_ran: extensionExec.api_ran,
         journey_ran: extensionExec.journey_ran,
       },
+      authz_negatives_present: hardeningPreview.authz_negatives.authz_negative_cases_present,
+      role_diff_triaged: roleDiffTriaged,
+      depth_smokes_ran: depthSmokesRan,
+      stateful_covered_or_waived:
+        hardeningPreview.stateful.covered || hardeningPreview.stateful.waived,
+      money_oracle_strong:
+        !riskSignals.needs_money_oracles ||
+        (hookCoverage.any_expected_network_on_ac &&
+          !domainPack.high_risk_unconfirmed),
     });
-    const productRoot = readOptionalString(input.start_request.input["product_root"]);
-    const gitBlast = await assessGitBlastRadius(productRoot);
-    const declaredWaives = readDeclaredWaives(input.start_request.input["risk_waives"]);
+
+    const hardening = buildSeniorHardeningBundle({
+      domain_pack: domainPack,
+      extensions: hooks.extensions as JsonObject,
+      extension_cases: hooks.extra_regression_cases.map((c) => {
+        if (c.kind !== "api") return { kind: "browser" as const };
+        return {
+          kind: "api" as const,
+          case: {
+            id: c.case.id,
+            ...(c.case.auth !== undefined ? { auth: c.case.auth } : {}),
+          },
+        };
+      }),
+      signals: riskSignals,
+      hook_coverage: {
+        openapi_cases_added: hookCoverage.openapi_cases_added,
+        journey_cases_added: hookCoverage.journey_cases_added,
+      },
+      api_ran: extensionExec.api_ran,
+      current_case_count: suiteCases.length,
+      ...(priorSuite !== undefined ? { prior_suite: priorSuite } : {}),
+      git: gitBlast,
+      stateful_lifecycle_documented: input.start_request.input["stateful_lifecycle_documented"] === true,
+      ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
+      ...(includeDepth !== undefined ? { include_depth_smokes: includeDepth } : {}),
+    });
+
     const oraclePreview = buildExpertJudgment({
       report,
       risk_signals: riskSignals,
@@ -443,11 +589,18 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       },
       ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
     });
-    const extraPassBlockers = [
+
+    const rawExtraBlockers = [
       ...riskMatrixPassBlockers(riskMatrix),
       ...acQualityPassBlockers(acQuality),
       ...oracleStrengthPassBlockers(oraclePreview),
+      ...hardening.pass_blockers,
+      ...(depthSmokeJson && depthSmokeJson["has_critical"] === true
+        ? ["e2_depth_smoke_critical"]
+        : []),
     ];
+    const waived = applyStructuredWaivesToBlockers(rawExtraBlockers, declaredWaives);
+    const extraPassBlockers = [...waived.blockers];
     const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
     const gapExtras: CoverageGapExtras = {
       mandate_blockers: mandateBlockers,
@@ -456,10 +609,11 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         hookCoverage.journey_cases_added && extensionExec.journey_attempted === 0,
       openapi_cases_registered_not_executed:
         hookCoverage.openapi_cases_added && extensionExec.api_attempted === 0,
-      stateful_lifecycle_uncovered: true,
+      stateful_lifecycle_uncovered: !hardening.stateful.covered && !hardening.stateful.waived,
       git_blast_radius: gitBlast,
       ac_quality_high_count: acQuality.findings.filter((f) => f.severity === "high").length,
       oracle_none_count: oraclePreview.oracle_strength.rows.filter((r) => r.strength === "none").length,
+      hardening_gaps: hardening.gaps,
     };
     const gaps = deriveCoverageGaps(report, gapExtras);
     const retest = deriveSmartRetestSuggestion(report);
@@ -512,6 +666,14 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       ac_quality: acQuality,
       git_blast_radius: gitBlast,
       judgment,
+      abuse_residual: {
+        title: hardening.abuse_residual.title,
+        objective: hardening.abuse_residual.objective,
+        time_box_minutes: hardening.abuse_residual.time_box_minutes,
+        probes: hardening.abuse_residual.probes,
+        note: hardening.abuse_residual.note,
+      },
+      session_delta_message: hardening.session_delta.message,
       extension_execution: {
         skipped: extensionExec.skipped,
         api_ran: extensionExec.api_ran,
@@ -579,6 +741,9 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         api_ran: extensionExec.api_ran,
         journey_ran: extensionExec.journey_ran,
       },
+      prior_hint_count: priorHints.length,
+      depth_smokes_ran: depthSmokesRan,
+      session_delta_message: hardening.session_delta.message,
     });
 
     const reportJson = qaRunReportJson(
@@ -601,6 +766,12 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
           expert_observations: expertObservations,
           expert_session_report: expertSessionReportJson(sessionReport),
           expert_judgment: expertJudgmentJson(judgment),
+          expert_senior_hardening: {
+            ...seniorHardeningJson(hardening),
+            waive_notes: [...waived.notes],
+            blockers_cleared_by_waive: [...waived.cleared],
+          },
+          depth_smokes: depthSmokeJson,
           expert_risk_matrix: expertRiskMatrixJson(riskMatrix),
           ac_quality_review: {
             schema_version: acQuality.schema_version,
@@ -912,6 +1083,7 @@ type CoverageGapExtras = Readonly<{
   git_blast_radius?: Awaited<ReturnType<typeof assessGitBlastRadius>>;
   ac_quality_high_count?: number;
   oracle_none_count?: number;
+  hardening_gaps?: readonly JsonObject[];
 }>;
 
 /**
@@ -994,12 +1166,20 @@ function deriveCoverageGaps(report: QaRunReport, extras?: CoverageGapExtras): re
   }
 
   if (extras?.stateful_lifecycle_uncovered === true) {
-    gaps.push({
-      gap: "stateful_data_lifecycle",
-      message:
-        "No durable fixture create→use→cleanup oracle in this loop — data pollution / orphan records may be invisible.",
-      expert_note: "Document setup/teardown or waive with reason; residual until evidenced.",
-    });
+    // Prefer hardening gap if present (richer checklist); else minimal
+    const hasHardeningStateful = (extras.hardening_gaps ?? []).some((g) => g["gap"] === "stateful_data_lifecycle");
+    if (!hasHardeningStateful) {
+      gaps.push({
+        gap: "stateful_data_lifecycle",
+        message:
+          "No durable fixture create→use→cleanup oracle in this loop — data pollution / orphan records may be invisible.",
+        expert_note: "Document setup/teardown or waive with reason; residual until evidenced.",
+      });
+    }
+  }
+
+  for (const hg of extras?.hardening_gaps ?? []) {
+    gaps.push({ ...hg });
   }
 
   if (extras?.git_blast_radius?.available && extras.git_blast_radius.changed_files.length > 0) {
@@ -1091,4 +1271,18 @@ function readDeclaredWaives(
     }
   }
   return out;
+}
+
+function findPriorSuite(
+  registry: RegressionSuiteRegistry | undefined,
+  workspaceId: string,
+  currentSuiteId: string | undefined,
+): Readonly<{ suite_id: string; case_count: number }> | undefined {
+  if (registry === undefined) return undefined;
+  const listed = registry.list(workspaceId);
+  const prior = listed
+    .filter((s) => s.id !== currentSuiteId)
+    .sort((a, b) => b.registered_at.localeCompare(a.registered_at))[0];
+  if (prior === undefined) return undefined;
+  return { suite_id: prior.id, case_count: prior.case_count };
 }

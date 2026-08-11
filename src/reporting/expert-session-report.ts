@@ -28,6 +28,14 @@ export type ExpertSessionReportInput = Readonly<{
   ac_quality?: AcQualityReview;
   git_blast_radius?: GitBlastRadius;
   judgment?: ExpertJudgment;
+  abuse_residual?: Readonly<{
+    title: string;
+    objective: string;
+    time_box_minutes: number;
+    probes: readonly string[];
+    note: string;
+  }>;
+  session_delta_message?: string;
   extension_execution?: Readonly<{
     skipped: boolean;
     api_ran: boolean;
@@ -283,6 +291,27 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
           ...input.judgment.next_exploratory_charter.focus_areas.map((f) => `- ${f}`),
         ];
 
+  const abuseMd =
+    input.abuse_residual === undefined
+      ? []
+      : [
+          "",
+          `## Abuse / pen residual (human)`,
+          "",
+          `**${input.abuse_residual.title}** (~${input.abuse_residual.time_box_minutes}m)`,
+          "",
+          input.abuse_residual.objective,
+          "",
+          ...input.abuse_residual.probes.map((p) => `- ${p}`),
+          "",
+          `_${input.abuse_residual.note}_`,
+        ];
+
+  const deltaMd =
+    input.session_delta_message === undefined
+      ? []
+      : ["", `## Session delta`, "", `- ${input.session_delta_message}`];
+
   const markdown = [
     `# Expert Tester session — ${report.target_url}`,
     "",
@@ -307,6 +336,8 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     ...acMd,
     ...judgmentMd,
     ...nextExploratoryMd,
+    ...abuseMd,
+    ...deltaMd,
     "",
     `## Next actions`,
     "",

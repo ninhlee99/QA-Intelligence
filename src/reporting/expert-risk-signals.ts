@@ -146,6 +146,9 @@ export function buildExpertObservations(input: {
   summary: Readonly<{ passed: number; failed: number; flaky: number; not_executed: number }>;
   release_recommendation: string;
   extension_executed?: Readonly<{ api_ran: boolean; journey_ran: boolean }>;
+  prior_hint_count?: number;
+  depth_smokes_ran?: boolean;
+  session_delta_message?: string;
 }): JsonObject {
   const observations: string[] = [];
   observations.push(
@@ -175,6 +178,17 @@ export function buildExpertObservations(input: {
   observations.push(
     "Human still owns release sign-off, pen-test, and novel domain judgment — automation is evidence, not accountability.",
   );
+  if (input.prior_hint_count !== undefined && input.prior_hint_count > 0) {
+    observations.push(
+      `Applied ${input.prior_hint_count} prior failure-avoidance hint(s) from Session Memory (advisory).`,
+    );
+  }
+  if (input.depth_smokes_ran) {
+    observations.push("Depth smoke portfolio (a11y_subset/perf/security) ran this Expert pass.");
+  }
+  if (input.session_delta_message) {
+    observations.push(`Session delta: ${input.session_delta_message}`);
+  }
 
   return {
     schema_version: "1.0.0",

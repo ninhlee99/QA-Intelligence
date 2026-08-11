@@ -43,6 +43,11 @@ export function buildExpertRiskMatrix(input: {
     api_ran: boolean;
     journey_ran: boolean;
   }>;
+  authz_negatives_present?: boolean;
+  role_diff_triaged?: boolean;
+  depth_smokes_ran?: boolean;
+  stateful_covered_or_waived?: boolean;
+  money_oracle_strong?: boolean;
 }): ExpertRiskMatrix {
   const rows: ExpertRiskMatrixRow[] = [];
 
@@ -54,8 +59,8 @@ export function buildExpertRiskMatrix(input: {
         "high",
         "high",
         "Multi-role language in AC/request — wrong visibility or privilege is common escape.",
-        "Run role_b compare + API authz negatives; confirm matrix with human.",
-        input.hook_coverage.role_compare_ran,
+        "Run role_b compare + triage material surface diffs; API authz negatives.",
+        input.hook_coverage.role_compare_ran && (input.role_diff_triaged !== false),
       ),
     );
   }
@@ -68,7 +73,9 @@ export function buildExpertRiskMatrix(input: {
         "medium",
         "API/OpenAPI in scope — authz gaps often miss UI-only testing.",
         "Supply openapi + include_authz_negatives; execute smoke in Expert pass.",
-        input.hook_coverage.openapi_cases_added && input.extension_executed?.api_ran === true,
+        input.hook_coverage.openapi_cases_added &&
+          input.extension_executed?.api_ran === true &&
+          input.authz_negatives_present === true,
       ),
     );
   }
@@ -81,7 +88,7 @@ export function buildExpertRiskMatrix(input: {
         "medium",
         "Payment/billing language without UI→API oracle risks silent money bugs.",
         "Add expected_network on AC; confirm money-flows.md with human.",
-        input.hook_coverage.any_expected_network_on_ac,
+        input.hook_coverage.any_expected_network_on_ac === true && input.money_oracle_strong !== false,
       ),
     );
   }
@@ -133,7 +140,7 @@ export function buildExpertRiskMatrix(input: {
       "critical",
       "low",
       "Automation adversarial probes ≠ pen-test engagement.",
-      "Human security review when surface is sensitive.",
+      "Human security review when surface is sensitive — see abuse_residual charter.",
       false,
     ),
     row(
@@ -142,10 +149,36 @@ export function buildExpertRiskMatrix(input: {
       "medium",
       "medium",
       "No durable fixture create→use→cleanup oracle in this loop.",
-      "Document data setup/teardown or waive with reason in gaps.",
-      false,
+      "Document setup/teardown (stateful_lifecycle_documented) or waive risk-stateful-data.",
+      input.stateful_covered_or_waived === true,
     ),
   );
+
+  if (input.depth_smokes_ran === true) {
+    rows.push(
+      row(
+        "risk-depth-smoke",
+        "Depth a11y/perf/security smoke",
+        "high",
+        "medium",
+        "Depth portfolio smoke exercised this pass.",
+        "Keep depth smokes on sensitive surfaces.",
+        true,
+      ),
+    );
+  } else if (input.signals.needs_api_authz || input.signals.needs_money_oracles) {
+    rows.push(
+      row(
+        "risk-depth-smoke",
+        "Depth a11y/perf/security smoke",
+        "high",
+        "medium",
+        "Sensitive smells without depth smoke — Senior Expert runs a11y_subset/perf/security.",
+        "Set include_depth_smokes=true (auto when smells/hotspots).",
+        false,
+      ),
+    );
+  }
 
   const open = rows.filter((r) => !r.exercised);
   return {
@@ -167,11 +200,11 @@ export function expertRiskMatrixJson(matrix: ExpertRiskMatrix): JsonObject {
   };
 }
 
-/** Open P0 rows block Expert claim_pass (same spirit as e2 mandates). */
+/** Open P0/P1 rows block pass. Pen residual never auto-clears. Stateful clears when covered/waived. */
 export function riskMatrixPassBlockers(matrix: ExpertRiskMatrix): readonly string[] {
   return matrix.rows
     .filter((r) => !r.exercised && (r.priority === "P0" || r.priority === "P1"))
-    .filter((r) => r.id !== "risk-scope-pen" && r.id !== "risk-stateful-data")
+    .filter((r) => r.id !== "risk-scope-pen")
     .map((r) => `risk_matrix_${r.priority.toLowerCase()}_open:${r.id}`);
 }
 

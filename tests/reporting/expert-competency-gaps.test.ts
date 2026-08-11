@@ -10,6 +10,10 @@ import {
   buildExpertJudgment,
   oracleStrengthPassBlockers,
 } from "../../src/reporting/expert-judgment.js";
+import {
+  applyStructuredWaivesToBlockers,
+  buildSeniorHardeningBundle,
+} from "../../src/reporting/expert-senior-hardening.js";
 import type { QaRunReport } from "../../src/reporting/qa-run-report.js";
 
 test("AC quality flags missing oracle and vague statement", () => {
@@ -54,8 +58,34 @@ test("risk matrix marks API authz exercised only when openapi + api_ran", () => 
       any_expected_network_on_ac: false,
     },
     extension_executed: { api_ran: true, journey_ran: false },
+    authz_negatives_present: true,
   });
   assert.equal(closed.rows.find((r) => r.id === "risk-api-authz")!.exercised, true);
+});
+
+test("senior hardening blocks stateful and clears via waive", () => {
+  const signals = detectExpertRiskSignals({
+    requirement_title: "API OpenAPI",
+    acceptance_criteria: [{ id: "ac-1", statement: "GET /x", expected_text: "ok" }],
+  });
+  const bundle = buildSeniorHardeningBundle({
+    signals,
+    extension_cases: [],
+    hook_coverage: { openapi_cases_added: false, journey_cases_added: false },
+    api_ran: false,
+    current_case_count: 3,
+  });
+  assert.ok(bundle.pass_blockers.includes("stateful_lifecycle_uncovered"));
+  assert.ok(bundle.abuse_residual.probes.length > 0);
+  const waived = applyStructuredWaivesToBlockers(bundle.pass_blockers, [
+    {
+      risk_id: "risk-stateful-data",
+      reason_code: "stateful_lifecycle_accepted",
+      rationale: "Ephemeral demo env — no durable fixtures by design this sprint.",
+    },
+  ]);
+  assert.ok(!waived.blockers.includes("stateful_lifecycle_uncovered"));
+  assert.ok(waived.cleared.length >= 1);
 });
 
 test("checklist blocks on risk_matrix and ac_quality prefixes", () => {

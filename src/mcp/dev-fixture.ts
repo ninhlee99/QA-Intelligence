@@ -1740,8 +1740,17 @@ export function buildDevFixture(options: {
           risk_waives: {
             type: "array",
             description:
-              "Optional structured waives: [{risk_id, reason_code, rationale≥12 chars}]. Recorded in expert_judgment.waives — never silent.",
+              "Optional structured waives: [{risk_id, reason_code, rationale≥12 chars}]. Can clear matching risk_matrix_*/stateful/role-diff blockers.",
             items: { type: "object" },
+          },
+          stateful_lifecycle_documented: {
+            type: "boolean",
+            description: "Host confirms create→use→cleanup data lifecycle is documented for this session.",
+          },
+          include_depth_smokes: {
+            type: "boolean",
+            description:
+              "Force on/off depth a11y/perf/security smoke. Default: auto when money/API smells or git hotspots.",
           },
           product_root: {
             type: "string",
@@ -1803,6 +1812,10 @@ export function buildDevFixture(options: {
           max_extension_browser:
             typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
           risk_waives: (args["risk_waives"] as JsonValue | undefined) ?? [],
+          stateful_lifecycle_documented:
+            args["stateful_lifecycle_documented"] === true ? true : undefined,
+          include_depth_smokes:
+            typeof args["include_depth_smokes"] === "boolean" ? args["include_depth_smokes"] : undefined,
           product_root: (args["product_root"] as string | undefined) ?? "",
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
@@ -1885,6 +1898,8 @@ export function buildDevFixture(options: {
           max_extension_api: { type: "number" },
           max_extension_browser: { type: "number" },
           risk_waives: { type: "array", items: { type: "object" } },
+          stateful_lifecycle_documented: { type: "boolean" },
+          include_depth_smokes: { type: "boolean" },
           acknowledge_domain_pack_absent: { type: "boolean" },
           domain_high_risk_confirmed: { type: "boolean" },
         },
@@ -1938,6 +1953,10 @@ export function buildDevFixture(options: {
           max_extension_browser:
             typeof args["max_extension_browser"] === "number" ? args["max_extension_browser"] : undefined,
           risk_waives: (args["risk_waives"] as JsonValue | undefined) ?? [],
+          stateful_lifecycle_documented:
+            args["stateful_lifecycle_documented"] === true ? true : undefined,
+          include_depth_smokes:
+            typeof args["include_depth_smokes"] === "boolean" ? args["include_depth_smokes"] : undefined,
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
         }),

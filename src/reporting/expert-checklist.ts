@@ -57,6 +57,9 @@ const PASS_BLOCKING_PREFIXES = [
   "risk_matrix_",
   "ac_quality:",
   "oracle_weak:",
+  "stateful_lifecycle",
+  "e2_role_surface_diff",
+  "e2_api_authz_negatives",
 ] as const;
 
 export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
@@ -174,6 +177,21 @@ export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {
   if (blockers.some((b) => b.startsWith("oracle_weak:"))) {
     host_actions.unshift(
       "One or more AC have no executable oracle — Expert refuses unverifiable pass; add expected_text/url/title/network.",
+    );
+  }
+  if (blockers.some((b) => b.startsWith("stateful_lifecycle"))) {
+    host_actions.unshift(
+      "Document create→use→cleanup (stateful_lifecycle_documented=true) or risk_waives risk_id=risk-stateful-data.",
+    );
+  }
+  if (blockers.some((b) => b.includes("role_surface_diff"))) {
+    host_actions.unshift(
+      "Triage role surface diffs (only_in_a/b) — file defects or waive e2_role_surface_diff_untriaged with rationale.",
+    );
+  }
+  if (blockers.some((b) => b.includes("authz_negatives"))) {
+    host_actions.unshift(
+      "Re-run with include_authz_negatives:true so unauth API cases exist and execute this pass.",
     );
   }
   if (input.smart_retest_action === "targeted_retest") {

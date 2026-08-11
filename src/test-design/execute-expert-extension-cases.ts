@@ -60,7 +60,13 @@ export async function executeExpertExtensionCases(
 
   const maxApi = Math.min(Math.max(input.max_api ?? 5, 0), 10);
   const maxBrowser = Math.min(Math.max(input.max_browser ?? 3, 0), 8);
-  const apiCases = input.cases.filter((c) => c.kind === "api").slice(0, maxApi);
+  // Prefer authz negatives / wrong-role before happy-path API — Senior Expert order.
+  const apiCases = [...input.cases.filter((c) => c.kind === "api")]
+    .sort((a, b) => {
+      if (a.kind !== "api" || b.kind !== "api") return 0;
+      return apiPriority(a.case) - apiPriority(b.case);
+    })
+    .slice(0, maxApi);
   const journeyCases = input.cases
     .filter(
       (c) =>
@@ -226,4 +232,10 @@ function emptySkipped(reason: string): ExpertExtensionExecutionResult {
 function mapOutcome(raw: string): QaRunTestCaseResult["outcome"] {
   if (raw === "passed" || raw === "failed" || raw === "flaky" || raw === "cancelled") return raw;
   return "not_executed";
+}
+
+function apiPriority(smokeCase: Readonly<{ id: string; auth?: string }>): number {
+  if (smokeCase.auth === "none" || smokeCase.id.includes("-unauth")) return 0;
+  if (smokeCase.auth === "alternate_bearer" || smokeCase.id.includes("-wrong-role")) return 1;
+  return 2;
 }

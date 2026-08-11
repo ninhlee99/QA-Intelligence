@@ -35,8 +35,11 @@ No pass unless MCP `expert_checklist.claim_pass_allowed` is true **and** `valida
 
 If G0 smells roles/API/money/journey → must exercise hooks (`role_b`, `openapi`+authz, `expected_network`, `include_workflow_journeys`) or accept E2 blockers (no pass).  
 Read `ac_quality_review` / `expert_judgment.oracle_strength` / open `risk_matrix` P0–P1 — push back or mitigate before pass language.  
-Honor `expert_judgment.stopping` (diminishing returns → stop full-suite burn; follow next exploratory charter).  
-Structured waives only via `risk_waives` (risk_id + reason_code + rationale) — never silent.  
+Honor `expert_judgment.stopping` (diminishing returns → stop full-suite burn; follow next exploratory + abuse residual charters).  
+Structured waives via `risk_waives` clear matching blockers (stateful / role-diff / risk_matrix ids) — never silent.  
+Depth smoke auto on money/API smells or git hotspots (`include_depth_smokes` to force).  
+Stateful: `stateful_lifecycle_documented=true` or waive `risk-stateful-data`.  
+API authz: `include_authz_negatives:true` required when OpenAPI in scope.  
 If domain high-risk TODOs: confirm with human → re-run with `domain_high_risk_confirmed=true`.  
 `acknowledge_domain_pack_absent` only records a gap — **still not pass**.  
 Human release_signoff required even when claim_pass_allowed=true.

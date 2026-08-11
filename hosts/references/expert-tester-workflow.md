@@ -122,7 +122,10 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 | Code change in product_root | Read `git_blast_radius` in output — aim retest; filenames ≠ oracles |
 | Vague / oracle-less AC | Read `ac_quality_review` + `expert_judgment.oracle_strength` — push back; none-oracle blocks pass |
 | End of session | Honor `expert_judgment.stopping` + paste `next_exploratory_charter` when present |
-| Residual risk accept | Only via `risk_waives[{risk_id,reason_code,rationale}]` — never silent waive |
+| Residual risk accept | Only via `risk_waives[{risk_id,reason_code,rationale}]` — clears matching blockers |
+| Stateful data | `stateful_lifecycle_documented=true` or waive `risk-stateful-data` |
+| Depth a11y/perf/security | Auto on money/API smells or git hotspots; force with `include_depth_smokes` |
+| OpenAPI authz | `include_authz_negatives:true` — unauth cases preferred in same-pass execute |
 
 Skip only with explicit reason in G6.
 

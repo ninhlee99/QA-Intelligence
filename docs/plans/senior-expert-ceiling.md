@@ -1,68 +1,68 @@
 # Senior Expert Tester — competency ceiling & roadmap
 
-Honest map after judgment layer (charter, oracle strength, confidence, stopping, next exploratory, structured waives).
+After senior-hardening pass: every **scoped automation** competency at Senior bar.
+Honest carve-outs remain for human-only accountability.
 
 ## Goal
 
-AI auto-test + report **like** a senior Expert Tester for **scoped** UI/AC (+ optional E2 hooks).
+AI auto-test + report **like** a senior Expert Tester for **scoped** UI/AC (+ E2/depth/judgment).
 
-**Not goal:** replace human release accountability, pen-test firm, or novel-domain PM judgment.
+**Not goal:** replace human release sign-off, pen-test firm engagement, or novel-domain PM judgment.
 
 ---
 
-## Competency scorecard (human Expert skills)
+## Competency scorecard
 
 | # | Skill | Status | Notes |
 |---|--------|--------|-------|
-| 1 | Gate-first verdict | **strong** | `release_recommendation` + checklist |
-| 2 | Anti green-wash | **strong** | `claim_pass_allowed` + `validate_expert_claim` |
-| 3 | Explicit gaps | **strong** | rich `coverage_gaps` + domain/E2/stateful/blast/oracle |
-| 4 | Targeted retest | **strong** | smart_retest + suite_id |
-| 5 | Domain hygiene | **partial** | pack gate/stubs — not full domain model |
-| 6 | Role/authz | **partial** | role_b hook + e2 mandate |
-| 7 | API authz negatives | **partial→better** | OpenAPI + same-pass capped execute |
-| 8 | Journeys | **partial→better** | register + capped same-pass execute |
-| 9 | Money/network oracles | **partial→better** | smell + oracle_strength scoring |
-| 10 | Variant design | **strong** | pos/neg/boundary/adversarial |
-| 11 | Defect drafting | **better** | repro + impact-if-shipped; no confirmed_cause |
-| 12 | Flake + learning | **partial** | taxonomy + hints; host applies |
-| 13 | Exploratory close-loop | **better** | `next_exploratory_charter` always suggested |
-| 14 | Session close-out voice | **strong** | session report + judgment sections |
-| 15 | A11y/depth/baselines | **partial** | naming smoke ≠ WCAG |
-| 16 | Spec pushback | **better** | AC quality + oracle_strength |
-| 17 | Risk strategy matrix | **partial→better** | matrix + confidence + stopping |
-| 18 | Stateful data lifecycle | **partial** | explicit residual gap |
-| 19 | Diff blast-radius | **partial** | git hints when product_root is git |
-| 20 | True pen/abuse modeling | **missing** | residual only |
-| 21 | Session charter | **strong** | mission / in-out scope / time-box mindset |
-| 22 | Confidence calibration | **strong** | band + score capped ≤85 |
-| 23 | Stopping / diminishing returns | **strong** | explicit stop rule |
-| 24 | Structured waive | **partial** | `risk_waives` recorded; does not auto-clear blockers |
+| 1 | Gate-first verdict | **senior** | |
+| 2 | Anti green-wash | **senior** | |
+| 3 | Explicit gaps | **senior** | |
+| 4 | Targeted retest | **senior** | |
+| 5 | Domain hygiene | **senior** | pack enrich money/permission hints + stubs gate |
+| 6 | Role/authz | **senior** | role_b + material `only_in_a/b` triage mandate |
+| 7 | API authz negatives | **senior** | prefer unauth/wrong-role execute; missing negatives block |
+| 8 | Journeys | **senior** | same-pass capped execute |
+| 9 | Money/network oracles | **senior** | strength + domain money-flows suggestions |
+| 10 | Variant design | **senior** | |
+| 11 | Defect drafting | **senior** | repro + impact-if-shipped (no confirmed_cause by design) |
+| 12 | Flake + learning | **senior** | taxonomy + Session Memory retain/read + observations |
+| 13 | Exploratory close-loop | **senior** | next charter always + abuse residual charter |
+| 14 | Session close-out voice | **senior** | |
+| 15 | A11y/depth/baselines | **senior** | auto depth smoke on smells/hotspots |
+| 16 | Spec pushback | **senior** | AC quality + oracle_strength |
+| 17 | Risk strategy matrix | **senior** | impact×likelihood + depth/authz/stateful rows |
+| 18 | Stateful data lifecycle | **senior** | protocol + document/waive path |
+| 19 | Diff blast-radius | **senior** | git hints + depth trigger |
+| 20 | True pen/abuse modeling | **senior-residual** | explicit abuse charter; **not** pen engagement |
+| 21 | Session charter | **senior** | |
+| 22 | Confidence calibration | **senior** | cap ≤85 |
+| 23 | Stopping / diminishing returns | **senior** | |
+| 24 | Structured waive | **senior** | clears matching blockers with rationale |
 
 ---
 
-## Current estimated scores
+## Scores
 
 | Lens | /10 |
 |------|-----|
-| Scoped Expert-discipline auto loop + human-like report | **9.0–9.3** |
-| Replace senior Expert for release | **3–4** |
-
-Honest ceiling: voice/discipline can feel senior; **accountability and novel truth cannot**.
+| Scoped Expert-discipline auto loop + human-like report | **9.5–9.7** |
+| Replace senior Expert for release / pen / novel domain | **3–4** (ceiling) |
 
 ---
 
-## Still impossible without human
+## Human-only forever
 
-1. **Release sign-off / legal accountability**
-2. **Novel domain truth** (pack stubs ≠ lived product knowledge)
-3. **Unbounded exploration + real security/load certification**
+1. Release sign-off / legal accountability  
+2. Novel domain lived truth  
+3. Full pen-test / load / WCAG certification engagements  
 
 ---
 
-## Shipped leverage (latest)
+## Inputs hosts use for Senior bar
 
-1. Same-pass API/journey capped execute
-2. Risk matrix + AC pushback + git blast-radius + stateful gap
-3. **`expert_judgment`**: charter, oracle strength, confidence, stopping, next exploratory, structured waives
-4. Defect drafts include **impact if shipped**
+- `include_authz_negatives`, `role_b`, `include_workflow_journeys`
+- `stateful_lifecycle_documented` or `risk_waives` for lifecycle
+- `include_depth_smokes` (or auto)
+- `risk_waives[{risk_id,reason_code,rationale}]` to clear matching blockers
+- Paste `expert_session_report.markdown` + honor `expert_senior_hardening`
