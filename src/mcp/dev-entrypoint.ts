@@ -168,7 +168,7 @@ function main(): void {
   const sessionMemory = new SessionMemory(clock, {
     persistRootDir: join(persistBaseDir, ".qa-avoidance-hints"),
   });
-  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
+  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository, userPreferences } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,
     authorizer,
@@ -196,6 +196,9 @@ function main(): void {
     sessionMemory,
     mistakeRecurrenceTracker,
     candidateRepository,
+    // Inject language_instruction into every tool response so Claude uses
+    // the user's preferred response language without being re-prompted.
+    resolveLanguageInstruction: () => userPreferences.languageInstruction(),
     tools,
   });
 

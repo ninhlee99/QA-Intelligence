@@ -140,6 +140,8 @@ import {
 
 import { compactMcpInput } from "./mcp-input.js";
 import type { AgentRuntimeToolDefinition } from "./agent-runtime-tool-registry.js";
+import { FileBackedUserPreferences } from "../preferences/user-preferences.js";
+import { UserPreferenceRuntimeExecutor } from "../preferences/runtime-executor.js";
 
 export const AGENT = { id: "requirement-review-agent", version: "0.1.0" } as const;
 export const SKILL = { id: "assess-requirement-quality", version: "0.1.0" } as const;
@@ -260,6 +262,10 @@ export const COMPARE_UI_AGENT = { id: "compare-ui-surfaces-agent", version: "0.1
 export const COMPARE_UI_SKILL = { id: "compare-ui-surfaces", version: "0.1.0" } as const;
 export const ROLE_COMPARE_AGENT = { id: "discover-compare-role-surfaces-agent", version: "0.1.0" } as const;
 export const ROLE_COMPARE_SKILL = { id: "discover-compare-role-surfaces", version: "0.1.0" } as const;
+export const USER_PREF_SET_AGENT = { id: "user-preference-set-agent", version: "0.1.0" } as const;
+export const USER_PREF_SET_SKILL = { id: "set-user-preference", version: "0.1.0" } as const;
+export const USER_PREF_GET_AGENT = { id: "user-preference-get-agent", version: "0.1.0" } as const;
+export const USER_PREF_GET_SKILL = { id: "get-user-preference", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
 export const DEMO_PASSWORD_SECRET_REF = "workspace-secret:demo-password";
 export const DEMO_PAGE_ENVIRONMENT_REF = "environment:dev-fixture-page";
@@ -335,6 +341,7 @@ export type DevFixtureBuild = Readonly<{
   tools: readonly AgentRuntimeToolDefinition[];
   mistakeRecurrenceTracker: MistakeRecurrenceTracker;
   candidateRepository: CandidateRepository;
+  userPreferences: FileBackedUserPreferences;
 }>;
 
 /**
@@ -402,6 +409,8 @@ export function buildDevFixture(options: {
   // Phase 6 credential registry — file-backed under .qa-credentials/ so
   // refs survive MCP restart (local disk, not Vault). Demo password
   // pre-registered so login flows can use password_secret_ref.
+  const userPreferences = new FileBackedUserPreferences(persistBaseDir);
+
   const credentials = new FileBackedWorkspaceCredentialRegistry(
     clock,
     join(persistBaseDir, ".qa-credentials"),
@@ -1423,6 +1432,24 @@ export function buildDevFixture(options: {
       expected_skill: ROLE_COMPARE_SKILL,
       discoverAfterLogin: discoverAfterLoginSkill,
       credentials,
+    }),
+  );
+  executorMap.set(
+    USER_PREF_SET_AGENT.id,
+    new UserPreferenceRuntimeExecutor({
+      expected_agent: USER_PREF_SET_AGENT,
+      expected_skill: USER_PREF_SET_SKILL,
+      preferences: userPreferences,
+      mode: "set",
+    }),
+  );
+  executorMap.set(
+    USER_PREF_GET_AGENT.id,
+    new UserPreferenceRuntimeExecutor({
+      expected_agent: USER_PREF_GET_AGENT,
+      expected_skill: USER_PREF_GET_SKILL,
+      preferences: userPreferences,
+      mode: "get",
     }),
   );
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
@@ -3297,7 +3324,44 @@ export function buildDevFixture(options: {
           role_b: (args["role_b"] as JsonValue | undefined) ?? {},
         }),
     },
+    {
+      name: "set_user_preference",
+      description:
+        "Set a persistent user preference (stored in .qa-user-prefs.json under the workspace persist dir). Call ONCE — the setting survives MCP restarts. Currently supported: language (e.g. \"Vietnamese\", \"English\", \"日本語\", \"vi\", \"en\", \"ja\"). After setting, Claude and all MCP tool responses will use that language.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          language: {
+            type: "string",
+            description:
+              "BCP-47 tag or natural language name: \"Vietnamese\", \"English\", \"日本語\", \"vi\", \"en\", \"ja\", etc.",
+          },
+        },
+        required: ["language"],
+      },
+      agent: USER_PREF_SET_AGENT,
+      purpose: "Persist user preference (language, etc.) across sessions",
+      consequence_class: "reversible",
+      policy_version: policyVersion,
+      allowed_skills: [USER_PREF_SET_SKILL],
+      budgets: { max_steps: 2, max_duration_seconds: 10, max_tool_calls: 0, max_retries: 0 },
+      buildInput: (args) => ({
+        language: (args["language"] as string | undefined) ?? "",
+      }),
+    },
+    {
+      name: "get_user_preference",
+      description: "Read the current user preference settings (language, etc.).",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      agent: USER_PREF_GET_AGENT,
+      purpose: "Read current user preferences",
+      consequence_class: "advisory",
+      policy_version: policyVersion,
+      allowed_skills: [USER_PREF_GET_SKILL],
+      budgets: { max_steps: 2, max_duration_seconds: 10, max_tool_calls: 0, max_retries: 0 },
+      buildInput: () => ({}),
+    },
   ];
 
-  return { runtime, tools, mistakeRecurrenceTracker, candidateRepository };
+  return { runtime, tools, mistakeRecurrenceTracker, candidateRepository, userPreferences };
 }

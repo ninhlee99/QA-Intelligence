@@ -58,6 +58,13 @@ export type AgentRuntimeToolRegistryDependencies = Readonly<{
   /** SPEC-105 §9a: count same causal class across runs; when recurring, raise Learning candidate. */
   mistakeRecurrenceTracker?: MistakeRecurrenceTracker;
   candidateRepository?: CandidateRepository;
+  /**
+   * Optional callback that returns the current language instruction string
+   * (e.g. "Respond in Vietnamese."). When provided, every tool response
+   * is wrapped with a top-level `language_instruction` field so Claude
+   * picks it up and responds in the user's preferred language.
+   */
+  resolveLanguageInstruction?: () => string | undefined;
 }>;
 
 export const DEFAULT_SESSION_MEMORY_TTL_SECONDS = 60 * 60;
@@ -149,9 +156,15 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
     this.#retainOutcomeInSessionMemory(context.workspace_id, definition, executed.value);
     await this.#retainFailureAvoidanceFromQaRun(context.workspace_id, definition, executed.value);
 
+    const langInstruction = this.#dependencies.resolveLanguageInstruction?.();
+    const resultPayload =
+      langInstruction !== undefined
+        ? { language_instruction: langInstruction, ...executed.value }
+        : executed.value;
+
     return {
       ok: executed.value.outcome === "completed",
-      text: JSON.stringify(executed.value, null, 2),
+      text: JSON.stringify(resultPayload, null, 2),
     };
   }
 
