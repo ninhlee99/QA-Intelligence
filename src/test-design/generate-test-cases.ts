@@ -38,10 +38,12 @@ type CriterionOracles = Readonly<{
   expected_url_includes?: string;
   expected_title_includes?: string;
   expected_network?: NonNullable<TestCaseGeneratedAssertion["expected_network"]>;
+  expected_result_count?: NonNullable<TestCaseGeneratedAssertion["expected_result_count"]>;
 }>;
 
 type CriterionInteractionHints = Readonly<{
   option_label?: string;
+  option_labels?: readonly string[];
   wait_for_accessible_name?: string;
   wait_for_accessible_role?: string;
   wait_for_timeout_ms?: number;
@@ -252,11 +254,15 @@ export class GenerateTestCases {
       const oracles = readCriterionOracles(criterion);
       const interaction = readCriterionInteraction(criterion);
 
-      if (selectableFields.length > 0 && interaction.option_label === undefined) {
+      if (
+        selectableFields.length > 0 &&
+        interaction.option_label === undefined &&
+        interaction.option_labels === undefined
+      ) {
         findings.push({
           id: this.#dependencies.ids.next("finding"),
           category: "missing_option_label",
-          message: `Acceptance criterion "${criterionId}" binds selectable field(s) but has no option_label — a select step was not invented (SPEC-207 §6).`,
+          message: `Acceptance criterion "${criterionId}" binds selectable field(s) but has no option_label / option_labels — a select step was not invented (SPEC-207 §6).`,
           evidence: [
             `${request.requirement_ref}#${criterionId}`,
             ...selectableFields.map((field) => `ui-element:${field.id}`),
@@ -396,13 +402,14 @@ export class GenerateTestCases {
       if (field.interaction_hint === "selectable") {
         // Never invent option labels (SPEC-207 §6). Missing label already
         // recorded as missing_option_label; skip the step here.
-        if (interaction.option_label === undefined) continue;
+        if (interaction.option_label === undefined && interaction.option_labels === undefined) continue;
         steps.push({
           action: "select",
           input: {
             accessible_name: field.accessible_name ?? "",
             accessible_role: field.accessible_role ?? "",
-            option_label: interaction.option_label,
+            ...(interaction.option_label !== undefined ? { option_label: interaction.option_label } : {}),
+            ...(interaction.option_labels !== undefined ? { option_labels: [...interaction.option_labels] } : {}),
           },
         });
         continue;
@@ -582,15 +589,23 @@ function readCriterionOracles(criterion: JsonObject): CriterionOracles {
   const expected_url_includes = readString(criterion, "expected_url_includes");
   const expected_title_includes = readString(criterion, "expected_title_includes");
   const expected_network = readExpectedNetwork(criterion["expected_network"]);
+  const expected_result_count = readExpectedResultCount(criterion["expected_result_count"]);
   return {
     ...(expected_url_includes !== undefined ? { expected_url_includes } : {}),
     ...(expected_title_includes !== undefined ? { expected_title_includes } : {}),
     ...(expected_network !== undefined ? { expected_network } : {}),
+    ...(expected_result_count !== undefined ? { expected_result_count } : {}),
   };
 }
 
 function readCriterionInteraction(criterion: JsonObject): CriterionInteractionHints {
   const option_label = readString(criterion, "option_label");
+  const optionLabelsRaw = criterion["option_labels"];
+  const option_labels =
+    Array.isArray(optionLabelsRaw) &&
+    optionLabelsRaw.every((entry) => typeof entry === "string" && entry.trim().length > 0)
+      ? optionLabelsRaw.map((entry) => String(entry).trim())
+      : undefined;
   const wait_for_accessible_name = readString(criterion, "wait_for_accessible_name");
   const wait_for_accessible_role = readString(criterion, "wait_for_accessible_role");
   const timeoutRaw = criterion["wait_for_timeout_ms"];
@@ -600,6 +615,7 @@ function readCriterionInteraction(criterion: JsonObject): CriterionInteractionHi
       : undefined;
   return {
     ...(option_label !== undefined ? { option_label } : {}),
+    ...(option_labels !== undefined ? { option_labels } : {}),
     ...(wait_for_accessible_name !== undefined ? { wait_for_accessible_name } : {}),
     ...(wait_for_accessible_role !== undefined ? { wait_for_accessible_role } : {}),
     ...(wait_for_timeout_ms !== undefined ? { wait_for_timeout_ms } : {}),
@@ -632,13 +648,38 @@ function readNetworkStatus(value: JsonValue | undefined): number | readonly numb
   return statuses;
 }
 
+function readExpectedResultCount(
+  value: JsonValue | undefined,
+): CriterionOracles["expected_result_count"] | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const accessible_role = readString(value, "accessible_role");
+  const relationRaw = readString(value, "relation");
+  const countValue = value["value"];
+  if (
+    accessible_role === undefined ||
+    (relationRaw !== "eq" && relationRaw !== "gte" && relationRaw !== "lte") ||
+    typeof countValue !== "number" ||
+    !Number.isFinite(countValue)
+  ) {
+    return undefined;
+  }
+  const accessible_name_includes = readString(value, "accessible_name_includes");
+  return {
+    accessible_role,
+    relation: relationRaw,
+    value: countValue,
+    ...(accessible_name_includes !== undefined ? { accessible_name_includes } : {}),
+  };
+}
+
 function hasExecutableOracle(expectedText: string | undefined, oracles: CriterionOracles | undefined): boolean {
   if (expectedText !== undefined) return true;
   if (oracles === undefined) return false;
   return (
     oracles.expected_url_includes !== undefined ||
     oracles.expected_title_includes !== undefined ||
-    oracles.expected_network !== undefined
+    oracles.expected_network !== undefined ||
+    oracles.expected_result_count !== undefined
   );
 }
 
@@ -652,5 +693,6 @@ function withOracles(
     ...(oracles.expected_url_includes !== undefined ? { expected_url_includes: oracles.expected_url_includes } : {}),
     ...(oracles.expected_title_includes !== undefined ? { expected_title_includes: oracles.expected_title_includes } : {}),
     ...(oracles.expected_network !== undefined ? { expected_network: oracles.expected_network } : {}),
+    ...(oracles.expected_result_count !== undefined ? { expected_result_count: oracles.expected_result_count } : {}),
   };
 }

@@ -185,6 +185,16 @@ export type TestCaseGeneratedAssertion = Readonly<{
     status?: number | readonly number[];
     body_includes?: string;
   }>;
+  /**
+   * Structural count oracle (dogfood GAP-2): count cleaned-tree nodes by
+   * accessible_role (+ optional name substring) and compare with relation.
+   */
+  expected_result_count?: Readonly<{
+    accessible_role: string;
+    accessible_name_includes?: string;
+    relation: "eq" | "gte" | "lte";
+    value: number;
+  }>;
 }>;
 
 export type TestCaseGenerationUiElement = Readonly<{

@@ -75,6 +75,8 @@ type Dependencies = Readonly<{
   launchBrowser?: () => Promise<import("playwright").Browser>;
   /** Directory failure screenshots are written under (forwarded to `PlaywrightExecutionEngine`). Screenshot capture is skipped when omitted. */
   screenshotDir?: string;
+  /** Capture PNG on pass as well as fail (dogfood GAP-1). */
+  alwaysScreenshot?: boolean;
   /** Directory failure Playwright traces are written under. Trace capture is skipped when omitted. */
   traceDir?: string;
 }>;
@@ -219,6 +221,7 @@ export class RunAutoQaPipeline {
       plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
       ...(this.#dependencies.screenshotDir !== undefined ? { screenshotDir: this.#dependencies.screenshotDir } : {}),
+      ...(this.#dependencies.alwaysScreenshot === true ? { alwaysScreenshot: true } : {}),
       ...(this.#dependencies.traceDir !== undefined ? { traceDir: this.#dependencies.traceDir } : {}),
     });
     const skill = new ExecuteBrowserTest({

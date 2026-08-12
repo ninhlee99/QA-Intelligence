@@ -31,7 +31,8 @@ export function reviewAcceptanceCriteriaQuality(
       typeof ac["expected_text"] === "string" ||
       typeof ac["expected_url_includes"] === "string" ||
       typeof ac["expected_title_includes"] === "string" ||
-      (typeof ac["expected_network"] === "object" && ac["expected_network"] !== null);
+      (typeof ac["expected_network"] === "object" && ac["expected_network"] !== null) ||
+      (typeof ac["expected_result_count"] === "object" && ac["expected_result_count"] !== null);
 
     if (statement.length === 0) {
       findings.push({
@@ -55,7 +56,7 @@ export function reviewAcceptanceCriteriaQuality(
         id: `${id}:no_oracle`,
         severity: "high",
         category: "missing_oracle",
-        message: `AC ${id} lacks executable oracle (expected_text / url / title / network) — generator may not_executed.`,
+        message: `AC ${id} lacks executable oracle (expected_text / url / title / network / expected_result_count) — generator may not_executed.`,
       });
     }
     if (/\b(should|maybe|probably|tbd|etc\.?)\b/i.test(statement)) {

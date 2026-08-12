@@ -50,6 +50,9 @@ export type DiscoverAfterLoginRequest = Readonly<{
   /** HTTP Basic Auth (a browser-native credential prompt, distinct from the in-page login form above) required in front of both login_url and target_url — supply both or neither. */
   basic_auth_username?: string;
   basic_auth_password?: string;
+  include_screenshot?: boolean;
+  screenshot_dir?: string;
+  max_elements?: number;
 }>;
 
 type Dependencies = Readonly<{
@@ -214,6 +217,9 @@ export class DiscoverAfterLogin {
           context: request.context,
           url: request.target_url,
           operation_id: `${request.operation_id}:target-page`,
+          ...(request.include_screenshot === true ? { include_screenshot: true } : {}),
+          ...(request.screenshot_dir !== undefined ? { screenshot_dir: request.screenshot_dir } : {}),
+          ...(request.max_elements !== undefined ? { max_elements: request.max_elements } : {}),
         });
       } finally {
         await page.close();

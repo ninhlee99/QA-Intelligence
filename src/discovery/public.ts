@@ -108,6 +108,8 @@ export type SemanticUiMap = Readonly<{
   elements: readonly SemanticUiElement[];
   /** SPEC-201 §10: explicit limitations, e.g. truncation from DomCleaner limits — never silently dropped. */
   limitations: readonly string[];
+  /** Optional PNG path when caller requested include_screenshot (dogfood GAP-1). */
+  screenshot_path?: string;
 }>;
 
 export type SemanticUiDiscoveryFailure = Readonly<{

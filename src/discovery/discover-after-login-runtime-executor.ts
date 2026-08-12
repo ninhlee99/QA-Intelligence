@@ -145,6 +145,10 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
         ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
         : {}),
+      ...(input.start_request.input["include_screenshot"] === true ? { include_screenshot: true } : {}),
+      ...(typeof input.start_request.input["max_elements"] === "number"
+        ? { max_elements: input.start_request.input["max_elements"] }
+        : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 
@@ -153,6 +157,7 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       `capture:${map.capture_id}`,
       `semantic-ui-map:${map.capture_id}`,
       ...(usingSso ? ["login-mode:sso"] : ["login-mode:form"]),
+      ...(map.screenshot_path !== undefined ? [`screenshot:${map.screenshot_path}`] : []),
     ]);
     if (passwordVia !== undefined) {
       evidence.push(`password-via:${passwordVia}`);
@@ -243,5 +248,6 @@ function semanticUiMapJson(value: SemanticUiMap): JsonObject {
       confidence: element.confidence,
     })),
     limitations: [...value.limitations],
+    ...(value.screenshot_path !== undefined ? { screenshot_path: value.screenshot_path } : {}),
   };
 }

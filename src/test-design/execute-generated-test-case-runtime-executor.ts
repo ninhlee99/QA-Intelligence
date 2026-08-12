@@ -116,6 +116,7 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       plans,
       ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
       ...(screenshotDirReady ? { screenshotDir } : {}),
+      ...(input.start_request.input["include_screenshot"] === true ? { alwaysScreenshot: true } : {}),
       ...(traceDirReady ? { traceDir } : {}),
     });
     const skill = new ExecuteBrowserTest({

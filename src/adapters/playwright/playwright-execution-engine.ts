@@ -76,7 +76,14 @@ export type PlaywrightInteractionTarget = Readonly<{
 export type PlaywrightInteractionStep =
   | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget }>
   | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>
-  | Readonly<{ kind: "select"; target: PlaywrightInteractionTarget; option_label: string }>
+  | Readonly<{
+      kind: "select";
+      target: PlaywrightInteractionTarget;
+      /** Single-select label (backward compatible). */
+      option_label: string;
+      /** Multi-select: when present and non-empty, preferred over option_label (dogfood GAP-4). */
+      option_labels?: readonly string[];
+    }>
   | Readonly<{ kind: "wait_for"; target: PlaywrightInteractionTarget; timeout_ms?: number }>;
 
 /**
@@ -123,6 +130,11 @@ type Dependencies = Readonly<{
   /** Directory failure screenshots are written under. Screenshot capture is skipped (evidence stays capture_id-only) when omitted. */
   screenshotDir?: string;
   /**
+   * When true with screenshotDir set, capture a PNG even on pass
+   * (dogfood GAP-1). Fail-path capture remains default when false/omitted.
+   */
+  alwaysScreenshot?: boolean;
+  /**
    * Directory failure Playwright traces (`.zip`) are written under.
    * Trace capture is fail-only and best-effort — skipped when omitted.
    * Video / full HAR remain out of scope.
@@ -166,6 +178,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #launchBrowser: () => Promise<Browser>;
   readonly #secrets: SecretResolver | undefined;
   readonly #screenshotDir: string | undefined;
+  readonly #alwaysScreenshot: boolean;
   readonly #traceDir: string | undefined;
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
@@ -179,6 +192,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
     this.#secrets = dependencies.secrets;
     this.#screenshotDir = dependencies.screenshotDir;
+    this.#alwaysScreenshot = dependencies.alwaysScreenshot === true;
     this.#traceDir = dependencies.traceDir;
   }
 
@@ -441,7 +455,10 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                 network_count: network.length,
               });
 
-              const screenshotEvidence = passed ? [] : await this.#captureFailureScreenshot(page, request.attempt);
+              const screenshotEvidence =
+                !passed || this.#alwaysScreenshot
+                  ? await this.#captureFailureScreenshot(page, request.attempt)
+                  : [];
               if (screenshotEvidence.length > 0) emit("evidence_created", { kind: "screenshot", ref: screenshotEvidence[0]! });
 
               let traceEvidence: readonly string[] = [];
@@ -642,7 +659,11 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             : page.getByRole("combobox", { name: step.target.accessible_name }).or(
                 page.getByLabel(step.target.accessible_name),
               );
-          await selectLocator.selectOption({ label: step.option_label });
+          await selectLocator.selectOption(
+            step.option_labels !== undefined && step.option_labels.length > 0
+              ? step.option_labels.map((label) => ({ label }))
+              : { label: step.option_label },
+          );
           await page.waitForTimeout(200);
         } else if (step.kind === "wait_for") {
           const timeout = step.timeout_ms ?? 5_000;
