@@ -27,7 +27,7 @@ import {
 import { SessionMemory } from "../memory/session-memory.js";
 import type { WorkspaceContext } from "../requirement-review/public.js";
 
-import { AgentRuntimeToolRegistry, fixedWorkspaceContext } from "./agent-runtime-tool-registry.js";
+import { AgentRuntimeToolRegistry } from "./agent-runtime-tool-registry.js";
 import { buildDevFixture } from "./dev-fixture.js";
 import { createSdkMcpServer } from "./sdk-mcp-server.js";
 import { StdioTransport } from "./stdio-transport.js";
@@ -147,7 +147,9 @@ function main(): void {
   let idempotencySequence = 0;
   const registry = new AgentRuntimeToolRegistry({
     runtime,
-    resolveWorkspaceContext: fixedWorkspaceContext(devWorkspaceContext()),
+    // Refresh context on every call so the short-lived fixture token never
+    // expires while the Cursor plugin keeps this process alive across hours.
+    resolveWorkspaceContext: devWorkspaceContext,
     now: () => new Date(),
     nextIdempotencyKey: () => `mcp-dev-${++idempotencySequence}-${Date.now()}`,
     deadlineSeconds: 120,

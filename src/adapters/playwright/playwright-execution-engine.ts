@@ -630,17 +630,29 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       }
       // wait_for intentionally skips the pre-existence check — the step's job
       // is to wait until the target appears in the live page.
-      if (step.kind !== "wait_for" && !nodeExists(cleaned.value.sanitized_tree, step.target)) {
-        return {
-          ok: false,
-          stepIndex: index,
-          message: `Interaction step ${index} target not found in the Semantic UI tree: accessible_name="${step.target.accessible_name}"${step.target.accessible_role ? ` role="${step.target.accessible_role}"` : ""}.`,
-        };
-      }
-
+      // When the cleaned DOM tree misses the target (e.g. label-for resolution
+      // not performed by DOM cleaner), fall back to a live Playwright ARIA
+      // count check so a real element is not incorrectly rejected.
       const locator = step.target.accessible_role
         ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], { name: step.target.accessible_name })
         : page.getByRole("textbox", { name: step.target.accessible_name }).or(page.getByRole("button", { name: step.target.accessible_name }));
+
+      // Pre-existence check: cleaned DOM tree may miss label-for associations;
+      // use live Playwright ARIA count as the authoritative check for wait_for too.
+      if (step.kind !== "wait_for") {
+        const inCleaned = nodeExists(cleaned.value.sanitized_tree, step.target);
+        if (!inCleaned) {
+          const liveCount = await locator.count();
+          if (liveCount === 0) {
+            return {
+              ok: false,
+              stepIndex: index,
+              message: `Interaction step ${index} target not found in the Semantic UI tree: accessible_name="${step.target.accessible_name}"${step.target.accessible_role ? ` role="${step.target.accessible_role}"` : ""}.`,
+            };
+          }
+          // element exists in live Playwright ARIA tree — continue despite cleaned miss
+        }
+      }
 
       try {
         if (step.kind === "click") {
