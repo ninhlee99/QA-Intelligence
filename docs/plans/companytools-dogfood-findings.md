@@ -7,8 +7,27 @@ và chrome-devtools MCP, kèm đề xuất fix theo góc nhìn expert tester.
 
 Ngày: xem git blame. Người test: dogfood session qua Claude Code.
 
-**Status (2026-08-12):** BUG-1/2/3 + GAP-1/2/3/4 đã ship trên branch
-`fix/dogfood-bugs-and-gaps`. GAP-5 (chrome-devtools) ngoài phạm vi repo — document only.
+**Status (2026-08-12):** BUG-1/2/3 + GAP-1/2/3/4 ship trên `fix/dogfood-bugs-and-gaps`.
+WORKFLOW-1 (AC binding) documented in Expert workflow — not a “headless” bug.
+
+---
+
+## Root cause thật (retest browser bị kẹt)
+
+Tool **đã** dùng browser thật (Playwright/Chrome). Không phải “giả lập HTTP” hay
+“headless vs real”.
+
+Hai lớp:
+
+1. **Discovery** — mở page thật, list Semantic UI elements → thường OK.
+2. **Test generation** — AC text → bind element + type/click/select + oracle.
+   AC chỉ mô tả logic nghiệp vụ (“OR phải rộng hơn AND”) **không** đủ → generator
+   **cố ý không bịa** thao tác (SPEC-207 §6) → unbound / skip.
+
+Cải thiện giống end-user thật: **discover trước → viết AC = action + input + oracle**
+(dùng đúng `accessible_name` từ map). So sánh 2 search: 2 case +
+`expected_result_count` tuyệt đối (hoặc so thủ công); seed fixture data, đừng dựa
+dev DB ngẫu nhiên. Chi tiết: `hosts/references/expert-tester-workflow.md` § G2→G3.
 
 ---
 
@@ -21,55 +40,15 @@ Xem commit `fix(dogfood): unblock expert QA diagnostics and login UX`.
 
 ## Gap / tính năng
 
-### GAP-1: Screenshot trong response — ✅ Fixed
-- `include_screenshot=true` trên `discover_ui_surface`, `discover_ui_surface_after_login`,
-  `execute_generated_test_case`, `run_auto_qa`, `run_expert_qa`
-- Discovery trả `screenshot_path` (PNG full-page dưới `.qa-screenshots/`)
-- Execution: `alwaysScreenshot` → PNG cả pass lẫn fail (path trong `evidence`)
-
-### GAP-2: Oracle structural count — ✅ Fixed (partial)
-- AC / assertion: `expected_result_count: { accessible_role, accessible_name_includes?, relation: eq|gte|lte, value }`
-- Assert trên cleaned Semantic UI tree (không raw CSS)
-- Cross-run subset/superset **chưa** — caller so sánh count tuyệt đối giữa 2 case
-  (đủ cho dogfood AND/OR count check)
-
-### GAP-3: Lite mode — ✅ Fixed
-- `lite_mode=true` trên `run_auto_qa` / `run_expert_qa`
-- Waive domain-pack / suite / E2 pass gates; `claim_pass_allowed` luôn false
-  (`lite_mode:ad_hoc_no_pass_claim`)
-- Ad-hoc 1 field không cần full Expert loop
-
-### GAP-4: Multi-select + truncate — ✅ Fixed (documented + extended)
-- `option_labels: string[]` trên AC (multi-select); engine `selectOption([{label}…])`
-- `max_elements` (20–2000, default 120) trên discovery / auto QA
-- `limitations` ghi rõ `selectable_options_not_enumerated_supply_option_label_or_option_labels`
-
-### GAP-5: chrome-devtools MCP — Open / out of scope
-Host Claude Code tool deferred visibility — không thuộc MCP server `qa-intelligence`.
-Không sửa trong repo này.
+### GAP-1…4 — ✅ Fixed (xem commit feat GAP)
+### GAP-5 chrome-devtools — Open / ngoài repo
+### WORKFLOW-1 AC binding — ✅ Documented (skill + workflow); code không “tự suy luận” AC
 
 ---
 
-## Tóm tắt
+## Next (khi companytools sẵn sàng)
 
-| # | Status |
-|---|--------|
-| BUG-1 | ✅ |
-| BUG-2 | ✅ |
-| BUG-3 | ✅ |
-| GAP-1 | ✅ |
-| GAP-2 | ✅ (count; subset cross-run deferred) |
-| GAP-3 | ✅ |
-| GAP-4 | ✅ |
-| GAP-5 | Open / ngoài repo |
-
----
-
-## Ghi chú dogfood context
-
-Retest AND/OR keyword (companytools) lúc đầu bypass MCP vì BUG/GAP trên.
-Sau fix: chạy lại `/qa-intelligence:dev` với:
-- login_* đúng `accessible_name` (hoặc HTML `name=`)
-- AC có `expected_result_count` cho từng query variant
-- `include_screenshot=true` để xem UI
-- `lite_mode=true` nếu chỉ cần smoke ad-hoc (không claim Expert pass)
+1. `discover_ui_surface_after_login` trên `/resume_searches/new`
+2. Viết lại AC với `キーワード` / `検索` (hoặc label thật) + `expected_result_count`
+3. `run_expert_qa` / `lite_mode` + `include_screenshot` — gõ+submit thật trên browser
+4. So count AND vs OR trên fixture đã seed

@@ -26,7 +26,7 @@ No pass unless MCP `expert_checklist.claim_pass_allowed` is true **and** `valida
 2. **G0:** 5 questions  
 3. **G0 learning:** `list_failure_avoidance_hints` (+ `list_learning_candidates`)  
 4. **G0d Domain pack:** Prefer `run_expert_qa` with `product_root`. Else `bootstrap_domain_pack`.  
-5. **G1–G3:** env from URL; discover; bind AC  
+5. **G1–G3:** env from URL; **discover first**; rewrite AC = action + input + oracle bound to discovered `accessible_name` (business-logic prose alone will not generate fill/click — push back)  
 6. **G4 Strategy A:** Prefer `run_expert_qa` when product workspace path known. Else `run_auto_qa` with `product_root` when possible. Optional: `role_b`, `openapi`, `include_workflow_journeys` (capped API/journey subset executes same pass; `execute_extension_cases=false` to skip).  
 7. **G4 B:** targeted retest via `run_regression_suite` + `smart_retest_suggestion`  
 8. **G5–G8:** Output contract; honor `expert_checklist` (+ `expert_judgment`, `expert_risk_matrix`, `ac_quality_review`, `git_blast_radius`)  

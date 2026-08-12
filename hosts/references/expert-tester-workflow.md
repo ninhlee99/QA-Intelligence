@@ -68,8 +68,8 @@ Even when true → **human release_signoff** still required.
 | **G0** Assess | 5 risk questions + **learning hints** + **domain pack** (if present) |
 | **G0d** Domain | Pack read; money/permission/legacy risks listed or “pack absent” |
 | **G1** Env | URL + env/secrets |
-| **G2** Discover | Live MCP discover |
-| **G3** Bind AC | Bound or unbound listed — never invent AC |
+| **G2** Discover | Live MCP discover **before** finalizing AC field names |
+| **G3** Bind AC | Each AC = **action + input + oracle** bound to discovered `accessible_name` — never invent AC; business-logic-only AC = push back / rewrite |
 | **G4** Execute | A/B/C via MCP; E2 mandates below |
 | **G5** Gate | `release_recommendation` **first line** of result |
 | **G6** Gaps | MCP `coverage_gaps` + domain risks not exercised |
@@ -128,6 +128,57 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 | OpenAPI authz | `include_authz_negatives:true` — unauth cases preferred in same-pass execute |
 
 Skip only with explicit reason in G6.
+
+---
+
+## G2→G3 — AC-to-action binding (critical)
+
+MCP uses a **real browser** (Playwright). Failures that look like “tool won’t click”
+are almost always **AC binding**, not headless vs headed.
+
+Two layers:
+
+1. **Discovery** — live page → Semantic UI Map (`accessible_name` / role). Usually fine.
+2. **Generation** — AC text → bind field/action + steps (type/click/select) + executable
+   oracle. **Will not invent** “so type into keyword then click search” from pure
+   business prose (SPEC-207 §6). Unbindable AC → finding / `not_executed`, not a fake pass.
+
+### Mandatory host procedure
+
+1. **Discover first** — `discover_ui_surface` or `discover_ui_surface_after_login`
+   (login_* from discovered login labels). Read real field/button names (often JP/EN).
+2. **Rewrite each AC** so `statement` **mentions those exact `accessible_name`s** and
+   carries at least one oracle:
+   - `expected_text` / `expected_url_includes` / `expected_title_includes` /
+     `expected_network` / `expected_result_count`
+3. **Shape:** action + input + oracle — not “search X or Y returns correct logic”.
+
+Bad:
+
+```text
+Search keyword X or Y returns results containing X or Y
+```
+
+Good (names from discovery):
+
+```json
+{
+  "id": "AC-or-1",
+  "statement": "Fill field 'キーワード' with 'python or ruby', click '検索'",
+  "expected_result_count": { "accessible_role": "listitem", "relation": "gte", "value": 1 }
+}
+```
+
+### Comparative logic (AND vs OR counts)
+
+No single-run “B ≥ A across two searches” oracle yet. Pattern:
+
+1. Seed/know fixture data (do not rely on random dev DB counts).
+2. Two ACs / cases with absolute `expected_result_count` (or note counts from two runs).
+3. Host compares (OR count ≥ AND count; not OR ≫ AND via `%or%` false positives).
+
+Prefer `include_screenshot=true` on discovery/execution when judging UI.  
+`lite_mode=true` only for ad-hoc smoke — never Expert pass claim.
 
 ---
 
