@@ -24,6 +24,17 @@ Contracts live in TypeScript (`src/**/public.ts`), not in archived SPECs.
 11. **Expert output bar.** Do not claim pass/ship without quoting `release_recommendation`, stating `coverage_gaps`, and giving a retest plan (or explicit none).
 12. **Domain pack.** Before execute: load or **auto-create** `domain-knowledge/` in the product workspace from templates, filled from the test request. Money/permission/legacy/pii risks must appear as tested or gap — never silent waive. Do not require the user to copy templates manually.
 13. **Explore closes the loop.** Exploratory session alone is not a quality claim — promote to AC + `run_auto_qa` + regression suite after confirm.
+14. **Data readiness gate.** Before execute/pass claim on non-trivial flows, record dataset/source assumptions, seed strategy, cleanup/rollback, and deterministic oracle mapping; missing gate means blocked pass.
+15. **Oracle strength gate.** AC lacking executable oracle (`expected_*`) is not claimable for pass; must rewrite AC or mark explicit gap.
+16. **Drift governance.** UI drift on critical controls/journeys blocks pass until triaged, waived with rationale, or fixed.
+17. **Flake governance.** Flaky critical journeys cannot be claimed pass; repeated same causal flake class must be quarantined and tracked with remediation owner.
+
+## Flake policy (wave 1 baseline)
+
+1. `retry_once` only when signal suggests transient infra/timing.
+2. `quarantine_case` when flaky repeats on same case/causal class within session.
+3. `block_release` when flaky affects critical path, money flow, permission boundary, or security-sensitive journey.
+4. Flake resolution must include: suspected cause, evidence path, retest scope, owner.
 
 ## Host Skills
 
