@@ -351,14 +351,22 @@ export function buildDevFixture(options: {
   clock: Clock;
   /** Phase 11 — shared with AgentRuntimeToolRegistry for failure-avoidance read/write. */
   sessionMemory?: SessionMemory;
+  /**
+   * Base directory for all file-backed stores (credentials, hints, datasets,
+   * etc.). Defaults to `process.cwd()`. Set via env
+   * `QA_INTELLIGENCE_DEV_PERSIST_DIR` to relocate to e.g.
+   * `~/.workspaces/<domain>/test-engineer`.
+   */
+  persistBaseDir?: string;
 }): DevFixtureBuild {
   const { workspaceId, policyVersion, authorizer, clock, sessionMemory } = options;
+  const persistBaseDir = options.persistBaseDir ?? process.cwd();
 
   let reviewId = 0;
   const reviewer = new AssessRequirementQuality({
     authorizer,
     knowledge: new FileBackedKnowledgeSearch({
-      rootDir: join(process.cwd(), ".qa-knowledge"),
+      rootDir: join(persistBaseDir, ".qa-knowledge"),
       workspace_id: workspaceId,
       knowledge_snapshot: "0.1.0",
       projection_freshness: clock.now().toISOString(),
@@ -396,7 +404,7 @@ export function buildDevFixture(options: {
   // pre-registered so login flows can use password_secret_ref.
   const credentials = new FileBackedWorkspaceCredentialRegistry(
     clock,
-    join(process.cwd(), ".qa-credentials"),
+    join(persistBaseDir, ".qa-credentials"),
   );
   credentials.register({
     workspace_id: workspaceId,
@@ -422,14 +430,14 @@ export function buildDevFixture(options: {
   });
   const datasets = new FileBackedWorkspaceDatasetRegistry(
     clock,
-    join(process.cwd(), ".qa-test-datasets"),
+    join(persistBaseDir, ".qa-test-datasets"),
   );
   const candidateRepository: CandidateRepository = new FileBackedCandidateRepository(
     clock,
-    join(process.cwd(), ".qa-learning-candidates"),
+    join(persistBaseDir, ".qa-learning-candidates"),
   );
   const mistakeRecurrenceTracker = new MistakeRecurrenceTracker(clock, {
-    persistRootDir: join(process.cwd(), ".qa-mistake-occurrences"),
+    persistRootDir: join(persistBaseDir, ".qa-mistake-occurrences"),
   });
 
   // Tracer bullet (docs/proposals/SPEC-512-mcp-test-execution-tool.md).
@@ -475,7 +483,7 @@ export function buildDevFixture(options: {
   const uiWorkflowSkill = new DiscoverUiWorkflow({ clock, authorizer, discoverUiSurface: uiDiscoverySkill });
   const regressionSuites = new FileBackedRegressionSuiteRegistry(
     clock,
-    join(process.cwd(), ".qa-regression-suites"),
+    join(persistBaseDir, ".qa-regression-suites"),
   );
 
   const discoverAfterLoginSkill = new DiscoverAfterLogin({ clock, authorizer });
@@ -494,7 +502,7 @@ export function buildDevFixture(options: {
   let defectAssessmentSequence = 0;
   let defectFindingSequence = 0;
   const emptyKnowledge = new FileBackedKnowledgeSearch({
-    rootDir: join(process.cwd(), ".qa-knowledge"),
+    rootDir: join(persistBaseDir, ".qa-knowledge"),
     workspace_id: workspaceId,
     knowledge_snapshot: "0.1.0",
     projection_freshness: clock.now().toISOString(),
@@ -1228,7 +1236,7 @@ export function buildDevFixture(options: {
       expected_agent: AUTOMATION_STUB_AGENT,
       expected_skill: AUTOMATION_STUB_SKILL,
       authorizer,
-      persistRootDir: join(process.cwd(), ".qa-automation-assets"),
+      persistRootDir: join(persistBaseDir, ".qa-automation-assets"),
     }),
   );
   executorMap.set(

@@ -18,6 +18,7 @@
  * development, exactly as ADR-016 §8 anticipates.
  */
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -33,6 +34,24 @@ import { createSdkMcpServer } from "./sdk-mcp-server.js";
 import { StdioTransport } from "./stdio-transport.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-dev-mcp-001";
+
+/**
+ * Resolve the base directory for all file-backed stores (credentials, hints,
+ * regression suites, …). Resolution order:
+ *
+ * 1. `QA_INTELLIGENCE_DEV_PERSIST_DIR` — explicit override (absolute path)
+ * 2. `QA_INTELLIGENCE_DEV_DOMAIN`      — build `~/.workspaces/<domain>/test-engineer`
+ * 3. fallback                           — `~/.workspaces/<WORKSPACE_ID>/test-engineer`
+ */
+function resolvePersistBaseDir(): string {
+  const explicit = process.env["QA_INTELLIGENCE_DEV_PERSIST_DIR"];
+  if (explicit) return explicit;
+  const domain =
+    process.env["QA_INTELLIGENCE_DEV_DOMAIN"] ??
+    // sanitise workspace_id to a filesystem-safe segment
+    WORKSPACE_ID.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return join(homedir(), ".workspaces", domain, "test-engineer");
+}
 const POLICY_VERSION = "dev-policy@0.1.0";
 const ISSUER = "https://identity.dev.invalid";
 const AUDIENCE = "qa-intelligence-dev";
@@ -133,8 +152,9 @@ function main(): void {
     },
   });
 
+  const persistBaseDir = resolvePersistBaseDir();
   const sessionMemory = new SessionMemory(clock, {
-    persistRootDir: join(process.cwd(), ".qa-avoidance-hints"),
+    persistRootDir: join(persistBaseDir, ".qa-avoidance-hints"),
   });
   const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
@@ -142,6 +162,7 @@ function main(): void {
     authorizer,
     clock,
     sessionMemory,
+    persistBaseDir,
   });
 
   let idempotencySequence = 0;
