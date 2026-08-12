@@ -140,6 +140,7 @@ Biến môi trường thường dùng:
 | Env | Ý nghĩa | Ví dụ |
 |-----|---------|--------|
 | `QA_INTELLIGENCE_DEV_WORKSPACE_ID` | Workspace id fixture | `workspace-cursor-dev` |
+| `QA_INTELLIGENCE_DEV_DOMAIN` | Domain app test để persist artifacts/credentials | `daijob6-companytools` |
 
 ### 5.1 Cursor
 
@@ -611,6 +612,17 @@ validate_expert_claim({ proposed_claim, expert_checklist })
 
 `allowed=false` → báo **blocked/incomplete**, liệt kê blockers. Không green-wash.
 
+### 10.5 Policy bổ sung wave 1 (governance)
+
+Trước pass claim, bắt buộc thêm:
+
+1. **Data readiness gate**: dataset/source, seed, cleanup/rollback, oracle mapping
+2. **Flake decision**: `retry_once` | `quarantine_case` | `block_release`
+3. **Drift decision** (nếu có baseline/surface compare): mức ảnh hưởng + owner
+4. **Oracle claimability**: AC không có `expected_*` => `not_claimable`
+
+Thiếu một trong các mục trên => chỉ được kết luận blocked/incomplete hoặc gap report.
+
 ---
 
 ## 11. Kịch bản sử dụng end-to-end
@@ -703,6 +715,15 @@ Tạo/cập nhật `domain-knowledge/` (hoặc `.qa-domain/`) trong app.
 Stub money/permission → cần human confirm rồi `domain_high_risk_confirmed=true`.  
 Chi tiết: [`hosts/references/domain-pack.md`](../hosts/references/domain-pack.md).
 
+### 12.6 Data readiness checklist (trước execute/passing)
+
+- [ ] Dataset/source đã xác định (ref hoặc disclaimer)
+- [ ] Seed strategy rõ cho dữ liệu đầu vào
+- [ ] Cleanup/rollback strategy rõ
+- [ ] Mỗi AC có oracle quan sát được (`expected_*`)
+
+Checklist fail => không claim pass.
+
 ### 12.4 Waive có cấu trúc (không silent)
 
 ```json
@@ -754,7 +775,9 @@ Sống qua restart MCP (thường dưới cwd process):
 | Nhiều `not_executed` | AC thiếu oracle / không bind UI | Thêm expected_* ; xem `ac_quality_review` |
 | `claim_pass_allowed=false` | Đúng hành vi | Đọc `blockers`; đừng green-wash |
 | Flaky | Timing/network | `flake_taxonomy` + targeted retest |
+| Flaky lặp cùng causal class | Test thiếu ổn định thật | `quarantine_case`, gán owner remediation, không pass nếu dính critical path |
 | Staging bị chặn | Chưa register environment | `register_workspace_environment` |
+| UI drift giữa run | Baseline/surface khác biệt | Compare baseline/surface, phân loại severity, block nếu ảnh hưởng critical control |
 | Depth/API chậm | Normal | `execute_extension_cases=false` / `include_depth_smokes=false` khi debug hẹp |
 | Node engine error | Node ≠ 24 | `nvm install 24 && nvm use 24` |
 

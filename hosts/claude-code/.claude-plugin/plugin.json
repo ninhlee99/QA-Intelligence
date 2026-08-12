@@ -8,9 +8,10 @@
   "mcpServers": {
     "qa-intelligence": {
       "command": "node",
-      "args": ["../../../dist/src/mcp/dev-entrypoint.js"],
+      "args": ["/Users/ninh.le/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-code-dev"
+        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-code-dev",
+        "QA_INTELLIGENCE_DEV_DOMAIN": "daijob6-companytools"
       }
     }
   }

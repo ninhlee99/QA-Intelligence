@@ -31,6 +31,7 @@ import { SessionMemory } from "../memory/session-memory.js";
 import { OidcBearerAuthenticator } from "./remote/oidc-bearer-authenticator.js";
 import { StreamableHttpTransport } from "./remote/streamable-http-transport.js";
 import { buildDevFixture } from "./dev-fixture.js";
+import { resolvePersistBaseDir } from "./persist-base-dir.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-remote-dev-001";
 const ACTOR_ID = process.env["QA_INTELLIGENCE_DEV_ACTOR_ID"] ?? "actor-remote-dev-001";
@@ -114,15 +115,17 @@ async function main(): Promise<void> {
     context_issuer: CONTEXT_ISSUER,
   });
 
+  const persistBaseDir = resolvePersistBaseDir((message) => process.stderr.write(message));
   const sessionMemory = new SessionMemory(clock, {
-    persistRootDir: join(process.cwd(), ".qa-avoidance-hints"),
+    persistRootDir: join(persistBaseDir, ".qa-avoidance-hints"),
   });
-  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
+  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository, userPreferences } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,
     authorizer,
     clock,
     sessionMemory,
+    persistBaseDir,
   });
 
   const authenticator = new OidcBearerAuthenticator({
@@ -135,6 +138,7 @@ async function main(): Promise<void> {
     sessionMemory,
     mistakeRecurrenceTracker,
     candidateRepository,
+    resolveLanguageInstruction: () => userPreferences.languageInstruction(),
   });
 
   const transport = new StreamableHttpTransport({ authenticator });

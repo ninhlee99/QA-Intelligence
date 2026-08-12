@@ -30,6 +30,8 @@ export type OidcBearerAuthenticatorOptions = Readonly<{
   /** SPEC-105 §9a: shared recurrence tracker across requests in this process. */
   mistakeRecurrenceTracker?: MistakeRecurrenceTracker;
   candidateRepository?: CandidateRepository;
+  /** Optional language instruction injected into every tool response payload. */
+  resolveLanguageInstruction?: () => string | undefined;
 }>;
 
 /**
@@ -91,6 +93,9 @@ export class OidcBearerAuthenticator implements BearerAuthenticator {
             : {}),
           ...(this.#options.candidateRepository !== undefined
             ? { candidateRepository: this.#options.candidateRepository }
+            : {}),
+          ...(this.#options.resolveLanguageInstruction !== undefined
+            ? { resolveLanguageInstruction: this.#options.resolveLanguageInstruction }
             : {}),
         }),
       }),

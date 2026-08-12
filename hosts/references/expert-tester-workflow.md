@@ -68,12 +68,13 @@ Even when true → **human release_signoff** still required.
 | **G0** Assess | 5 risk questions + **learning hints** + **domain pack** (if present) |
 | **G0d** Domain | Pack read; money/permission/legacy risks listed or “pack absent” |
 | **G1** Env | URL + env/secrets |
-| **G2** Discover | Live MCP discover |
-| **G3** Bind AC | Bound or unbound listed — never invent AC |
-| **G4** Execute | A/B/C via MCP; E2 mandates below |
+| **G2** Discover | Live MCP discover **before** finalizing AC field names |
+| **G3** Bind AC | Each AC = **action + input + oracle** bound to discovered `accessible_name` — never invent AC; business-logic-only AC = push back / rewrite |
+| **G3.5** Data readiness | Dataset/source assumptions + seed/cleanup + deterministic oracle mapping recorded before execute |
+| **G4** Execute | A/B/C via MCP; E2 mandates below; flaky must follow policy |
 | **G5** Gate | `release_recommendation` **first line** of result |
 | **G6** Gaps | MCP `coverage_gaps` + domain risks not exercised |
-| **G7** Artifacts | report, **suite_id**, defects, traces |
+| **G7** Artifacts | report, **suite_id**, defects, traces, drift/flake evidence |
 | **G8** Next | Targeted retest plan or export or “no retest needed” |
 
 ---
@@ -128,6 +129,116 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 | OpenAPI authz | `include_authz_negatives:true` — unauth cases preferred in same-pass execute |
 
 Skip only with explicit reason in G6.
+
+---
+
+## G2→G3 — AC-to-action binding (critical)
+
+MCP uses a **real browser** (Playwright). Failures that look like “tool won’t click”
+are almost always **AC binding**, not headless vs headed.
+
+Two layers:
+
+1. **Discovery** — live page → Semantic UI Map (`accessible_name` / role). Usually fine.
+2. **Generation** — AC text → bind field/action + steps (type/click/select) + executable
+   oracle. **Will not invent** “so type into keyword then click search” from pure
+   business prose (SPEC-207 §6). Unbindable AC → finding / `not_executed`, not a fake pass.
+
+### Mandatory host procedure
+
+1. **Discover first** — `discover_ui_surface` or `discover_ui_surface_after_login`
+   (login_* from discovered login labels). Read real field/button names (often JP/EN).
+2. **Rewrite each AC** so `statement` **mentions those exact `accessible_name`s** and
+   carries at least one oracle:
+   - `expected_text` / `expected_url_includes` / `expected_title_includes` /
+     `expected_network` / `expected_result_count`
+3. **Shape:** action + input + oracle — not “search X or Y returns correct logic”.
+4. **Oracle claimability:** if AC lacks executable oracle, mark **not_claimable** and rewrite before pass claim.
+
+Bad:
+
+```text
+Search keyword X or Y returns results containing X or Y
+```
+
+Good (names from discovery):
+
+```json
+{
+  "id": "AC-or-1",
+  "statement": "Fill field 'キーワード' with 'python or ruby', click '検索'",
+  "expected_result_count": { "accessible_role": "listitem", "relation": "gte", "value": 1 }
+}
+```
+
+### Comparative logic (AND vs OR counts)
+
+No single-run “B ≥ A across two searches” oracle yet. Pattern:
+
+1. Seed/know fixture data (do not rely on random dev DB counts).
+2. Two ACs / cases with absolute `expected_result_count` (or note counts from two runs).
+3. Host compares (OR count ≥ AND count; not OR ≫ AND via `%or%` false positives).
+
+Prefer `include_screenshot=true` on discovery/execution when judging UI.  
+`lite_mode=true` only for ad-hoc smoke — never Expert pass claim.
+
+### Claimable vs not-claimable AC examples
+
+Not-claimable:
+
+```text
+Search must work correctly for OR and AND logic.
+```
+
+Claimable:
+
+```json
+{
+  "id": "AC-search-logic-1",
+  "statement": "Fill 'キーワード' with 'java or sqlite', click '検索'",
+  "expected_result_count": { "accessible_role": "listitem", "relation": "gte", "value": 1 }
+}
+```
+
+---
+
+## Data readiness gate (G3.5)
+
+Before G4, host must record all:
+
+1. Dataset/source reference (fixture id, seeded records, or explicit production-like source disclaimer)
+2. Seed strategy (what exists before run)
+3. Cleanup/rollback strategy (what state restored after run)
+4. Deterministic oracle mapping per AC (which observable signal proves pass/fail)
+
+If any item missing: status = **blocked/incomplete** for pass claim; continue as exploratory/gap report only.
+
+---
+
+## Flake policy (wave 1)
+
+Action taxonomy:
+
+- `retry_once`: one bounded retry for likely transient timing/infra
+- `quarantine_case`: repeated flaky case in same causal class
+- `block_release`: flaky on critical journey/money/permission/security surfaces
+
+Rules:
+
+1. Flaky critical journey -> never claim pass.
+2. Same causal class repeats >= 2 times in same session -> quarantine + remediation task owner.
+3. G8 retest plan must name quarantined cases and remaining residual risk.
+
+---
+
+## Drift SOP (baseline/surface)
+
+1. Capture baseline on first stable run for critical screens.
+2. Compare baseline on retest runs when UI change suspected or before release cut.
+3. Drift severity handling:
+   - Critical control/journey changed unexpectedly -> block_release
+   - Non-critical cosmetic drift -> gap + follow-up owner/date
+4. Owner required in output for every drift decision (accept/fix/defer).
 
 ---
 
@@ -198,6 +309,7 @@ Always report: retested set + **not** retested (residual).
 - Retest plan: case_ids […] | defects […] | screen … | none (why)
 - suite_id: … | missing (why)
 - Artifacts: report_path, traces
+- Drift/flake decisions: retry_once | quarantine_case | block_release (with owner)
 - Human still required for: release sign-off | pen-test | novel domain
 - NOT claimed: full WCAG / load / pen-test (unless run)
 ```

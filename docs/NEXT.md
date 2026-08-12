@@ -16,3 +16,19 @@
 ## Optional later (engine)
 
 - Deeper authz matrix, flake taxonomy, npm-publish MCP  
+
+## Maturity KPI v1 (tracking)
+
+Track per suite/release window:
+
+1. `claim_pass_allowed_rate`
+2. `blocked_by_oracle_rate`
+3. `flake_rate_by_suite`
+4. `drift_block_rate`
+5. `gap_closure_lead_time`
+
+Interpretation baseline:
+
+- High `blocked_by_oracle_rate` -> AC quality issue; improve G2/G3 rewrite discipline.
+- High `flake_rate_by_suite` -> stabilize selectors/waits before expanding coverage.
+- High `drift_block_rate` -> UI change governance weak; tighten baseline ownership.

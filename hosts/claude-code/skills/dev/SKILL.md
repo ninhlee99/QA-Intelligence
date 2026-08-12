@@ -24,8 +24,11 @@ No “safe to merge” unless `expert_checklist.claim_pass_allowed` **and** `val
 
 1. URL (ask if missing) — env from URL  
 2. AC from **source**; note code↔comment conflicts  
-3. G0 + learning hints  
-4. Prefer `run_expert_qa` with `product_root` = this repo  
-5. Honor `flake_taxonomy` + `learning` + domain gate blockers  
-6. Before merge-ready wording: `validate_expert_claim`  
-7. After fix: targeted retest only  
+3. **Discover first** (`discover_ui_surface_after_login` when gated) — rewrite AC so each
+   criterion mentions real `accessible_name` + action + oracle (see workflow G2→G3).
+   Business-logic-only AC → push back; do not expect MCP to invent fill/click.  
+4. G0 + learning hints  
+5. Prefer `run_expert_qa` with `product_root` = this repo  
+6. Honor `flake_taxonomy` + `learning` + domain gate blockers  
+7. Before merge-ready wording: `validate_expert_claim`  
+8. After fix: targeted retest only  

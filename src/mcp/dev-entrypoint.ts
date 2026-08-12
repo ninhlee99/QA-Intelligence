@@ -27,12 +27,14 @@ import {
 import { SessionMemory } from "../memory/session-memory.js";
 import type { WorkspaceContext } from "../requirement-review/public.js";
 
-import { AgentRuntimeToolRegistry, fixedWorkspaceContext } from "./agent-runtime-tool-registry.js";
+import { AgentRuntimeToolRegistry } from "./agent-runtime-tool-registry.js";
 import { buildDevFixture } from "./dev-fixture.js";
+import { resolvePersistBaseDir } from "./persist-base-dir.js";
 import { createSdkMcpServer } from "./sdk-mcp-server.js";
 import { StdioTransport } from "./stdio-transport.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-dev-mcp-001";
+
 const POLICY_VERSION = "dev-policy@0.1.0";
 const ISSUER = "https://identity.dev.invalid";
 const AUDIENCE = "qa-intelligence-dev";
@@ -133,21 +135,25 @@ function main(): void {
     },
   });
 
+  const persistBaseDir = resolvePersistBaseDir((message) => process.stderr.write(message));
   const sessionMemory = new SessionMemory(clock, {
-    persistRootDir: join(process.cwd(), ".qa-avoidance-hints"),
+    persistRootDir: join(persistBaseDir, ".qa-avoidance-hints"),
   });
-  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository } = buildDevFixture({
+  const { runtime, tools, mistakeRecurrenceTracker, candidateRepository, userPreferences } = buildDevFixture({
     workspaceId: WORKSPACE_ID,
     policyVersion: POLICY_VERSION,
     authorizer,
     clock,
     sessionMemory,
+    persistBaseDir,
   });
 
   let idempotencySequence = 0;
   const registry = new AgentRuntimeToolRegistry({
     runtime,
-    resolveWorkspaceContext: fixedWorkspaceContext(devWorkspaceContext()),
+    // Refresh context on every call so the short-lived fixture token never
+    // expires while the Cursor plugin keeps this process alive across hours.
+    resolveWorkspaceContext: devWorkspaceContext,
     now: () => new Date(),
     nextIdempotencyKey: () => `mcp-dev-${++idempotencySequence}-${Date.now()}`,
     deadlineSeconds: 120,
@@ -161,6 +167,9 @@ function main(): void {
     sessionMemory,
     mistakeRecurrenceTracker,
     candidateRepository,
+    // Inject language_instruction into every tool response so Claude uses
+    // the user's preferred response language without being re-prompted.
+    resolveLanguageInstruction: () => userPreferences.languageInstruction(),
     tools,
   });
 

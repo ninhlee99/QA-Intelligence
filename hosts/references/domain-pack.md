@@ -42,3 +42,28 @@ Fallback dir name: `.qa-domain/` (same files). Prefer `domain-knowledge/`.
 ## Per-work / per-request
 
 Each serious test request may **update** the pack (append risks seen from this URL/AC). Do not delete human-confirmed content. Prefer additive edits.
+
+---
+
+## Minimum quality bar (claim-pass readiness)
+
+Before claiming pass on critical flows, pack should contain:
+
+1. **business.md**: key user journeys + expected outcomes/invariants
+2. **permissions.md**: role matrix for sensitive actions (allow/deny expectations)
+3. **money-flows.md**: monetary/stateful invariants, rounding/currency constraints, side effects
+4. **legacy.md**: known compatibility/debt constraints that can break modern flows
+5. **INDEX.md**: explicit high-risk tags (`money`, `permission`, `legacy`, `pii`) mapped to tested or gap status
+
+If missing, report as coverage gap; do not silently treat as complete domain coverage.
+
+## Data readiness tie-in (G3.5)
+
+When updating pack for a request, add short note for:
+
+- dataset/source assumptions,
+- seed/fixture intent,
+- cleanup or rollback expectation,
+- oracle observability signal per risky path.
+
+Pack note can be concise, but cannot be omitted for claimable pass decisions.
