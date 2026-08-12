@@ -130,7 +130,8 @@ export type TestCaseGenerationFindingCategory =
   | "ambiguous_criterion"
   | "no_acceptance_criteria"
   | "missing_expected_result"
-  | "missing_option_label";
+  | "missing_option_label"
+  | "possible_auth_required";
 
 export type TestCaseGenerationFinding = Readonly<{
   id: string;
@@ -183,6 +184,16 @@ export type TestCaseGeneratedAssertion = Readonly<{
     method?: string;
     status?: number | readonly number[];
     body_includes?: string;
+  }>;
+  /**
+   * Structural count oracle (dogfood GAP-2): count cleaned-tree nodes by
+   * accessible_role (+ optional name substring) and compare with relation.
+   */
+  expected_result_count?: Readonly<{
+    accessible_role: string;
+    accessible_name_includes?: string;
+    relation: "eq" | "gte" | "lte";
+    value: number;
   }>;
 }>;
 

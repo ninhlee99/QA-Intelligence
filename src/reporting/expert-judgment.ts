@@ -103,7 +103,13 @@ export type BuildExpertJudgmentInput = Readonly<{
   }>[];
 }>;
 
-const ORACLE_KEYS = ["expected_network", "expected_text", "expected_url_includes", "expected_title_includes"] as const;
+const ORACLE_KEYS = [
+  "expected_network",
+  "expected_text",
+  "expected_url_includes",
+  "expected_title_includes",
+  "expected_result_count",
+] as const;
 
 export function assessAcOracleStrength(acceptanceCriteria: readonly JsonObject[]): readonly AcOracleStrengthRow[] {
   return acceptanceCriteria.map((ac, i) => {

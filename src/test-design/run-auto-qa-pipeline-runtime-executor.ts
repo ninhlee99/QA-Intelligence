@@ -201,29 +201,11 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         ? this.#dependencies.launchBrowser
         : createLaunchBrowser(browser);
 
-    const discover: QaPipelineDiscover = loginFields !== undefined && resolvedPassword !== undefined
-      ? (operationId, context) =>
-          this.#dependencies.discoverAfterLogin.discover({
-            operation_id: operationId,
-            context,
-            login_url: loginFields.login_url,
-            username_field_name: loginFields.username_field_name,
-            username: loginFields.username,
-            password_field_name: loginFields.password_field_name,
-            password: resolvedPassword,
-            submit_action_name: loginFields.submit_action_name,
-            target_url: url,
-            ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
-              ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
-              : {}),
-          })
-      : (operationId, context) =>
-          this.#dependencies.discoverUiSurface.discover({
-            operation_id: operationId,
-            context,
-            url,
-            browser,
-          });
+    const includeScreenshot = input.start_request.input["include_screenshot"] === true;
+    const maxElements =
+      typeof input.start_request.input["max_elements"] === "number"
+        ? input.start_request.input["max_elements"]
+        : undefined;
 
     // Screenshots are always written to disk for real, even with no
     // output_path (JSON-only mode) — a real file is genuinely more useful
@@ -239,6 +221,35 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       outputPath !== undefined
         ? join(dirname(outputPath), ".qa-screenshots", input.execution.operation_id)
         : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-screenshots", input.execution.operation_id);
+
+    const discover: QaPipelineDiscover = loginFields !== undefined && resolvedPassword !== undefined
+      ? (operationId, context) =>
+          this.#dependencies.discoverAfterLogin.discover({
+            operation_id: operationId,
+            context,
+            login_url: loginFields.login_url,
+            username_field_name: loginFields.username_field_name,
+            username: loginFields.username,
+            password_field_name: loginFields.password_field_name,
+            password: resolvedPassword,
+            submit_action_name: loginFields.submit_action_name,
+            target_url: url,
+            ...(basicAuthUsername !== undefined && basicAuthPassword.value !== undefined
+              ? { basic_auth_username: basicAuthUsername, basic_auth_password: basicAuthPassword.value }
+              : {}),
+            ...(includeScreenshot ? { include_screenshot: true, screenshot_dir: screenshotDir } : {}),
+            ...(maxElements !== undefined ? { max_elements: maxElements } : {}),
+          })
+      : (operationId, context) =>
+          this.#dependencies.discoverUiSurface.discover({
+            operation_id: operationId,
+            context,
+            url,
+            browser,
+            ...(includeScreenshot ? { include_screenshot: true, screenshot_dir: screenshotDir } : {}),
+            ...(maxElements !== undefined ? { max_elements: maxElements } : {}),
+          });
+
     const traceDir =
       outputPath !== undefined
         ? join(dirname(outputPath), ".qa-traces", input.execution.operation_id)
@@ -265,6 +276,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       generator: this.#dependencies.generator,
       launchBrowser,
       ...(screenshotDirReady ? { screenshotDir } : {}),
+      ...(input.start_request.input["include_screenshot"] === true ? { alwaysScreenshot: true } : {}),
       ...(traceDirReady ? { traceDir } : {}),
     });
 
@@ -600,13 +612,16 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         : []),
     ];
     const waived = applyStructuredWaivesToBlockers(rawExtraBlockers, declaredWaives);
-    const extraPassBlockers = [...waived.blockers];
+    const liteMode = input.start_request.input["lite_mode"] === true;
+    const extraPassBlockers = liteMode
+      ? ["lite_mode:ad_hoc_no_pass_claim", ...waived.blockers.filter((b) => b.startsWith("failed_") || b.startsWith("flaky_") || b.startsWith("draft_defects") || b.startsWith("gate:"))]
+      : [...waived.blockers];
     const suitePresent = autoSuite !== undefined && "suite_id" in autoSuite;
     const gapExtras: CoverageGapExtras = {
-      mandate_blockers: mandateBlockers,
+      mandate_blockers: liteMode ? [] : mandateBlockers,
       domain_pack: domainPack,
       journey_cases_registered_not_executed:
-        hookCoverage.journey_cases_added && extensionExec.journey_attempted === 0,
+        !liteMode && hookCoverage.journey_cases_added && extensionExec.journey_attempted === 0,
       openapi_cases_registered_not_executed:
         hookCoverage.openapi_cases_added && extensionExec.api_attempted === 0,
       stateful_lifecycle_uncovered: !hardening.stateful.covered && !hardening.stateful.waived,
@@ -618,18 +633,37 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     const gaps = deriveCoverageGaps(report, gapExtras);
     const retest = deriveSmartRetestSuggestion(report);
     const checklistOptions: ExpertChecklistFromReportOptions = {
-      domainPack,
-      e2MandateBlockers: mandateBlockers.map((b) => b.code),
+      domainPack: liteMode
+        ? {
+            present: true,
+            high_risk_unconfirmed: false,
+            notes: ["lite_mode: domain-pack Expert gate waived for ad-hoc execution"],
+          }
+        : domainPack,
+      e2MandateBlockers: liteMode ? [] : mandateBlockers.map((b) => b.code),
       extraPassBlockers,
       context: "run_auto_qa",
-      suiteIdPresent: suitePresent,
+      suiteIdPresent: liteMode || suitePresent,
     };
-    const expertChecklist = expertChecklistFromQaRunReport(
+    const expertChecklistBase = expertChecklistFromQaRunReport(
       report,
       gaps.length,
       String(retest["action"] ?? "unknown"),
       checklistOptions,
     );
+    const expertChecklist = liteMode
+      ? {
+          ...expertChecklistBase,
+          claim_pass_allowed: false,
+          lite_mode: true,
+          host_actions: [
+            "lite_mode: ad-hoc run — Expert domain/suite/E2 gates waived; claim_pass_allowed stays false. Re-run without lite_mode for full Expert claim path.",
+            ...(Array.isArray(expertChecklistBase["host_actions"])
+              ? (expertChecklistBase["host_actions"] as string[]).slice(0, 4)
+              : []),
+          ],
+        }
+      : expertChecklistBase;
     const claimPass = expertChecklist["claim_pass_allowed"] === true;
     const judgment = buildExpertJudgment({
       report,

@@ -824,6 +824,7 @@ export function buildDevFixture(options: {
           generator: testCaseGenerator,
           expected_agent: TEST_CASE_GENERATION_AGENT,
           expected_skill: TEST_CASE_GENERATION_SKILL,
+          discoverAfterLogin: discoverAfterLoginSkill,
         }),
       ],
       [
@@ -1472,13 +1473,15 @@ export function buildDevFixture(options: {
     {
       name: "discover_ui_surface",
       description:
-        "Discover a live page's Semantic UI Map (SPEC-201 §8/SPEC-101 §12: Page/Field/Action) by navigating a URL and running it through the Semantic UI pipeline (DomCleaner). Prefer environment_ref after register_workspace_environment (SPEC-512 §12). Non-loopback http(s) URLs must match a registered base_url; data: and loopback remain allowed for fixtures. Optional browser: chromium (default) | firefox | webkit (Phase 9).",
+        "Discover a live page's Semantic UI Map (SPEC-201 §8/SPEC-101 §12: Page/Field/Action) by navigating a URL and running it through the Semantic UI pipeline (DomCleaner). Prefer environment_ref after register_workspace_environment (SPEC-512 §12). Non-loopback http(s) URLs must match a registered base_url; data: and loopback remain allowed for fixtures. Optional browser: chromium (default) | firefox | webkit (Phase 9). Set include_screenshot=true for screenshot_path (PNG file). max_elements overrides default truncate 120 (clamped 20–2000). Selectable <option> lists are NOT enumerated — supply option_label(s) on AC.",
       inputSchema: {
         type: "object",
         properties: {
           url: { type: "string", description: "e.g. https://staging.example.com/login — must be allowlisted unless data:/loopback" },
           environment_ref: { type: "string", description: "e.g. environment:dev-fixture-login — resolves URL from Workspace registry" },
           browser: { type: "string", description: "chromium | firefox | webkit (default chromium)" },
+          include_screenshot: { type: "boolean", description: "When true, write full-page PNG and return screenshot_path." },
+          max_elements: { type: "number", description: "Max Semantic UI elements returned (default 120, max 2000)." },
         },
         required: [],
       },
@@ -1494,6 +1497,8 @@ export function buildDevFixture(options: {
           url: (args["url"] as string | undefined) ?? "",
           environment_ref: (args["environment_ref"] as string | undefined) ?? "",
           browser: (args["browser"] as string | undefined) ?? "",
+          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
         }),
     },
     {
@@ -1519,6 +1524,8 @@ export function buildDevFixture(options: {
           basic_auth_username: { type: "string", description: "Optional. Supply with basic_auth_password or basic_auth_password_secret_ref when the site is also behind HTTP Basic Auth." },
           basic_auth_password: { type: "string" },
           basic_auth_password_secret_ref: { type: "string" },
+          include_screenshot: { type: "boolean", description: "When true, write full-page PNG of target screen and return screenshot_path." },
+          max_elements: { type: "number", description: "Max Semantic UI elements returned (default 120, max 2000)." },
         },
         required: ["login_url", "target_url"],
       },
@@ -1547,12 +1554,14 @@ export function buildDevFixture(options: {
           basic_auth_username: (args["basic_auth_username"] as string | undefined) ?? "",
           basic_auth_password: (args["basic_auth_password"] as string | undefined) ?? "",
           basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
+          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
         }),
     },
     {
       name: "generate_test_cases",
       description:
-        "Generate governed TestCases (SPEC-207 §2/§6) against a live page's discovered Semantic UI Map — composes Discovery then Test Design in one call. Per bindable, expected_text-bearing acceptance criterion, generates up to 4 variants per editable field: positive, negative (wrong value, success text must be absent), boundary (oversized input, no leaked system error), adversarial (benign XSS/SQLi probe, checked for both unescaped reflection and actual execution via dialog detection). A criterion that cannot be bound to any discovered field/action is reported as a finding, never fabricated into a test case. Two input modes: (1) pass acceptance_criteria inline — works against ANY real url, no seed data needed, e.g. {\"url\": \"https://your-real-app.example/login\", \"acceptance_criteria\": [{\"id\": \"AC-1\", \"statement\": \"...mentions a discovered field or action's name...\", \"expected_text\": \"text expected after a successful action\"}]}; (2) omit acceptance_criteria to fall back to development seed data (REQ-DEMO-002).",
+        "Generate governed TestCases (SPEC-207 §2/§6) against a live page's discovered Semantic UI Map — composes Discovery then Test Design in one call. Per bindable, expected_text-bearing acceptance criterion, generates up to 4 variants per editable field: positive, negative (wrong value, success text must be absent), boundary (oversized input, no leaked system error), adversarial (benign XSS/SQLi probe, checked for both unescaped reflection and actual execution via dialog detection). A criterion that cannot be bound to any discovered field/action is reported as a finding, never fabricated into a test case. Two input modes: (1) pass acceptance_criteria inline — works against ANY real url, no seed data needed, e.g. {\"url\": \"https://your-real-app.example/login\", \"acceptance_criteria\": [{\"id\": \"AC-1\", \"statement\": \"...mentions a discovered field or action's name...\", \"expected_text\": \"text expected after a successful action\"}]}; (2) omit acceptance_criteria to fall back to development seed data (REQ-DEMO-002). For auth-gated screens supply login_url + username_field_name + username + password_field_name + password + submit_action_name together (all six or none) — discovery then uses the post-login session (same contract as run_auto_qa).",
       inputSchema: {
         type: "object",
         properties: {
@@ -1571,7 +1580,22 @@ export function buildDevFixture(options: {
                 expected_text: { type: "string" },
                 expected_url_includes: { type: "string" },
                 expected_title_includes: { type: "string" },
-                option_label: { type: "string", description: "Required when AC binds a selectable field — never invented." },
+                option_label: { type: "string", description: "Single-select label when AC binds a selectable field — never invented." },
+                option_labels: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Multi-select labels (dogfood GAP-4). Prefer over option_label when selecting multiple options.",
+                },
+                expected_result_count: {
+                  type: "object",
+                  description: "Structural count oracle (dogfood GAP-2): count cleaned-tree nodes by accessible_role.",
+                  properties: {
+                    accessible_role: { type: "string" },
+                    accessible_name_includes: { type: "string" },
+                    relation: { type: "string", description: "eq | gte | lte" },
+                    value: { type: "number" },
+                  },
+                },
                 wait_for_accessible_name: { type: "string" },
                 wait_for_accessible_role: { type: "string" },
                 wait_for_timeout_ms: { type: "number" },
@@ -1588,6 +1612,12 @@ export function buildDevFixture(options: {
               },
             },
           },
+          login_url: { type: "string", description: "Auth-gated target: login page URL (supply all six login_* fields or none)." },
+          username_field_name: { type: "string", description: "Login field accessible_name (or HTML name= that resolves to one)." },
+          username: { type: "string" },
+          password_field_name: { type: "string" },
+          password: { type: "string" },
+          submit_action_name: { type: "string", description: "Login submit action accessible_name." },
         },
         required: [],
       },
@@ -1602,6 +1632,12 @@ export function buildDevFixture(options: {
         requirement_title: (args["requirement_title"] as string | undefined) ?? "",
         url: (args["url"] as string | undefined) ?? demoLoginPageUrl,
         acceptance_criteria: (args["acceptance_criteria"] as JsonValue | undefined) ?? [],
+        login_url: (args["login_url"] as string | undefined) ?? "",
+        username_field_name: (args["username_field_name"] as string | undefined) ?? "",
+        username: (args["username"] as string | undefined) ?? "",
+        password_field_name: (args["password_field_name"] as string | undefined) ?? "",
+        password: (args["password"] as string | undefined) ?? "",
+        submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
       }),
     },
     {
@@ -1621,6 +1657,10 @@ export function buildDevFixture(options: {
             type: "object",
             description: "Map field accessible_name → workspace-secret:… ref registered via register_workspace_secret.",
           },
+          include_screenshot: {
+            type: "boolean",
+            description: "When true, capture PNG even on pass (path appears in evidence).",
+          },
         },
         required: ["test_case", "generated_assertion"],
       },
@@ -1631,17 +1671,19 @@ export function buildDevFixture(options: {
       allowed_skills: [EXECUTE_GENERATED_SKILL],
       allowed_tools: [{ id: "playwright-execution-engine", version: "0.1.0" }],
       budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
-      buildInput: (args) => ({
-        test_case: (args["test_case"] as JsonValue | undefined) ?? {},
-        generated_assertion: (args["generated_assertion"] as JsonValue | undefined) ?? {},
-        field_values: (args["field_values"] as JsonValue | undefined) ?? {},
-        field_secret_refs: (args["field_secret_refs"] as JsonValue | undefined) ?? {},
-      }),
+      buildInput: (args) =>
+        compactMcpInput({
+          test_case: (args["test_case"] as JsonValue | undefined) ?? {},
+          generated_assertion: (args["generated_assertion"] as JsonValue | undefined) ?? {},
+          field_values: (args["field_values"] as JsonValue | undefined) ?? {},
+          field_secret_refs: (args["field_secret_refs"] as JsonValue | undefined) ?? {},
+          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+        }),
     },
     {
       name: "run_auto_qa",
       description:
-        "One call that runs the whole pipeline: discovers a page's Semantic UI Map, runs accessibility naming smoke on that capture, generates TestCases (positive/negative/boundary/adversarial per bindable criterion with executable oracles — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine (with flake detection), drafts SPEC-211 Defect records from failed/flaky outcomes (suspected_cause only), builds variant coverage + residual-risk notes, and returns a QA run report with a Senior-QA release_recommendation — both as JSON and, when output_path is given, written to that path as a self-contained HTML file. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt distinct from the in-page login form), also supply basic_auth_username + basic_auth_password together. acceptance_criteria is required (this tool never invents what a page should do) — each item needs id, statement, and at least one oracle (expected_text and/or expected_url_includes / expected_title_includes / expected_network); statement should mention a field/action name the target page is expected to have.",
+        "One call that runs the whole pipeline: discovers a page's Semantic UI Map, runs accessibility naming smoke on that capture, generates TestCases (positive/negative/boundary/adversarial per bindable criterion with executable oracles — SPEC-207 §4/§6), executes every generated case for real via PlaywrightExecutionEngine (with flake detection), drafts SPEC-211 Defect records from failed/flaky outcomes (suspected_cause only), builds variant coverage + residual-risk notes, and returns a QA run report with a Senior-QA release_recommendation — both as JSON and, when output_path is given, written to that path as a self-contained HTML file. Replaces manually chaining discover_ui_surface -> generate_test_cases -> execute_generated_test_case yourself. Supply login_url + username_field_name + username + password_field_name + password + submit_action_name together to test a screen reachable only after signing in (all six or none — a partial set is rejected); omit all six to discover url directly. When the site also sits behind HTTP Basic Auth (a browser-native credential prompt distinct from the in-page login form), also supply basic_auth_username + basic_auth_password together. acceptance_criteria is required (this tool never invents what a page should do) — each item needs id, statement, and at least one oracle (expected_text and/or expected_url_includes / expected_title_includes / expected_network / expected_result_count); statement should mention a field/action name the target page is expected to have. lite_mode=true waives Expert domain/suite/E2 pass gates for ad-hoc checks (claim_pass_allowed stays false). include_screenshot=true captures PNG on discovery + pass/fail execution.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1660,7 +1702,22 @@ export function buildDevFixture(options: {
                 expected_text: { type: "string" },
                 expected_url_includes: { type: "string" },
                 expected_title_includes: { type: "string" },
-                option_label: { type: "string", description: "Required when AC binds a selectable field — never invented." },
+                option_label: { type: "string", description: "Single-select label when AC binds a selectable field — never invented." },
+                option_labels: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Multi-select labels (dogfood GAP-4). Prefer over option_label when selecting multiple options.",
+                },
+                expected_result_count: {
+                  type: "object",
+                  description: "Structural count oracle (dogfood GAP-2): count cleaned-tree nodes by accessible_role.",
+                  properties: {
+                    accessible_role: { type: "string" },
+                    accessible_name_includes: { type: "string" },
+                    relation: { type: "string", description: "eq | gte | lte" },
+                    value: { type: "number" },
+                  },
+                },
                 wait_for_accessible_name: { type: "string" },
                 wait_for_accessible_role: { type: "string" },
                 wait_for_timeout_ms: { type: "number" },
@@ -1767,6 +1824,15 @@ export function buildDevFixture(options: {
             description:
               "Set true only after human confirms money/permission/legacy/pii TODOs in the domain pack.",
           },
+          lite_mode: {
+            type: "boolean",
+            description: "Ad-hoc mode (GAP-3): waive Expert domain/suite/E2 pass gates; claim_pass_allowed stays false.",
+          },
+          include_screenshot: {
+            type: "boolean",
+            description: "Capture PNG on discovery and on pass/fail execution (GAP-1).",
+          },
+          max_elements: { type: "number", description: "Discovery truncate limit (default 120, max 2000)." },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1819,6 +1885,9 @@ export function buildDevFixture(options: {
           product_root: (args["product_root"] as string | undefined) ?? "",
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
+          lite_mode: args["lite_mode"] === true ? true : undefined,
+          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
         }),
     },
     {
@@ -1902,6 +1971,9 @@ export function buildDevFixture(options: {
           include_depth_smokes: { type: "boolean" },
           acknowledge_domain_pack_absent: { type: "boolean" },
           domain_high_risk_confirmed: { type: "boolean" },
+          lite_mode: { type: "boolean" },
+          include_screenshot: { type: "boolean" },
+          max_elements: { type: "number" },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1959,6 +2031,9 @@ export function buildDevFixture(options: {
             typeof args["include_depth_smokes"] === "boolean" ? args["include_depth_smokes"] : undefined,
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
+          lite_mode: args["lite_mode"] === true ? true : undefined,
+          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
         }),
     },
     {

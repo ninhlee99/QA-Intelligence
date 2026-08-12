@@ -85,11 +85,19 @@ export class UiSurfaceDiscoveryRuntimeExecutor implements AgentRunExecutor {
       context: input.execution.workspace_context,
       url,
       ...(browser !== undefined ? { browser } : {}),
+      ...(input.start_request.input["include_screenshot"] === true ? { include_screenshot: true } : {}),
+      ...(typeof input.start_request.input["max_elements"] === "number"
+        ? { max_elements: input.start_request.input["max_elements"] }
+        : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 
     const map = discovered.value;
-    const evidence = unique([`capture:${map.capture_id}`, `semantic-ui-map:${map.capture_id}`]);
+    const evidence = unique([
+      `capture:${map.capture_id}`,
+      `semantic-ui-map:${map.capture_id}`,
+      ...(map.screenshot_path !== undefined ? [`screenshot:${map.screenshot_path}`] : []),
+    ]);
 
     return {
       ok: true,
@@ -175,5 +183,6 @@ function semanticUiMapJson(value: SemanticUiMap): JsonObject {
       confidence: element.confidence,
     })),
     limitations: [...value.limitations],
+    ...(value.screenshot_path !== undefined ? { screenshot_path: value.screenshot_path } : {}),
   };
 }

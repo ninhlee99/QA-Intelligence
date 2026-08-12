@@ -17,10 +17,9 @@ import type {
 } from "../runtime/executor.js";
 import { failure } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
-import type { RunAutoQaPipelineRuntimeExecutor } from "./run-auto-qa-pipeline-runtime-executor.js";
 
 export type RunExpertQaRuntimeExecutorDependencies = Readonly<{
-  autoQa: RunAutoQaPipelineRuntimeExecutor;
+  autoQa: AgentRunExecutor;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
   auto_qa_agent: VersionReference;
@@ -126,6 +125,14 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
       },
     };
 
+    const claimPassAllowed = reinforcedChecklist["claim_pass_allowed"] === true;
+    const blockers = Array.isArray(reinforcedChecklist["blockers"])
+      ? (reinforcedChecklist["blockers"] as unknown[]).map(String).filter((b) => b.trim().length > 0)
+      : [];
+    // Facade owns the run — only report this Skill in skill_usage. Spreading
+    // auto_qa's skill_usage used to trip Agent Runtime policy
+    // (authorization_denied → outcome blocked, output null) and hide
+    // expert_checklist / blockers from the MCP caller (dogfood BUG-1).
     return {
       ok: true,
       value: {
@@ -136,25 +143,25 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
           agent: `${this.#dependencies.expected_agent.id}@${this.#dependencies.expected_agent.version}`,
           skill: `${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`,
         },
-        skill_usage: [
-          `${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`,
-          ...autoResult.value.skill_usage,
-        ],
+        skill_usage: [`${this.#dependencies.expected_skill.id}@${this.#dependencies.expected_skill.version}`],
         citations: [
           ...autoResult.value.citations,
           ...(typeof domainPack["pack_path"] === "string" ? [`pack:${domainPack["pack_path"]}`] : []),
-          `claim_pass_allowed:${reinforcedChecklist["claim_pass_allowed"] === true}`,
+          `claim_pass_allowed:${claimPassAllowed}`,
+          `wrapped_skill:${this.#dependencies.auto_qa_skill.id}@${this.#dependencies.auto_qa_skill.version}`,
         ],
         uncertainty: {
-          level:
-            reinforcedChecklist["claim_pass_allowed"] === true
-              ? autoResult.value.uncertainty.level
-              : "high",
+          level: claimPassAllowed ? autoResult.value.uncertainty.level : "high",
           reasons: [
             ...autoResult.value.uncertainty.reasons,
-            ...(reinforcedChecklist["claim_pass_allowed"] === true
+            ...(claimPassAllowed
               ? []
-              : ["claim_pass_allowed=false — host must not green-wash; see expert_checklist.blockers"]),
+              : [
+                  "claim_pass_allowed=false — host must not green-wash; see expert_checklist.blockers",
+                  ...(blockers.length > 0
+                    ? [`blockers: ${blockers.slice(0, 12).join("; ")}${blockers.length > 12 ? "…" : ""}`]
+                    : []),
+                ]),
           ],
         },
       },

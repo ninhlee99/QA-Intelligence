@@ -105,17 +105,34 @@ export function testCaseToExecutionPlan(
       continue;
     }
     if (step.action === "select") {
+      const optionLabelsRaw = step.input?.["option_labels"];
+      const optionLabels =
+        Array.isArray(optionLabelsRaw) &&
+        optionLabelsRaw.every((entry) => typeof entry === "string" && entry.trim().length > 0)
+          ? optionLabelsRaw.map((entry) => String(entry).trim())
+          : undefined;
       const optionLabel = step.input?.["option_label"];
-      if (typeof optionLabel !== "string" || optionLabel.trim().length === 0) {
+      if (
+        (optionLabels === undefined || optionLabels.length === 0) &&
+        (typeof optionLabel !== "string" || optionLabel.trim().length === 0)
+      ) {
         return {
           ok: false,
           failure: {
             code: "missing_step_target",
-            message: `Test case "${testCase.id}" has a select step with no option_label.`,
+            message: `Test case "${testCase.id}" has a select step with no option_label / option_labels.`,
           },
         };
       }
-      steps.push({ kind: "select", target, option_label: optionLabel });
+      steps.push({
+        kind: "select",
+        target,
+        option_label:
+          typeof optionLabel === "string" && optionLabel.trim().length > 0
+            ? optionLabel.trim()
+            : optionLabels![0]!,
+        ...(optionLabels !== undefined && optionLabels.length > 0 ? { option_labels: optionLabels } : {}),
+      });
       continue;
     }
     // A positive-variant `type` step has no literal value (SPEC-207 §6
@@ -135,6 +152,7 @@ export function testCaseToExecutionPlan(
   const expectedUrl = assertion.expected_url_includes;
   const expectedTitle = assertion.expected_title_includes;
   const expectedNetwork = assertion.expected_network;
+  const expectedCount = assertion.expected_result_count;
 
   if (assertion.expected_text !== undefined) {
     const expectedText = assertion.expected_text;
@@ -146,7 +164,8 @@ export function testCaseToExecutionPlan(
         assert: (cleaned: CleanedDomNode, context: PlaywrightAssertContext) =>
           hasText(cleaned, expectedText) &&
           urlTitleOk(context, expectedUrl, expectedTitle) &&
-          networkOk(context, expectedNetwork),
+          networkOk(context, expectedNetwork) &&
+          countOk(cleaned, expectedCount),
       },
     };
   }
@@ -162,7 +181,8 @@ export function testCaseToExecutionPlan(
         forbidden.every((text) => !hasText(cleaned, text)) &&
         (!expectNoDialog || !context.dialog_triggered) &&
         urlTitleOk(context, expectedUrl, expectedTitle) &&
-        networkOk(context, expectedNetwork),
+        networkOk(context, expectedNetwork) &&
+        countOk(cleaned, expectedCount),
     },
   };
 }
@@ -173,6 +193,47 @@ function networkOk(
 ): boolean {
   if (expected === undefined) return true;
   return networkOracleSatisfied(context.network, expected);
+}
+
+function countOk(
+  cleaned: CleanedDomNode,
+  expected: TestCaseGeneratedAssertion["expected_result_count"],
+): boolean {
+  if (expected === undefined) return true;
+  const count = countMatchingNodes(cleaned, expected.accessible_role, expected.accessible_name_includes);
+  switch (expected.relation) {
+    case "eq":
+      return count === expected.value;
+    case "gte":
+      return count >= expected.value;
+    case "lte":
+      return count <= expected.value;
+    default:
+      return false;
+  }
+}
+
+function countMatchingNodes(
+  node: CleanedDomNode,
+  role: string,
+  nameIncludes: string | undefined,
+): number {
+  const roleNorm = role.trim().toLowerCase();
+  const needle = nameIncludes?.trim().toLowerCase();
+  let total = 0;
+  const visit = (current: CleanedDomNode): void => {
+    const nodeRole = current.accessible_role?.trim().toLowerCase();
+    if (nodeRole === roleNorm) {
+      if (needle === undefined || needle.length === 0) {
+        total += 1;
+      } else if ((current.accessible_name ?? "").toLowerCase().includes(needle)) {
+        total += 1;
+      }
+    }
+    for (const child of current.children) visit(child);
+  };
+  visit(node);
+  return total;
 }
 
 function urlTitleOk(

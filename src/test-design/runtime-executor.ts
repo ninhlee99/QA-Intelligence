@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type { RequirementResolver } from "../requirement-review/runtime-executor.js";
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
+import type { DiscoverAfterLogin } from "../discovery/discover-after-login.js";
 import type { GenerateTestCases } from "./generate-test-cases.js";
 import type { TestCase, TestCaseGenerationFinding } from "./public.js";
 import type {
@@ -18,6 +19,10 @@ import type { AgentRunFailure } from "../runtime/public.js";
  * multiple MCP calls itself (docs/proposals/professional-qa-mcp-roadmap.md
  * Phase 3 Definition of Done). Each inner Skill still runs its own
  * authorization independently; this executor adds no authority of its own.
+ *
+ * Optional login_* fields (all six or none) route discovery through
+ * DiscoverAfterLogin so auth-gated screens bind against the real UI map
+ * (dogfood BUG-3).
  */
 export type GenerateTestCasesRuntimeExecutorDependencies = Readonly<{
   requirements: RequirementResolver;
@@ -25,6 +30,8 @@ export type GenerateTestCasesRuntimeExecutorDependencies = Readonly<{
   generator: GenerateTestCases;
   expected_agent: VersionReference;
   expected_skill: VersionReference;
+  /** Required when callers pass login_* fields. */
+  discoverAfterLogin?: DiscoverAfterLogin;
 }>;
 
 export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
@@ -83,11 +90,46 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
       acceptanceCriteria = resolved.value.acceptance_criteria;
     }
 
-    const discovered = await this.#dependencies.discovery.discover({
-      operation_id: input.execution.operation_id,
-      context: input.execution.workspace_context,
-      url,
-    });
+    const loginFields = readLoginFields(input.start_request.input);
+    if (loginFields === "partial") {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "Login fields must be supplied together (login_url + username_field_name + username + password_field_name + password + submit_action_name) or not at all.",
+        ),
+      };
+    }
+    if (loginFields !== undefined && this.#dependencies.discoverAfterLogin === undefined) {
+      return {
+        ok: false,
+        failure: failure(
+          "orchestration",
+          "invalid_request",
+          "generate_test_cases received login_* fields but DiscoverAfterLogin is not wired on this server.",
+        ),
+      };
+    }
+
+    const discovered =
+      loginFields !== undefined && this.#dependencies.discoverAfterLogin !== undefined
+        ? await this.#dependencies.discoverAfterLogin.discover({
+            operation_id: input.execution.operation_id,
+            context: input.execution.workspace_context,
+            login_url: loginFields.login_url,
+            target_url: url,
+            username_field_name: loginFields.username_field_name,
+            username: loginFields.username,
+            password_field_name: loginFields.password_field_name,
+            password: loginFields.password,
+            submit_action_name: loginFields.submit_action_name,
+          })
+        : await this.#dependencies.discovery.discover({
+            operation_id: input.execution.operation_id,
+            context: input.execution.workspace_context,
+            url,
+          });
     if (!discovered.ok) {
       return {
         ok: false,
@@ -122,6 +164,7 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
       `capture:${discovered.value.capture_id}`,
       ...generated.value.test_cases.map((testCase) => `test-case:${testCase.id}`),
       ...generated.value.findings.flatMap((finding) => finding.evidence),
+      ...(loginFields !== undefined ? [`login-url:${loginFields.login_url}`] : []),
     ]);
 
     return {
@@ -239,4 +282,41 @@ function readAcceptanceCriteriaArray(value: JsonValue | undefined): readonly Jso
     objects.push(entry as JsonObject);
   }
   return objects;
+}
+
+type LoginFields = Readonly<{
+  login_url: string;
+  username_field_name: string;
+  username: string;
+  password_field_name: string;
+  password: string;
+  submit_action_name: string;
+}>;
+
+function readOptionalString(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/** All six login fields or none — partial sets are rejected as "partial". */
+function readLoginFields(input: Readonly<Record<string, JsonValue | undefined>>): LoginFields | "partial" | undefined {
+  const required = [
+    "login_url",
+    "username_field_name",
+    "username",
+    "password_field_name",
+    "password",
+    "submit_action_name",
+  ] as const;
+  const present = required.map((key) => readOptionalString(input[key]));
+  const filled = present.filter((v): v is string => v !== undefined);
+  if (filled.length === 0) return undefined;
+  if (filled.length !== required.length) return "partial";
+  return {
+    login_url: present[0]!,
+    username_field_name: present[1]!,
+    username: present[2]!,
+    password_field_name: present[3]!,
+    password: present[4]!,
+    submit_action_name: present[5]!,
+  };
 }

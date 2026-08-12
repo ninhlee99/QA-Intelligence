@@ -17,6 +17,10 @@ import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/br
 import { DeterministicDomCleaner } from "../adapters/dom-cleaner/deterministic-dom-cleaner.js";
 import type { CleanedDomNode } from "../dom-cleaner/public.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
+import {
+  capturePageScreenshot,
+  defaultScreenshotDir,
+} from "../shared/capture-page-screenshot.js";
 import type {
   SemanticUiDiscoveryResult,
   SemanticUiElement,
@@ -33,6 +37,15 @@ export type DiscoverUiSurfaceRequest = Readonly<{
   url: string;
   /** Phase 9 — defaults to chromium when omitted. */
   browser?: BrowserName;
+  /** Dogfood GAP-1 — write a full-page PNG and return screenshot_path. */
+  include_screenshot?: boolean;
+  /** Override default `.qa-screenshots/<operation_id>/`. */
+  screenshot_dir?: string;
+  /**
+   * Dogfood GAP-4 — max named/unnamed elements returned (default 120).
+   * Clamped to [20, 2000]; traversal safety cap remains 5000.
+   */
+  max_elements?: number;
 }>;
 
 type Dependencies = Readonly<{
@@ -104,7 +117,14 @@ export class DiscoverUiSurface {
       let result: SemanticUiDiscoveryResult;
       try {
         await page.goto(request.url);
-        result = await this.captureSemanticUiMap(page, request);
+        result = await this.captureSemanticUiMap(page, {
+          context: request.context,
+          url: request.url,
+          operation_id: request.operation_id,
+          ...(request.include_screenshot === true ? { include_screenshot: true } : {}),
+          ...(request.screenshot_dir !== undefined ? { screenshot_dir: request.screenshot_dir } : {}),
+          ...(request.max_elements !== undefined ? { max_elements: request.max_elements } : {}),
+        });
       } finally {
         await page.close();
       }
@@ -135,7 +155,14 @@ export class DiscoverUiSurface {
    */
   async captureSemanticUiMap(
     page: Page,
-    request: Readonly<{ context: WorkspaceContext; url: string; operation_id: string }>,
+    request: Readonly<{
+      context: WorkspaceContext;
+      url: string;
+      operation_id: string;
+      include_screenshot?: boolean;
+      screenshot_dir?: string;
+      max_elements?: number;
+    }>,
   ): Promise<SemanticUiDiscoveryResult> {
     const capturedAt = this.#clock.now().toISOString();
     const captureId = `capture:discovery:${request.operation_id}`;
@@ -187,9 +214,24 @@ export class DiscoverUiSurface {
     const limitations: string[] = [];
     collectSemanticElements(cleaned.value.sanitized_tree, undefined, allElements, limitations);
 
-    const elements = prioritizeElements(allElements, MAX_ELEMENTS);
+    const maxElements = clampMaxElements(request.max_elements);
+    const elements = prioritizeElements(allElements, maxElements);
     if (allElements.length > elements.length) {
       limitations.push(`truncated_to_${elements.length}_of_${allElements.length}_elements`);
+    }
+    // Dogfood GAP-4: discovery does not enumerate <option> children; multi-select
+    // needs caller-supplied option_label(s). Surface that limitation explicitly.
+    if (elements.some((el) => el.interaction_hint === "selectable")) {
+      limitations.push("selectable_options_not_enumerated_supply_option_label_or_option_labels");
+    }
+
+    let screenshot_path: string | undefined;
+    if (request.include_screenshot === true) {
+      const dir = request.screenshot_dir ?? defaultScreenshotDir(request.operation_id);
+      screenshot_path = await capturePageScreenshot(page, dir, sanitizeBasename(request.operation_id));
+      if (screenshot_path === undefined) {
+        limitations.push("screenshot_capture_failed");
+      }
     }
 
     const map: SemanticUiMap = {
@@ -200,6 +242,7 @@ export class DiscoverUiSurface {
       captured_at: capturedAt,
       elements: Object.freeze(elements),
       limitations: Object.freeze(limitations),
+      ...(screenshot_path !== undefined ? { screenshot_path } : {}),
     };
     return { ok: true, value: map };
   }
@@ -271,4 +314,13 @@ function prioritizeElements(
   const named = elements.filter((element) => element.kind === "page" || element.accessible_name !== undefined);
   const unnamed = elements.filter((element) => element.kind !== "page" && element.accessible_name === undefined);
   return [...named, ...unnamed].slice(0, limit);
+}
+
+function clampMaxElements(raw: number | undefined): number {
+  if (raw === undefined || !Number.isFinite(raw)) return MAX_ELEMENTS;
+  return Math.min(2_000, Math.max(20, Math.floor(raw)));
+}
+
+function sanitizeBasename(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "capture";
 }
