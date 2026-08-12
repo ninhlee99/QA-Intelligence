@@ -41,16 +41,28 @@ const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspa
  *
  * 1. `QA_INTELLIGENCE_DEV_PERSIST_DIR` — explicit override (absolute path)
  * 2. `QA_INTELLIGENCE_DEV_DOMAIN`      — build `~/.workspaces/<domain>/test-engineer`
- * 3. fallback                           — `~/.workspaces/<WORKSPACE_ID>/test-engineer`
+ *    Set this to the name of the product under test, e.g. "daijob6-companytools".
+ *    This is intentionally separate from WORKSPACE_ID — the workspace tracks
+ *    the QA session identity, the domain tracks what product is being tested.
+ *
+ * If neither is set the server logs a warning and falls back to a temp-style
+ * path so files never land inside the source tree.
  */
 function resolvePersistBaseDir(): string {
   const explicit = process.env["QA_INTELLIGENCE_DEV_PERSIST_DIR"];
   if (explicit) return explicit;
-  const domain =
-    process.env["QA_INTELLIGENCE_DEV_DOMAIN"] ??
-    // sanitise workspace_id to a filesystem-safe segment
-    WORKSPACE_ID.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return join(homedir(), ".workspaces", domain, "test-engineer");
+
+  const domain = process.env["QA_INTELLIGENCE_DEV_DOMAIN"];
+  if (domain) return join(homedir(), ".workspaces", domain, "test-engineer");
+
+  // Neither var set — warn and use a stable fallback so files stay out of cwd.
+  process.stderr.write(
+    "[qa-intelligence] WARNING: QA_INTELLIGENCE_DEV_DOMAIN is not set. " +
+      'Set it to the product name you are testing (e.g. "daijob6-companytools") ' +
+      "so credentials and session data are stored under ~/.workspaces/<domain>/test-engineer/. " +
+      "Falling back to ~/.workspaces/qa-intelligence-default/test-engineer/.\n",
+  );
+  return join(homedir(), ".workspaces", "qa-intelligence-default", "test-engineer");
 }
 const POLICY_VERSION = "dev-policy@0.1.0";
 const ISSUER = "https://identity.dev.invalid";
