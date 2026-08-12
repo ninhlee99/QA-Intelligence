@@ -123,6 +123,8 @@ const EXPECTED_TOOLS = [
   "compare_ui_surfaces",
   "discover_and_compare_role_ui_surfaces",
   "generate_journey_test_cases",
+  "set_user_preference",
+  "get_user_preference",
 ] as const;
 
 test("dev fixture registers the full MCP catalog without duplicates", () => {

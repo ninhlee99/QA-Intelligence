@@ -339,6 +339,8 @@ export const DEMO_LOGIN_TEST_CASE_REF = "TC-DEMO-002@1.0.0";
 export type DevFixtureBuild = Readonly<{
   runtime: InMemoryAgentRuntime;
   tools: readonly AgentRuntimeToolDefinition[];
+  /** Contract-test seam: every tool.agent.id must exist in this set. */
+  registeredAgentIds: readonly string[];
   mistakeRecurrenceTracker: MistakeRecurrenceTracker;
   candidateRepository: CandidateRepository;
   userPreferences: FileBackedUserPreferences;
@@ -1452,6 +1454,7 @@ export function buildDevFixture(options: {
       mode: "get",
     }),
   );
+  const registeredAgentIds = [...executorMap.keys()];
   const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
 
   const runtime = new InMemoryAgentRuntime(clock, ids, authorizer, executor);
@@ -3363,5 +3366,5 @@ export function buildDevFixture(options: {
     },
   ];
 
-  return { runtime, tools, mistakeRecurrenceTracker, candidateRepository, userPreferences };
+  return { runtime, tools, registeredAgentIds, mistakeRecurrenceTracker, candidateRepository, userPreferences };
 }

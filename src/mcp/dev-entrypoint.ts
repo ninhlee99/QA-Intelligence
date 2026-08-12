@@ -18,7 +18,6 @@
  * development, exactly as ADR-016 §8 anticipates.
  */
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -30,40 +29,12 @@ import type { WorkspaceContext } from "../requirement-review/public.js";
 
 import { AgentRuntimeToolRegistry } from "./agent-runtime-tool-registry.js";
 import { buildDevFixture } from "./dev-fixture.js";
+import { resolvePersistBaseDir } from "./persist-base-dir.js";
 import { createSdkMcpServer } from "./sdk-mcp-server.js";
 import { StdioTransport } from "./stdio-transport.js";
 
 const WORKSPACE_ID = process.env["QA_INTELLIGENCE_DEV_WORKSPACE_ID"] ?? "workspace-dev-mcp-001";
 
-/**
- * Resolve the base directory for all file-backed stores (credentials, hints,
- * regression suites, …). Resolution order:
- *
- * 1. `QA_INTELLIGENCE_DEV_PERSIST_DIR` — explicit override (absolute path)
- * 2. `QA_INTELLIGENCE_DEV_DOMAIN`      — build `~/.workspaces/<domain>/test-engineer`
- *    Set this to the name of the product under test, e.g. "daijob6-companytools".
- *    This is intentionally separate from WORKSPACE_ID — the workspace tracks
- *    the QA session identity, the domain tracks what product is being tested.
- *
- * If neither is set the server logs a warning and falls back to a temp-style
- * path so files never land inside the source tree.
- */
-function resolvePersistBaseDir(): string {
-  const explicit = process.env["QA_INTELLIGENCE_DEV_PERSIST_DIR"];
-  if (explicit) return explicit;
-
-  const domain = process.env["QA_INTELLIGENCE_DEV_DOMAIN"];
-  if (domain) return join(homedir(), ".workspaces", domain, "test-engineer");
-
-  // Neither var set — warn and use a stable fallback so files stay out of cwd.
-  process.stderr.write(
-    "[qa-intelligence] WARNING: QA_INTELLIGENCE_DEV_DOMAIN is not set. " +
-      'Set it to the product name you are testing (e.g. "daijob6-companytools") ' +
-      "so credentials and session data are stored under ~/.workspaces/<domain>/test-engineer/. " +
-      "Falling back to ~/.workspaces/qa-intelligence-default/test-engineer/.\n",
-  );
-  return join(homedir(), ".workspaces", "qa-intelligence-default", "test-engineer");
-}
 const POLICY_VERSION = "dev-policy@0.1.0";
 const ISSUER = "https://identity.dev.invalid";
 const AUDIENCE = "qa-intelligence-dev";
@@ -164,7 +135,7 @@ function main(): void {
     },
   });
 
-  const persistBaseDir = resolvePersistBaseDir();
+  const persistBaseDir = resolvePersistBaseDir((message) => process.stderr.write(message));
   const sessionMemory = new SessionMemory(clock, {
     persistRootDir: join(persistBaseDir, ".qa-avoidance-hints"),
   });
