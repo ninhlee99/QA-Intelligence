@@ -445,3 +445,31 @@ test("emits wait_for after click when AC declares wait_for_accessible_name", asy
   const waitIdx = positive!.steps.findIndex((step) => step.action === "wait_for");
   assert.ok(clickIdx >= 0 && waitIdx > clickIdx);
 });
+
+test("emits possible_auth_required when unbindable ACs hit a login-like surface", async () => {
+  const generator = new GenerateTestCases({ authorizer: new AllowingAuthorizer(), ids: new SequenceIds() });
+
+  const result = await generator.generate(
+    baseRequest({
+      acceptance_criteria: [
+        { id: "AC1", statement: "キーワード field finds matching resumes.", expected_text: "件" },
+      ],
+      ui_map_elements: [
+        { id: "field-user", kind: "field", accessible_name: "ユーザー名", accessible_role: "textbox", interaction_hint: "editable" },
+        { id: "field-pass", kind: "field", accessible_name: "パスワード", accessible_role: "textbox", interaction_hint: "editable" },
+        { id: "action-login", kind: "action", accessible_name: "ログイン", accessible_role: "button", interaction_hint: "clickable" },
+      ],
+      ui_map_source_url: "https://example.invalid/login",
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.test_cases.length, 0);
+  assert.ok(result.value.findings.some((f) => f.category === "possible_auth_required"));
+  assert.ok(
+    result.value.findings.some(
+      (f) => f.category === "unbindable_criterion" && f.message.includes("login/public gate"),
+    ),
+  );
+});

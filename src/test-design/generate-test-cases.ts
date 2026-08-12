@@ -224,10 +224,13 @@ export class GenerateTestCases {
       const matchedFields = fields.filter((element) => statementMentionsName(statement, element.accessible_name));
 
       if (matchedAction === undefined && matchedFields.length === 0) {
+        const authHint = looksLikeLoginSurface(fields, actions, request.ui_map_source_url)
+          ? " Discovered UI looks like a login/public gate — page may require auth; prefer generate_test_cases with login_* fields or discover_ui_surface_after_login first (not an AC wording bug)."
+          : "";
         findings.push({
           id: this.#dependencies.ids.next("finding"),
           category: "unbindable_criterion",
-          message: `No discovered UI element (field or action) matches acceptance criterion "${criterionId}": "${statement}". A test case was not fabricated.`,
+          message: `No discovered UI element (field or action) matches acceptance criterion "${criterionId}": "${statement}". A test case was not fabricated.${authHint}`,
           evidence: [`${request.requirement_ref}#${criterionId}`, `ui-map:${request.ui_map_source_url}`],
         });
         continue;
@@ -329,6 +332,20 @@ export class GenerateTestCases {
           if (built.assertion !== undefined) generatedAssertions.push(built.assertion);
         }
       }
+    }
+
+    if (
+      testCases.length === 0 &&
+      findings.some((f) => f.category === "unbindable_criterion") &&
+      looksLikeLoginSurface(fields, actions, request.ui_map_source_url)
+    ) {
+      findings.unshift({
+        id: this.#dependencies.ids.next("finding"),
+        category: "possible_auth_required",
+        message:
+          "Discovered surface looks like a login/public gate (password field and/or login URL) while no AC bound. Target page likely needs auth — supply login_url + username_field_name + username + password_field_name + password + submit_action_name on generate_test_cases, or call discover_ui_surface_after_login / run_auto_qa with login first.",
+        evidence: [`ui-map:${request.ui_map_source_url}`, ...namedControlEvidence(fields, actions)],
+      });
     }
 
     return {
@@ -528,6 +545,37 @@ function statementMentionsName(statement: string, accessibleName: string | undef
 function hasRoleAmbiguity(matches: readonly TestCaseGenerationUiElement[]): boolean {
   const roles = new Set(matches.map((match) => match.accessible_role).filter((role): role is string => role !== undefined));
   return roles.size > 1;
+}
+
+const LOGIN_URL_RE = /\/(login|signin|sign-in|sessions?|auth)\b/i;
+const PASSWORD_NAME_RE = /password|passwd|パスワード/i;
+const USERNAME_NAME_RE = /username|user\s*name|ユーザー名|email|ログインID|login\s*id/i;
+const LOGIN_ACTION_RE = /sign\s*in|log\s*in|ログイン|ログインする/i;
+
+function looksLikeLoginSurface(
+  fields: readonly TestCaseGenerationUiElement[],
+  actions: readonly TestCaseGenerationUiElement[],
+  sourceUrl: string,
+): boolean {
+  if (LOGIN_URL_RE.test(sourceUrl)) return true;
+  const fieldNames = fields.map((el) => el.accessible_name?.trim() ?? "").filter((n) => n.length > 0);
+  const actionNames = actions.map((el) => el.accessible_name?.trim() ?? "").filter((n) => n.length > 0);
+  const hasPassword = fieldNames.some((n) => PASSWORD_NAME_RE.test(n));
+  const hasUsername = fieldNames.some((n) => USERNAME_NAME_RE.test(n));
+  const hasLoginAction = actionNames.some((n) => LOGIN_ACTION_RE.test(n));
+  // Password alone is common on non-login forms; require a second login signal.
+  return hasPassword && (hasUsername || hasLoginAction);
+}
+
+function namedControlEvidence(
+  fields: readonly TestCaseGenerationUiElement[],
+  actions: readonly TestCaseGenerationUiElement[],
+): string[] {
+  const names = [...fields, ...actions]
+    .map((el) => el.accessible_name?.trim())
+    .filter((n): n is string => typeof n === "string" && n.length > 0)
+    .slice(0, 12);
+  return names.map((n) => `discovered:${n}`);
 }
 
 function readCriterionOracles(criterion: JsonObject): CriterionOracles {

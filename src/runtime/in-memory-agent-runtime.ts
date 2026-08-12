@@ -1212,12 +1212,22 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     );
     const terminal = this.#find(reference);
     if (!terminal.ok) return terminal;
+    // Preserve diagnostic output when the executor already produced one
+    // (e.g. expert_checklist/blockers) — refuse green-wash on conclusions,
+    // not on diagnosis (dogfood BUG-1).
+    const diagnosticOutput =
+      observation?.output !== undefined &&
+      typeof observation.output === "object" &&
+      observation.output !== null &&
+      !Array.isArray(observation.output)
+        ? observation.output
+        : null;
     const result = freezeRunResult({
       schema_version: "1.0.0",
       run_id: reference.run_id,
       workspace_id: reference.workspace_id,
       outcome: outcomeForState(state),
-      output: null,
+      output: diagnosticOutput,
       failure_class: failureValue.class,
       resolved_versions: retainedResolvedVersions(record.startRequest, observation),
       rule_results: observation?.rule_results ?? [],

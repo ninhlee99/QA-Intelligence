@@ -11,13 +11,13 @@
  * repository holds to), submit, then capture the target screen on the
  * exact same session/cookies the login produced.
  */
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
 import { accessibleNamesMatch } from "../shared/accessible-name.js";
 import { DiscoverUiSurface } from "./discover-ui-surface.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
-import type { SemanticUiDiscoveryResult } from "./public.js";
+import type { SemanticUiDiscoveryResult, SemanticUiElement, SemanticUiMap } from "./public.js";
 
 export interface Clock {
   now(): Date;
@@ -128,13 +128,11 @@ export class DiscoverAfterLogin {
         const ssoActionName = request.sso_action_name?.trim();
         try {
           if (ssoActionName !== undefined && ssoActionName.length > 0) {
-            const ssoAction = loginMap.value.elements.find(
-              (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, ssoActionName),
-            );
+            const ssoAction = await resolveLoginControl(page, loginMap.value, "action", ssoActionName);
             if (ssoAction === undefined) {
-              return loginFailure(`Login page has no discovered SSO action named "${ssoActionName}".`);
+              return loginFailure(missingLoginControlMessage("action", ssoActionName, loginMap.value));
             }
-            await clickByRole(page, ssoAction.accessible_role, ssoActionName);
+            await clickByRole(page, ssoAction.accessible_role, ssoAction.accessible_name ?? ssoActionName);
             const waitNeedle =
               request.sso_wait_url_includes?.trim() ||
               (() => {
@@ -163,28 +161,25 @@ export class DiscoverAfterLogin {
                 "Form login requires username_field_name, username, password_field_name, password, submit_action_name — or supply sso_action_name for SSO bootstrap.",
               );
             }
-            const usernameField = loginMap.value.elements.find(
-              (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, usernameFieldName),
-            );
+            const usernameField = await resolveLoginControl(page, loginMap.value, "field", usernameFieldName);
             if (usernameField === undefined) {
-              return loginFailure(`Login page has no discovered field named "${usernameFieldName}".`);
+              return loginFailure(missingLoginControlMessage("field", usernameFieldName, loginMap.value));
             }
-            const passwordField = loginMap.value.elements.find(
-              (element) => element.kind === "field" && accessibleNamesMatch(element.accessible_name, passwordFieldName),
-            );
+            const passwordField = await resolveLoginControl(page, loginMap.value, "field", passwordFieldName);
             if (passwordField === undefined) {
-              return loginFailure(`Login page has no discovered field named "${passwordFieldName}".`);
+              return loginFailure(missingLoginControlMessage("field", passwordFieldName, loginMap.value));
             }
-            const submitAction = loginMap.value.elements.find(
-              (element) => element.kind === "action" && accessibleNamesMatch(element.accessible_name, submitActionName),
-            );
+            const submitAction = await resolveLoginControl(page, loginMap.value, "action", submitActionName);
             if (submitAction === undefined) {
-              return loginFailure(`Login page has no discovered action named "${submitActionName}".`);
+              return loginFailure(missingLoginControlMessage("action", submitActionName, loginMap.value));
             }
 
-            await fillByRole(page, usernameField.accessible_role, usernameFieldName, username);
-            await fillByRole(page, passwordField.accessible_role, passwordFieldName, password);
-            await clickByRole(page, submitAction.accessible_role, submitActionName);
+            const usernameName = usernameField.accessible_name ?? usernameFieldName;
+            const passwordName = passwordField.accessible_name ?? passwordFieldName;
+            const submitName = submitAction.accessible_name ?? submitActionName;
+            await fillByRole(page, usernameField.accessible_role, usernameName, username);
+            await fillByRole(page, passwordField.accessible_role, passwordName, password);
+            await clickByRole(page, submitAction.accessible_role, submitName);
             await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
           }
 
@@ -242,6 +237,72 @@ export class DiscoverAfterLogin {
 
 function loginFailure(message: string): SemanticUiDiscoveryResult {
   return { ok: false, failure: { class: "configuration", code: "login_target_not_found", message, retryable: false, evidence: [] } };
+}
+
+/**
+ * Match by accessible_name first (ADR-022). Fallback: HTML `name=` attribute
+ * on the live login page → map back to a discovered Semantic UI element so
+ * fill/click still use accessible locators (dogfood BUG-2).
+ */
+async function resolveLoginControl(
+  page: Page,
+  loginMap: SemanticUiMap,
+  kind: "field" | "action",
+  requestedName: string,
+): Promise<SemanticUiElement | undefined> {
+  const byAccessible = loginMap.elements.find(
+    (element) => element.kind === kind && accessibleNamesMatch(element.accessible_name, requestedName),
+  );
+  if (byAccessible !== undefined) return byAccessible;
+
+  try {
+    const locator = page.locator(`[name=${JSON.stringify(requestedName)}]`).first();
+    if ((await locator.count()) === 0) return undefined;
+    const resolvedName = await locator.evaluate((el) => {
+      const htmlEl = el as {
+        labels?: ArrayLike<{ textContent?: string | null }> | null;
+        getAttribute(name: string): string | null;
+        ownerDocument?: { querySelector(sel: string): { textContent?: string | null } | null };
+      };
+      const labelled = htmlEl.labels?.[0]?.textContent?.trim();
+      if (labelled) return labelled;
+      const aria = htmlEl.getAttribute("aria-label")?.trim();
+      if (aria) return aria;
+      const placeholder = htmlEl.getAttribute("placeholder")?.trim();
+      if (placeholder) return placeholder;
+      const id = htmlEl.getAttribute("id");
+      if (id) {
+        const escaped = id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const byFor = htmlEl.ownerDocument?.querySelector(`label[for="${escaped}"]`);
+        const forText = byFor?.textContent?.trim();
+        if (forText) return forText;
+      }
+      return undefined;
+    });
+    if (typeof resolvedName !== "string" || resolvedName.trim().length === 0) return undefined;
+    return loginMap.elements.find(
+      (element) => element.kind === kind && accessibleNamesMatch(element.accessible_name, resolvedName),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function missingLoginControlMessage(
+  kind: "field" | "action",
+  requestedName: string,
+  loginMap: SemanticUiMap,
+): string {
+  const available = loginMap.elements
+    .filter((element) => element.kind === kind && typeof element.accessible_name === "string" && element.accessible_name.trim().length > 0)
+    .map((element) => element.accessible_name!.trim())
+    .filter((name, index, all) => all.findIndex((other) => accessibleNamesMatch(other, name)) === index)
+    .slice(0, 20);
+  const availableSuffix =
+    available.length > 0
+      ? ` Available ${kind} accessible_name values: ${available.map((n) => JSON.stringify(n)).join(", ")}.`
+      : ` No named ${kind}s were discovered on the login page.`;
+  return `Login page has no discovered ${kind} named "${requestedName}". Match accessible_name (or HTML name= that resolves to one).${availableSuffix}`;
 }
 
 async function fillByRole(page: import("playwright").Page, role: string | undefined, name: string, value: string): Promise<void> {

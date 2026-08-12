@@ -824,6 +824,7 @@ export function buildDevFixture(options: {
           generator: testCaseGenerator,
           expected_agent: TEST_CASE_GENERATION_AGENT,
           expected_skill: TEST_CASE_GENERATION_SKILL,
+          discoverAfterLogin: discoverAfterLoginSkill,
         }),
       ],
       [
@@ -1552,7 +1553,7 @@ export function buildDevFixture(options: {
     {
       name: "generate_test_cases",
       description:
-        "Generate governed TestCases (SPEC-207 §2/§6) against a live page's discovered Semantic UI Map — composes Discovery then Test Design in one call. Per bindable, expected_text-bearing acceptance criterion, generates up to 4 variants per editable field: positive, negative (wrong value, success text must be absent), boundary (oversized input, no leaked system error), adversarial (benign XSS/SQLi probe, checked for both unescaped reflection and actual execution via dialog detection). A criterion that cannot be bound to any discovered field/action is reported as a finding, never fabricated into a test case. Two input modes: (1) pass acceptance_criteria inline — works against ANY real url, no seed data needed, e.g. {\"url\": \"https://your-real-app.example/login\", \"acceptance_criteria\": [{\"id\": \"AC-1\", \"statement\": \"...mentions a discovered field or action's name...\", \"expected_text\": \"text expected after a successful action\"}]}; (2) omit acceptance_criteria to fall back to development seed data (REQ-DEMO-002).",
+        "Generate governed TestCases (SPEC-207 §2/§6) against a live page's discovered Semantic UI Map — composes Discovery then Test Design in one call. Per bindable, expected_text-bearing acceptance criterion, generates up to 4 variants per editable field: positive, negative (wrong value, success text must be absent), boundary (oversized input, no leaked system error), adversarial (benign XSS/SQLi probe, checked for both unescaped reflection and actual execution via dialog detection). A criterion that cannot be bound to any discovered field/action is reported as a finding, never fabricated into a test case. Two input modes: (1) pass acceptance_criteria inline — works against ANY real url, no seed data needed, e.g. {\"url\": \"https://your-real-app.example/login\", \"acceptance_criteria\": [{\"id\": \"AC-1\", \"statement\": \"...mentions a discovered field or action's name...\", \"expected_text\": \"text expected after a successful action\"}]}; (2) omit acceptance_criteria to fall back to development seed data (REQ-DEMO-002). For auth-gated screens supply login_url + username_field_name + username + password_field_name + password + submit_action_name together (all six or none) — discovery then uses the post-login session (same contract as run_auto_qa).",
       inputSchema: {
         type: "object",
         properties: {
@@ -1588,6 +1589,12 @@ export function buildDevFixture(options: {
               },
             },
           },
+          login_url: { type: "string", description: "Auth-gated target: login page URL (supply all six login_* fields or none)." },
+          username_field_name: { type: "string", description: "Login field accessible_name (or HTML name= that resolves to one)." },
+          username: { type: "string" },
+          password_field_name: { type: "string" },
+          password: { type: "string" },
+          submit_action_name: { type: "string", description: "Login submit action accessible_name." },
         },
         required: [],
       },
@@ -1602,6 +1609,12 @@ export function buildDevFixture(options: {
         requirement_title: (args["requirement_title"] as string | undefined) ?? "",
         url: (args["url"] as string | undefined) ?? demoLoginPageUrl,
         acceptance_criteria: (args["acceptance_criteria"] as JsonValue | undefined) ?? [],
+        login_url: (args["login_url"] as string | undefined) ?? "",
+        username_field_name: (args["username_field_name"] as string | undefined) ?? "",
+        username: (args["username"] as string | undefined) ?? "",
+        password_field_name: (args["password_field_name"] as string | undefined) ?? "",
+        password: (args["password"] as string | undefined) ?? "",
+        submit_action_name: (args["submit_action_name"] as string | undefined) ?? "",
       }),
     },
     {

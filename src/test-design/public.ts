@@ -130,7 +130,8 @@ export type TestCaseGenerationFindingCategory =
   | "ambiguous_criterion"
   | "no_acceptance_criteria"
   | "missing_expected_result"
-  | "missing_option_label";
+  | "missing_option_label"
+  | "possible_auth_required";
 
 export type TestCaseGenerationFinding = Readonly<{
   id: string;
