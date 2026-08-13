@@ -11,6 +11,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 
+import { createLaunchBrowser, headedFromInput } from "../adapters/playwright/browser-launcher.js";
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { mergeFieldValuesWithSecrets, readStringMap } from "../credentials/resolve-secret-input.js";
@@ -26,6 +27,9 @@ import type {
 import { failure } from "../runtime/executor-support.js";
 import { isJsonObject } from "../shared/rule-engine-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
+import { assessEvidenceCaptureStatus } from "../reporting/evidence-capture-status.js";
+import { resolveStandardEvidenceProfile } from "../reporting/standard-evidence-profile.js";
+import { loadTestcaseDesignCase } from "./testcase-design-artifact.js";
 
 export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   clock: { now(): Date };
@@ -36,6 +40,10 @@ export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   /** Directory failure screenshots are written under. Defaults to cwd/.qa-screenshots/<operation_id>. */
   screenshotBaseDir?: string;
   credentials?: WorkspaceCredentialRegistry;
+  /** Root containing versioned QA testcase design artifacts. Defaults to process.cwd(). */
+  testcaseBaseDir?: string;
+  /** Governed root for authored upload artifact_refs. Upload remains disabled when omitted. */
+  uploadArtifactBaseDir?: string;
 }>;
 
 export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor {
@@ -49,13 +57,35 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
     const configurationFailure = validateConfiguration(input, this.#dependencies);
     if (configurationFailure) return { ok: false, failure: configurationFailure };
 
-    const testCaseValue = input.start_request.input["test_case"];
-    if (!isJsonObject(testCaseValue)) {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "Execution requires an exact test_case object (from a prior generate_test_cases call).") };
-    }
-    const assertionValue = input.start_request.input["generated_assertion"];
-    if (!isJsonObject(assertionValue)) {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "Execution requires an exact generated_assertion object (from the same generate_test_cases call).") };
+    let testCaseValue = input.start_request.input["test_case"];
+    let assertionValue = input.start_request.input["generated_assertion"];
+    let artifactDigest: string | undefined;
+    const testcaseFile = input.start_request.input["testcase_file"];
+    const testcaseId = input.start_request.input["test_case_id"];
+    if (typeof testcaseFile === "string" && testcaseFile.trim().length > 0) {
+      if (isJsonObject(testCaseValue) || isJsonObject(assertionValue)) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", "Use testcase_file + test_case_id or inline test_case + generated_assertion, never both.") };
+      }
+      if (typeof testcaseId !== "string" || testcaseId.trim().length === 0) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", "testcase_file execution requires test_case_id.") };
+      }
+      const loaded = await loadTestcaseDesignCase({
+        artifact_path: testcaseFile,
+        allowed_root: this.#dependencies.testcaseBaseDir ?? process.cwd(),
+        workspace_id: input.reference.workspace_id,
+        test_case_id: testcaseId,
+      });
+      if (!loaded.ok) return { ok: false, failure: failure("orchestration", "invalid_request", loaded.message) };
+      testCaseValue = loaded.test_case as unknown as JsonValue;
+      assertionValue = loaded.generated_assertion as unknown as JsonValue;
+      artifactDigest = loaded.artifact_sha256;
+    } else {
+      if (!isJsonObject(testCaseValue)) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", "Execution requires testcase_file + test_case_id or an exact test_case object.") };
+      }
+      if (!isJsonObject(assertionValue)) {
+        return { ok: false, failure: failure("orchestration", "invalid_request", "Inline execution requires an exact generated_assertion object from the same generation result.") };
+      }
     }
     const fieldValuesInput = input.start_request.input["field_values"];
     const fieldSecretRefsInput = input.start_request.input["field_secret_refs"];
@@ -90,10 +120,27 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       ".qa-traces",
       input.execution.operation_id,
     );
-    let screenshotDirReady = true;
+    const videoDir = join(
+      this.#dependencies.screenshotBaseDir ?? process.cwd(),
+      ".qa-videos",
+      input.execution.operation_id,
+    );
+    const downloadDir = join(
+      this.#dependencies.screenshotBaseDir ?? process.cwd(),
+      ".qa-downloads",
+      input.execution.operation_id,
+    );
+    const evidenceProfile = resolveStandardEvidenceProfile({
+      screenshot_policy: input.start_request.input["screenshot_policy"], video_policy: input.start_request.input["video_policy"],
+      include_screenshot: input.start_request.input["include_screenshot"], include_video: input.start_request.input["include_video"],
+    });
+    if ("ok" in evidenceProfile) return { ok: false, failure: failure("orchestration", "invalid_request", evidenceProfile.message) };
+    let screenshotDirReady = evidenceProfile.screenshot_policy !== "off";
     let traceDirReady = true;
+    const videoPolicy = evidenceProfile.video_policy;
+    let videoDirReady = videoPolicy !== "off";
     try {
-      await mkdir(screenshotDir, { recursive: true });
+      if (screenshotDirReady) await mkdir(screenshotDir, { recursive: true });
     } catch {
       screenshotDirReady = false;
     }
@@ -102,6 +149,13 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
     } catch {
       traceDirReady = false;
     }
+    if (videoDirReady) {
+      try {
+        await mkdir(videoDir, { recursive: true });
+      } catch {
+        videoDirReady = false;
+      }
+    }
 
     const plans = new Map<string, PlaywrightExecutionPlan>(
       Array.from({ length: MAX_FLAKE_TRIALS }, (_, i) => {
@@ -109,15 +163,24 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
         return [key, converted.value] as const;
       }),
     );
+    const headed = headedFromInput(input.start_request.input["headed"]);
     const engine = new PlaywrightExecutionEngine({
       clock: this.#dependencies.clock,
       authorizer: this.#dependencies.authorizer,
       provider: { id: "playwright-execution-engine", version: "0.1.0" },
       plans,
-      ...(this.#dependencies.launchBrowser !== undefined ? { launchBrowser: this.#dependencies.launchBrowser } : {}),
+      launchBrowser:
+        this.#dependencies.launchBrowser !== undefined && headed === undefined
+          ? this.#dependencies.launchBrowser
+          : createLaunchBrowser("chromium", headed !== undefined ? { headed } : undefined),
       ...(screenshotDirReady ? { screenshotDir } : {}),
-      ...(input.start_request.input["include_screenshot"] === true ? { alwaysScreenshot: true } : {}),
+      ...(evidenceProfile.screenshot_policy === "all" ? { alwaysScreenshot: true } : {}),
       ...(traceDirReady ? { traceDir } : {}),
+      ...(videoDirReady ? { videoDir } : {}),
+      videoPolicy,
+      ...(this.#dependencies.uploadArtifactBaseDir !== undefined ? { fileArtifactRoot: this.#dependencies.uploadArtifactBaseDir } : {}),
+      downloadDir,
+      semanticRecovery: input.start_request.input["semantic_recovery"] === true ? "unique_name" : "off",
     });
     const skill = new ExecuteBrowserTest({
       engine,
@@ -148,7 +211,11 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
     }
 
     const outcome = run.value.outcome ?? "indeterminate";
-    const evidence = [...(run.value.evidence ?? []), `test-case:${testCase.id}`];
+    const evidence = [
+      ...(run.value.evidence ?? []),
+      `test-case:${testCase.id}`,
+      ...(artifactDigest !== undefined ? [`testcase-design-sha256:${artifactDigest}`] : []),
+    ];
     return {
       ok: true,
       value: {
@@ -157,6 +224,10 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
           outcome,
           ...(run.value.skip_reason !== undefined ? { skip_reason: run.value.skip_reason } : {}),
           evidence: [...evidence],
+          evidence_capture_status: assessEvidenceCaptureStatus({
+            screenshot_policy: evidenceProfile.screenshot_policy, video_policy: videoPolicy,
+            test_cases: [{ outcome, evidence }],
+          }),
         },
         output_validated: true,
         satisfied_evidence_requirements: [],

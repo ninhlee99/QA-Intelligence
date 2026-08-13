@@ -1,8 +1,8 @@
 {
   "name": "qa-intelligence",
-  "version": "0.1.0",
-  "private": true,
-  "description": "MCP server that acts as an Expert QA Engineer in Claude Code, Cursor, and Codex",
+  "version": "0.9.0",
+  "private": false,
+  "description": "Production-oriented Expert QA MCP server for coding agents",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -12,19 +12,43 @@
       "import": "./dist/src/index.js"
     }
   },
+  "bin": {
+    "qa-intelligence-mcp": "./dist/src/mcp/stdio-entrypoint.js"
+  },
+  "files": [
+    "dist/src/**/*.js",
+    "dist/src/**/*.d.ts",
+    "hosts",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "clean": "node scripts/clean-dist.mjs",
+    "build": "npm run clean && tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
-    "validate": "npm run typecheck && npm test && npm run validate:dependencies",
+    "benchmark:qa-qc": "npm run build && node scripts/run-qa-qc-benchmark.mjs",
+    "benchmark:browser-workflow": "npm run build && node scripts/run-browser-workflow-benchmark.mjs",
+    "benchmark:resilience": "npm run build && node scripts/run-qa-resilience-benchmark.mjs",
+    "benchmark:continuous-qa": "npm run build && node scripts/run-continuous-qa-benchmark.mjs",
+    "benchmark:deep-testing": "npm run build && node scripts/run-deep-testing-benchmark.mjs",
+    "benchmark:qa-lead-mcp": "npm run build && node scripts/run-qa-lead-mcp-benchmark.mjs",
+    "readiness:report": "npm run build && node scripts/check-production-readiness.mjs --report-only",
+    "readiness:production": "npm run build && node scripts/check-production-readiness.mjs",
+    "release-candidate:report": "npm run build && node scripts/check-release-candidate.mjs --report-only",
+    "release-candidate:check": "npm run build && node scripts/check-release-candidate.mjs",
+    "validate": "npm run typecheck && npm test && npm run validate:distribution && npm run validate:dependencies",
     "validate:schemas": "node tests/validate-json-schemas.mjs",
     "validate:dependencies": "npm audit --audit-level=high",
-    "release:check": "npm run validate",
-    "mcp:dev": "npm run build && node dist/src/mcp/dev-entrypoint.js",
-    "mcp:remote": "npm run build && node dist/src/mcp/remote-dev-entrypoint.js"
+    "validate:distribution": "node scripts/validate-distribution.mjs",
+    "release:check": "npm run validate && npm run readiness:production && npm run release-candidate:check",
+    "prepack": "npm run build",
+    "mcp:start": "npm run build && node dist/src/mcp/stdio-entrypoint.js",
+    "mcp:fixture": "npm run build && node dist/src/mcp/dev-entrypoint.js",
+    "mcp:remote:demo": "npm run build && node dist/src/mcp/remote-dev-entrypoint.js"
   },
   "keywords": [
     "mcp",
@@ -33,7 +57,8 @@
     "playwright",
     "claude-code",
     "cursor",
-    "codex"
+    "codex",
+    "antigravity"
   ],
   "license": "MIT",
   "dependencies": {

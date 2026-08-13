@@ -126,6 +126,7 @@ test("a pass on trial 1 short-circuits: only one trial runs, retry_of_ref stays 
   assert.equal(result.ok, true, JSON.stringify(result));
   if (!result.ok) return;
   assert.equal(result.value.outcome, "passed");
+  assert.equal(result.value.resource_usage?.["cleanup_status"], "completed");
   assert.equal(result.value.retry_of_ref, undefined);
   assert.equal(calls, 1, "only trial 1 should have run the assertion");
 });

@@ -124,6 +124,36 @@ test("start drives a real Chromium page through the Semantic UI pipeline and rep
   assert.ok(result.value.evidence.length > 0, "a real run SHALL retain a DOM-clean capture id as evidence");
 });
 
+test("start kill switch blocks before the browser is launched", async () => {
+  let launched = false;
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() }, authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-killed", planFor("passed")]]),
+    launchBrowser: async () => { launched = true; throw new Error("must not launch"); },
+    executionKillSwitch: { state: () => ({ disabled: true, reason: "incident-42" }) },
+  });
+  const result = await engine.start(startRequestFor({ execution_id: "execution-killed", attempt_id: "attempt-killed" }, "passed"), () => {});
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.failure.code, "policy_denied");
+  assert.equal(launched, false);
+});
+
+test("global environment kill switch protects an engine even when its caller omitted configuration", async () => {
+  const previous = process.env["QA_INTELLIGENCE_EXECUTION_DISABLED"];
+  process.env["QA_INTELLIGENCE_EXECUTION_DISABLED"] = "global-incident";
+  try {
+    let launched = false;
+    const engine = new PlaywrightExecutionEngine({ clock: { now: () => new Date() }, authorizer: new AllowingAuthorizer(), provider: { id: "playwright-execution-engine", version: "0.1.0" }, plans: new Map([["attempt-global-killed", planFor("passed")]]), launchBrowser: async () => { launched = true; throw new Error("must not launch"); } });
+    const result = await engine.start(startRequestFor({ execution_id: "execution-global-killed", attempt_id: "attempt-global-killed" }, "passed"), () => {});
+    assert.equal(result.ok, false);
+    assert.equal(launched, false);
+  } finally {
+    if (previous === undefined) delete process.env["QA_INTELLIGENCE_EXECUTION_DISABLED"]; else process.env["QA_INTELLIGENCE_EXECUTION_DISABLED"] = previous;
+  }
+});
+
 test("start drives a real Chromium page through the Semantic UI pipeline and reports failed when the plan assertion does not hold", async () => {
   const engine = makeEngine(new Map([["attempt-real-failed", planFor("failed")]]));
   const attempt: ExecutionAttemptIdentity = { execution_id: "execution-real", attempt_id: "attempt-real-failed" };
@@ -178,6 +208,52 @@ test("start writes a Playwright trace zip when traceDir is configured and assert
   assert.ok(tracePath, "failed run with traceDir SHALL attach a Playwright trace zip");
   assert.ok(existsSync(tracePath!), "trace path SHALL exist on disk");
   assert.ok(statSync(tracePath!).size > 0, "trace zip SHALL be non-empty");
+});
+
+test("start writes a real WebM video and attaches it as evidence when videoDir is configured", async () => {
+  const videoDir = mkdtempSync(join(tmpdir(), "qa-video-test-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([["attempt-video-passed", planFor("passed")]]),
+    videoDir,
+  });
+  const attempt: ExecutionAttemptIdentity = { execution_id: "execution-video", attempt_id: "attempt-video-passed" };
+
+  const result = await engine.start(startRequestFor(attempt, "passed"), () => {});
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  const videoPath = result.value.evidence.find((e) => e.endsWith(".webm"));
+  assert.ok(videoPath, "an opted-in run SHALL attach its real Playwright video path");
+  assert.ok(existsSync(videoPath!), "video evidence path SHALL exist on disk");
+  assert.ok(statSync(videoPath!).size > 0, "video evidence SHALL be non-empty");
+});
+
+test("videoPolicy failure_only retains failed video but omits passed video", async () => {
+  const videoDir = mkdtempSync(join(tmpdir(), "qa-video-policy-"));
+  const engine = new PlaywrightExecutionEngine({
+    clock: { now: () => new Date() },
+    authorizer: new AllowingAuthorizer(),
+    provider: { id: "playwright-execution-engine", version: "0.1.0" },
+    plans: new Map([
+      ["attempt-video-policy-pass", planFor("passed")],
+      ["attempt-video-policy-fail", planFor("failed")],
+    ]),
+    videoDir,
+    videoPolicy: "failure_only",
+  });
+  const passed = await engine.start(startRequestFor({ execution_id: "execution-video-policy", attempt_id: "attempt-video-policy-pass" }, "passed"), () => {});
+  const failed = await engine.start(startRequestFor({ execution_id: "execution-video-policy", attempt_id: "attempt-video-policy-fail" }, "failed"), () => {});
+
+  assert.equal(passed.ok, true, JSON.stringify(passed));
+  assert.equal(failed.ok, true, JSON.stringify(failed));
+  if (!passed.ok || !failed.ok) return;
+  assert.equal(passed.value.evidence.some((ref) => ref.endsWith(".webm")), false);
+  const failedVideo = failed.value.evidence.find((ref) => ref.endsWith(".webm"));
+  assert.ok(failedVideo, "failure_only should retain failed testcase video");
+  assert.ok(existsSync(failedVideo!));
 });
 
 test("start does not write a trace zip when assertion passes even with traceDir configured", async () => {

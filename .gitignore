@@ -10,6 +10,14 @@ node_modules/
 .qa-baselines/
 .qa-surface-baselines/
 .qa-traces/
+.qa-videos/
+.qa-evidence/
+.qa-benchmarks/
+.qa-testcases/
+.qa-production/
+.qa-upload-artifacts/
+.qa-downloads/
+.qa-session-state/
 .qa-avoidance-hints/
 .qa-learning-candidates/
 .qa-mistake-occurrences/

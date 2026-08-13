@@ -257,6 +257,45 @@ test("ADR-020 §9: a missing bearer token fails the HTTP request closed (401) be
   });
 });
 
+test("legacy SSE advertises an authenticated messages endpoint and accepts MCP initialize", async () => {
+  const { transport } = makeTransport();
+  const token = encodeToken({ sub: ACTOR_ID, iss: EXPECTED_ISSUER, aud: EXPECTED_AUDIENCE });
+
+  await withListeningTransport(transport, async (mcpUrl) => {
+    const origin = new URL(mcpUrl).origin;
+    const stream = await fetch(`${origin}/sse`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get("content-type") ?? "", /text\/event-stream/);
+    const reader = stream.body?.getReader();
+    assert.ok(reader);
+    const first = await reader.read();
+    const endpointEvent = new TextDecoder().decode(first.value);
+    const endpoint = /^data: (.+)$/m.exec(endpointEvent)?.[1];
+    assert.match(endpoint ?? "", /^\/messages\?sessionId=/);
+
+    const initialized = await fetch(`${origin}${endpoint}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "sse-test", version: "1.0.0" } },
+      }),
+    });
+    assert.equal(initialized.status, 202);
+    await reader.cancel();
+  });
+});
+
+test("legacy SSE rejects an unauthenticated stream before allocating a session", async () => {
+  const { transport } = makeTransport();
+  await withListeningTransport(transport, async (mcpUrl) => {
+    const response = await fetch(`${new URL(mcpUrl).origin}/sse`);
+    assert.equal(response.status, 401);
+  });
+});
+
 test("ADR-020 §9: an expired bearer token fails the HTTP request closed (401)", async () => {
   const { transport } = makeTransport();
   const token = encodeToken({ sub: ACTOR_ID, iss: EXPECTED_ISSUER, aud: EXPECTED_AUDIENCE, expired: true });

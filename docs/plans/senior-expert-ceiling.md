@@ -49,6 +49,20 @@ AI auto-test + report **like** a senior Expert Tester for **scoped** UI/AC (+ E2
 | Scoped Expert-discipline auto loop + human-like report | **9.5–9.7** |
 | Replace senior Expert for release / pen / novel domain | **3–4** (ceiling) |
 
+## Machine benchmark
+
+Run `npm run benchmark:qa-qc`. The benchmark keeps human-only work in the
+100-point denominator and requires passing proof suites for every supported
+critical task. Current measured workload support: **90%** = 74% automated +
+16% assisted; 10% remains human-only. Output:
+`.qa-benchmarks/qa-qc-work-coverage.json`.
+
+This measures scoped work coverage, not production release certification.
+
+Run `npm run benchmark:browser-workflow` for the real Chromium/Firefox/WebKit
+advanced workflow gate (iframe, upload, pointer drag/drop, download, popup).
+Missing browser binaries are reported as `unavailable`, never as product pass.
+
 ---
 
 ## Human-only forever
@@ -66,3 +80,5 @@ AI auto-test + report **like** a senior Expert Tester for **scoped** UI/AC (+ E2
 - `include_depth_smokes` (or auto)
 - `risk_waives[{risk_id,reason_code,rationale}]` to clear matching blockers
 - Paste `expert_session_report.markdown` + honor `expert_senior_hardening`
+
+Implementation history (P3–P7 hardening phases): see [`CHANGELOG.md`](../../CHANGELOG.md).

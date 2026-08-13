@@ -1,163 +1,181 @@
-# QA Intelligence — Hướng dẫn cài đặt & sử dụng (chi tiết)
+# QA Intelligence — Install & Usage Guide (detailed)
 
-> **Phạm vi sản phẩm:** Skill + MCP chỉ phục vụ **test** và **report**.  
-> Không có tích hợp SNS / Slack / email notify / chatOps.  
-> Export defect chỉ tạo text để tester tự dán tracker — không thay ticket system.
+> **Product scope:** Skill + MCP serve **test** and **report** only.  
+> No SNS / Slack / email notify / chatOps integration.  
+> Defect export only produces text for the tester to paste into a tracker manually — it does not replace a ticket system.
 
-Tài liệu này là **hướng dẫn vận hành đầy đủ**. Workflow kỷ luật Expert:  
+This document is the **full operational guide**. Expert discipline workflow:  
 [`hosts/references/expert-tester-workflow.md`](../hosts/references/expert-tester-workflow.md).  
-Catalog tool ngắn: [`hosts/README.md`](../hosts/README.md).
+Short tool catalog: [`hosts/README.md`](../hosts/README.md).
 
 ---
 
-## Mục lục
+## Table of contents
 
-1. [Sản phẩm là gì](#1-sản-phẩm-là-gì)
-2. [Kiến trúc nhanh](#2-kiến-trúc-nhanh)
-3. [Yêu cầu hệ thống](#3-yêu-cầu-hệ-thống)
-4. [Cài đặt repo (một lần)](#4-cài-đặt-repo-một-lần)
-5. [Cài đặt MCP](#5-cài-đặt-mcp)
-6. [Cài đặt Skill](#6-cài-đặt-skill)
-7. [Kiểm tra cài đặt thành công](#7-kiểm-tra-cài-đặt-thành-công)
-8. [Cách dùng Skill](#8-cách-dùng-skill)
-9. [Cách dùng MCP & tool](#9-cách-dùng-mcp--tool)
-10. [Output Expert — đọc thế nào](#10-output-expert--đọc-thế-nào)
-11. [Kịch bản sử dụng end-to-end](#11-kịch-bản-sử-dụng-end-to-end)
-12. [Bí mật, môi trường, domain pack](#12-bí-mật-môi-trường-domain-pack)
-13. [File/artifact trên đĩa](#13-fileartifact-trên-đĩa)
+1. [What the product is](#1-what-the-product-is)
+2. [Quick architecture](#2-quick-architecture)
+3. [System requirements](#3-system-requirements)
+4. [Install the repo (one-time)](#4-install-the-repo-one-time)
+5. [Install the MCP](#5-install-the-mcp)
+6. [Install the Skill](#6-install-the-skill)
+7. [Verify the install](#7-verify-the-install)
+8. [How to use the Skill](#8-how-to-use-the-skill)
+9. [How to use MCP & tools](#9-how-to-use-mcp--tools)
+10. [Expert output — how to read it](#10-expert-output--how-to-read-it)
+11. [End-to-end usage scenarios](#11-end-to-end-usage-scenarios)
+12. [Secrets, environments, domain pack](#12-secrets-environments-domain-pack)
+13. [Files/artifacts on disk](#13-filesartifacts-on-disk)
 14. [Troubleshooting](#14-troubleshooting)
-15. [Tham chiếu](#15-tham-chiếu)
+15. [Reference](#15-reference)
 
 ---
 
-## 1. Sản phẩm là gì
+## 1. What the product is
 
-**QA Intelligence** = MCP server đóng vai **Expert QA Engineer** bên trong Claude Code / Cursor / Codex.
+**QA Intelligence** = an MCP server acting as an **Expert QA Engineer** inside Claude Code / Cursor / Codex.
 
-Bạn đưa **URL sống** + **acceptance criteria (AC)**. Hệ thống:
+You give it a **live URL** + **acceptance criteria (AC)**. The system:
 
-1. Discover UI (Semantic UI Map)
-2. Sinh test theo risk (positive / negative / boundary / adversarial)
-3. Chạy thật bằng Playwright (+ flake detection)
-4. Draft defect có evidence (không bịa `confirmed_cause`)
-5. Trả **release gate** + **coverage_gaps** + **session report** kiểu Senior Expert
+1. Discovers the UI (Semantic UI Map)
+2. Generates risk-based tests (positive / negative / boundary / adversarial)
+3. Runs them for real with Playwright (+ flake detection)
+4. Drafts defects with evidence (never fabricates `confirmed_cause`)
+5. Returns a **release gate** + **coverage_gaps** + a Senior-Expert-style **session report**
 
-### Có / không
+### Does / doesn't
 
-| Có (test + report) | Không |
+| Does (test + report) | Doesn't |
 |--------------------|--------|
 | Discover, generate, execute, gate | SNS / Slack / email notify |
-| Defect draft + HTML report | Thay người ký release |
-| Regression suite + targeted retest | Pen-test engagement đầy đủ |
+| Defect draft + HTML report | Replace human release sign-off |
+| Regression suite + targeted retest | Full pen-test engagement |
 | API smoke, journey, depth smoke | Load test / full WCAG certification |
-| Domain pack + Expert judgment | Invent AC / invent pass |
+| Domain pack + Expert judgment | Invent AC / invent a pass |
 
-### Hai lệnh Skill duy nhất
+### The two Skill commands
 
-| Trigger | Ai dùng | AC lấy từ đâu |
+| Trigger | Who uses it | Where AC comes from |
 |---------|---------|----------------|
-| `/qa-intelligence:test` | Tester | Spec / ticket / hành vi đã nêu |
-| `/qa-intelligence:dev` | Developer | Ưu tiên **source code**; không có thì ticket |
+| `/qa-intelligence:test` | Tester | Spec / ticket / stated behavior |
+| `/qa-intelligence:dev` | Developer | Prefers **source code**; falls back to ticket |
+| `$testcase` | Test designer | Produces executable testcases, no browser run yet |
+| `$qa` | QA | Reviews requirement/risk/strategy and designs coverage |
+| `$qc` | QC | Runs a real browser, collects evidence, returns a verdict |
+| `$exploratory` | Exploratory tester | Time-boxed charter with live observations |
+| `$retest` | Regression tester | Picks the smallest safe retest scope |
+| `$defect-triage` | Defect analyst | Classifies, deduplicates, and reviews defects |
 
-**Môi trường** = URL bạn truyền (localhost → local; URL khác → staging hygiene). Không có Skill riêng “local/staging”.
+Advanced browser workflow supports authored TestCase actions `upload`,
+`download`, `hover`, `drag_to`, iframes via `frame_accessible_name`, and
+popups via `switch_to_popup`. Upload refs only resolve under
+`.qa-upload-artifacts/`; download evidence lives under `.qa-downloads/`.
+Regression suites only reuse cookies/storage when `reuse_session: true` is
+passed, and state is cleaned up afterward.
+
+`semantic_recovery: true` lets a stale role be repaired only when the
+accessible name has exactly one candidate. Recovery is kept in the execution
+evidence; ambiguous cases still fail. Evidence retention supports
+preview/purge by outcome TTL, legal hold, and allowed-root isolation; a real
+purge always requires explicit confirmation.
+
+**Environment** = the URL you pass (localhost → local; any other URL →
+staging hygiene). There is no separate "local/staging" Skill.
 
 ---
 
-## 2. Kiến trúc nhanh
+## 2. Quick architecture
 
 ```text
-Bạn
+You
   └─ Host (Claude Code / Cursor / Codex)
-       ├─ Skill  (:test / :dev)     ← kỷ luật Expert (G0–G8), không chứa engine
-       └─ MCP    (qa-intelligence)  ← evidence engine (tool thật)
+       ├─ Skill  (:test / :dev)     ← Expert discipline (G0–G8), no engine inside
+       └─ MCP    (qa-intelligence)  ← evidence engine (the real tools)
             └─ Playwright / HTTP / disk artifacts
 ```
 
-- **Skill** = quy trình: hỏi gì, gọi tool nào, cấm green-wash, format báo cáo.  
-- **MCP** = thực thi: discover, chạy browser, sinh report JSON/HTML.  
-- Host **không** tự bịa pass — phải dựa evidence MCP.
+- **Skill** = process: what to ask, which tool to call, forbids green-washing, report format.  
+- **MCP** = execution: discover, run the browser, generate the JSON/HTML report.  
+- The host **never** invents a pass on its own — it must rely on MCP evidence.
 
 ---
 
-## 3. Yêu cầu hệ thống
+## 3. System requirements
 
-| Thành phần | Yêu cầu |
+| Component | Requirement |
 |------------|---------|
-| Node.js | `>=24 <25` (xem `.nvmrc` → `24`) |
-| npm | Đi kèm Node |
-| OS | macOS / Linux / Windows (WSL khuyến nghị trên Windows) |
-| Trình duyệt Playwright | Cài sau `npm install` (xem bên dưới) |
-| Host AI | Claude Code **hoặc** Cursor **hoặc** Codex |
+| Node.js | `>=24 <25` (see `.nvmrc` → `24`) |
+| npm | Ships with Node |
+| OS | macOS / Linux / Windows (WSL recommended on Windows) |
+| Playwright browser | Installed after `npm install` (see below) |
+| AI host | Claude Code **or** Cursor **or** Codex |
 
-Kiểm tra Node:
+Check Node:
 
 ```sh
-node -v   # phải ra v24.x
+node -v   # should print v24.x
 npm -v
 ```
 
 ---
 
-## 4. Cài đặt repo (một lần)
+## 4. Install the repo (one-time)
 
 ```sh
 git clone https://github.com/ninhlee99/QA-Intelligence.git
 cd QA-Intelligence
 npm install
-npx playwright install chromium   # tối thiểu; thêm firefox/webkit nếu cần
+npx playwright install chromium   # minimum; add firefox/webkit if needed
 npm run build
 ```
 
-Xác nhận build:
+Confirm the build:
 
 ```sh
-ls dist/src/mcp/dev-entrypoint.js
+ls dist/src/mcp/stdio-entrypoint.js
 npm run typecheck
-# tùy chọn đầy đủ:
+# full optional check:
 npm test
 ```
 
-**Ghi nhớ đường dẫn tuyệt đối** tới repo, ví dụ:
-
-```text
-/Users/you/Documents/agents/QA-Intelligence
-```
-
-Cursor/Codex **bắt buộc absolute path** tới `dev-entrypoint.js`.
+Register the production command after building: `npm install --global .`.
+Hosts invoke `qa-intelligence-mcp` and don't depend on the repository's
+absolute path.
 
 ---
 
-## 5. Cài đặt MCP
+## 5. Install the MCP
 
-MCP server entrypoint (stdio, dùng hàng ngày):
+MCP server command (stdio, used day-to-day):
 
 ```text
-<REPO>/dist/src/mcp/dev-entrypoint.js
+qa-intelligence-mcp
 ```
 
-Biến môi trường thường dùng:
+Commonly used environment variables:
 
-| Env | Ý nghĩa | Ví dụ |
+| Env | Meaning | Example |
 |-----|---------|--------|
-| `QA_INTELLIGENCE_DEV_WORKSPACE_ID` | Workspace id fixture | `workspace-cursor-dev` |
-| `QA_INTELLIGENCE_DEV_DOMAIN` | Domain app test để persist artifacts/credentials | `daijob6-companytools` |
+| `QA_INTELLIGENCE_WORKSPACE_ID` | Required; safe workspace identifier | `billing-web` |
+| `QA_INTELLIGENCE_DATA_DIR` | Optional absolute data root; defaults to XDG state outside the repo | `/srv/qa-intelligence/billing-web` |
+| `QA_INTELLIGENCE_TOOL_PROFILE` | `expert` by default; `full` for specialist use | `expert` |
+| `QA_INTELLIGENCE_DEADLINE_SECONDS` | Deadline 1–3600 seconds | `180` |
+| `QA_INTELLIGENCE_HEADED` | `1`/`true` → Playwright opens a real (headed) browser window. Headless by default. | `1` |
 
 ### 5.1 Cursor
 
-1. Mở Cursor Settings → **MCP** (hoặc chỉnh file MCP config của Cursor).
-2. Copy mẫu [`hosts/cursor/mcp.json.example`](../hosts/cursor/mcp.json.example).
-3. Thay `/absolute/path/to/QA-Intelligence` bằng path thật:
+1. Open Cursor Settings → **MCP** (or edit Cursor's MCP config file).
+2. Copy the template [`hosts/cursor/mcp.json.example`](../hosts/cursor/mcp.json.example).
+3. Choose a workspace id specific to the project:
 
 ```json
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": [
-        "/Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"
-      ],
+      "command": "qa-intelligence-mcp",
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev"
+        "QA_INTELLIGENCE_WORKSPACE_ID": "billing-web",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert",
+        "QA_INTELLIGENCE_HEADED": "1"
       }
     }
   }
@@ -165,76 +183,93 @@ Biến môi trường thường dùng:
 ```
 
 4. **Restart Cursor**.
-5. Kiểm tra: chat hỏi “list MCP tools qa-intelligence” hoặc xem Output → MCP.
+5. Verify: ask the chat "list MCP tools qa-intelligence" or check Output → MCP.
 
-**Lỗi thường gặp Cursor**
+**Common Cursor issues**
 
-| Hiện tượng | Cách xử lý |
-|------------|------------|
-| Tools không hiện | Path relative → đổi absolute; restart |
-| `Cannot find module` | Chạy lại `npm run build` |
-| Node sai version | Dùng Node 24 (`nvm use` / `fnm use`) |
+| Symptom | Fix |
+|------------|-----------|
+| Tools don't show up | Check `qa-intelligence-mcp` is on `PATH`; restart |
+| `Cannot find module` | Re-run `npm run build` |
+| Wrong Node version | Use Node 24 (`nvm use` / `fnm use`) |
 
 ### 5.2 Claude Code
 
-**Cách A — Plugin (khuyến nghị):**
+**Option A — Plugin (recommended):**
 
 ```sh
 cd /path/to/QA-Intelligence
 claude plugin install ./hosts/claude-code
 ```
 
-Plugin mang theo Skills. MCP vẫn cần trỏ tới entrypoint (qua cấu hình plugin / `.mcp.json`).
+The plugin ships the Skills too. MCP still needs to point at the entrypoint
+(via plugin config / `.mcp.json`).
 
-**Cách B — MCP thủ công** trong `.mcp.json` (project) hoặc `~/.claude.json`:
+**Option B — Manual MCP** in `.mcp.json` (project) or `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": [
-        "/Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"
-      ],
+      "command": "qa-intelligence-mcp",
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-dev"
+        "QA_INTELLIGENCE_WORKSPACE_ID": "billing-web",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert"
       }
     }
   }
 }
 ```
 
-Restart session Claude Code sau khi sửa.
+Restart the Claude Code session after editing.
 
 ### 5.3 Codex
 
-Cài plugin từ `hosts/codex/` **hoặc** thêm vào `~/.codex/config.yaml`:
+Install the plugin from `hosts/codex/` **or** add to `~/.codex/config.yaml`:
 
 ```yaml
 mcpServers:
   qa-intelligence:
-    command: node
-    args:
-      - /Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js
+    command: qa-intelligence-mcp
     env:
-      QA_INTELLIGENCE_DEV_WORKSPACE_ID: workspace-codex-dev
+      QA_INTELLIGENCE_WORKSPACE_ID: billing-web
+      QA_INTELLIGENCE_TOOL_PROFILE: expert
 ```
 
-### 5.4 Remote MCP (team / máy khác) — tùy chọn
+### 5.4 Antigravity
 
-Chỉ khi cần share process (không bắt buộc cho solo):
+Copy [`hosts/antigravity/mcp_config.json.example`](../hosts/antigravity/mcp_config.json.example)
+into the workspace's `.agents/mcp_config.json`. Import whichever skill you
+need from `hosts/codex/skills/`; the skills use the shared `SKILL.md`
+standard and have no Codex-specific logic.
+
+### 5.5 Remote MCP transport
+
+The remote runtime supports:
+
+- Streamable HTTP at `POST /mcp` — the default choice for new clients.
+- Compatible SSE at `GET /sse` with the `POST /messages` endpoint the server advertises.
+
+Every request needs a bearer token; SSE sessions are locked to a
+workspace and actor. When deploying over a network, put the server behind a
+reviewed HTTPS reverse proxy/load balancer. The server refuses to bind
+non-loopback by default.
+
+### 5.6 Remote MCP demo — not for production
+
+Only when you need to share a process (not required for solo use):
 
 ```sh
 cd /path/to/QA-Intelligence
 npm run build
-node dist/src/mcp/remote-dev-entrypoint.js
+npm run mcp:remote:demo
 ```
 
-- Listen mặc định: `http://127.0.0.1:8787/mcp`
-- Token demo **in ra stderr** lúc start (chỉ verify với process đó)
+- Default listen address: `http://127.0.0.1:8787/mcp`
+- Demo token is **printed to stderr** at startup (only valid for verifying against that process)
 - Override: `QA_INTELLIGENCE_DEV_REMOTE_HOST`, `QA_INTELLIGENCE_DEV_REMOTE_PORT`
 
-Cursor remote mẫu: [`hosts/cursor/mcp-remote.json.example`](../hosts/cursor/mcp-remote.json.example)
+Cursor remote sample: [`hosts/cursor/mcp-remote.json.example`](../hosts/cursor/mcp-remote.json.example)
 
 ```json
 {
@@ -256,25 +291,26 @@ claude mcp add --transport http qa-intelligence-remote http://127.0.0.1:8787/mcp
   --header "Authorization: Bearer <token>"
 ```
 
-> Dev token **không** dùng lại sau restart server.
+> The dev token **cannot** be reused after the server restarts.
 
-### 5.5 Trạng thái auth hiện tại
+### 5.7 Current auth status
 
-| Mode | Auth | Ghi chú |
+| Mode | Auth | Notes |
 |------|------|---------|
-| Stdio | Fixture verifier | Dev — không cần login IdP |
-| Remote | Self-minted OIDC | Dev — token in stderr |
-| Production IdP | Chưa ship | ADR-014 |
+| Stdio | Fixture verifier | Dev — no IdP login required |
+| Remote | Self-minted OIDC | Dev — token printed to stderr |
+| Production IdP | Not shipped yet | ADR-014 |
 
 ---
 
-## 6. Cài đặt Skill
+## 6. Install the Skill
 
-Skill **không** thay MCP. Skill chỉ ép agent tuân Expert workflow.
+The Skill **does not** replace the MCP. The Skill only forces the agent to
+follow the Expert workflow.
 
 ### 6.1 Claude Code
 
-Sau `claude plugin install ./hosts/claude-code`, Skills nằm trong plugin:
+After `claude plugin install ./hosts/claude-code`, the Skills live in the plugin:
 
 ```text
 hosts/claude-code/skills/test/SKILL.md
@@ -286,7 +322,7 @@ Trigger:
 - `/qa-intelligence:test`
 - `/qa-intelligence:dev`
 
-Canonical workflow (bắt buộc đọc khi dùng Skill):
+Canonical workflow (required reading when using the Skill):
 
 ```text
 hosts/references/expert-tester-workflow.md
@@ -295,25 +331,25 @@ hosts/references/domain-pack.md
 
 ### 6.2 Cursor
 
-Skills mẫu:
+Sample Skills:
 
 ```text
 hosts/cursor/skills/test/SKILL.md
 hosts/cursor/skills/dev/SKILL.md
 ```
 
-Cách gắn vào Cursor (tùy phiên bản Cursor):
+Attaching to Cursor (depends on Cursor version):
 
-1. Copy nội dung Skill vào **Project Rules / Skills** của workspace, **hoặc**
-2. Trỏ Cursor Agent Skills tới thư mục `hosts/cursor/skills/`, **hoặc**
-3. `@`-mention / paste workflow khi bắt đầu session
+1. Copy the Skill content into the workspace's **Project Rules / Skills**, **or**
+2. Point Cursor Agent Skills at the `hosts/cursor/skills/` directory, **or**
+3. `@`-mention / paste the workflow at the start of a session
 
-Skill Cursor **rút gọn** — chi tiết nằm ở:
+The Cursor Skill is **condensed** — full detail lives in:
 
 - `hosts/references/expert-tester-workflow.md`
-- `hosts/claude-code/skills/test/SKILL.md` (canonical dài)
+- `hosts/claude-code/skills/test/SKILL.md` (canonical, long form)
 
-MCP Cursor vẫn **bắt buộc** (mục 5.1). Không có MCP = không có evidence.
+The Cursor MCP is still **required** (section 5.1). No MCP = no evidence.
 
 ### 6.3 Codex
 
@@ -322,28 +358,29 @@ hosts/codex/skills/test/SKILL.md
 hosts/codex/skills/dev/SKILL.md
 ```
 
-Cài qua plugin `hosts/codex/` hoặc đăng ký Skill theo docs Codex. Luôn kết nối MCP như mục 5.3.
+Install via the `hosts/codex/` plugin or register the Skill per Codex docs.
+Always connect the MCP as in section 5.3.
 
-### 6.4 Checklist Skill đã sẵn sàng
+### 6.4 Skill-ready checklist
 
-- [ ] MCP `qa-intelligence` hiện trong host
-- [ ] Gọi được tool `run_expert_qa` hoặc `run_auto_qa`
-- [ ] Skill `:test` / `:dev` hiện hoặc agent nhận instruction workflow
-- [ ] Agent biết **không** nói pass nếu chưa `validate_expert_claim`
+- [ ] MCP `qa-intelligence` shows up in the host
+- [ ] Can call the `run_expert_qa` tool
+- [ ] Skill `:test` / `:dev` shows up, or the agent has received the workflow instructions
+- [ ] Agent knows **not** to say pass without `validate_expert_claim`
 
 ---
 
-## 7. Kiểm tra cài đặt thành công
+## 7. Verify the install
 
-Trong chat host:
+In the host chat:
 
-1. **Ping MCP** — yêu cầu agent gọi `list_workspace_environments` (hoặc bất kỳ tool nhẹ).  
-   → Có JSON response = MCP sống.
+1. **Ping MCP** — ask the agent to call `list_workspace_environments` (or any lightweight tool).  
+   → A JSON response = MCP is alive.
 
-2. **Smoke Expert (URL public hoặc local):**
+2. **Expert smoke test (public or local URL):**
 
 ```text
-Gọi run_auto_qa với:
+Call `run_expert_qa` with:
   url: https://example.com
   acceptance_criteria: [
     { id: "ac-1", statement: "Page shows Example Domain heading", expected_text: "Example Domain" }
@@ -352,45 +389,45 @@ Gọi run_auto_qa với:
   execute_extension_cases: false
 ```
 
-→ Nhận `release_recommendation`, `coverage_gaps`, `expert_checklist`.
+→ Expect `release_recommendation`, `coverage_gaps`, `expert_checklist`.
 
-3. **Validate claim:**
+3. **Validate a claim:**
 
 ```text
 validate_expert_claim({
   proposed_claim: "ready to ship",
-  expert_checklist: <checklist từ bước 2>
+  expert_checklist: <checklist from step 2>
 })
 ```
 
-→ Thường `allowed: false` (đúng — chống green-wash).
+→ Usually `allowed: false` (correct — this is the anti-green-wash gate).
 
 ---
 
-## 8. Cách dùng Skill
+## 8. How to use the Skill
 
 ### 8.1 `/qa-intelligence:test` (Tester)
 
-**Khi nào:** Có URL + spec/ticket/AC cần kiểm.
+**When:** You have a URL + spec/ticket/AC to verify.
 
-**Agent phải làm (G0→G8 tóm tắt):**
+**What the agent must do (G0→G8 summary):**
 
-| Gate | Việc |
+| Gate | Action |
 |------|------|
-| G0 | 5 câu risk + `list_failure_avoidance_hints` (+ learning candidates) |
-| G0d | Domain pack: ưu tiên `run_expert_qa(product_root)` |
-| G1 | Env từ URL; secret qua `*_secret_ref` |
-| G2 | Discover live qua MCP |
-| G3 | Bind AC — không bịa AC |
-| G4 | `run_expert_qa` hoặc `run_auto_qa` (+ E2 hooks nếu smell) |
-| G5 | **Dòng đầu kết quả** = `release_recommendation` |
-| G6 | Dán `coverage_gaps` + domain risks |
+| G0 | 5 risk questions + `list_failure_avoidance_hints` (+ learning candidates) |
+| G0d | Domain pack: prefer `run_expert_qa(product_root)` |
+| G1 | Env from URL; secrets via `*_secret_ref` |
+| G2 | Live discovery via MCP |
+| G3 | Bind AC — never invent AC |
+| G4 | `run_expert_qa` (+ E2 hooks if a smell is present) |
+| G5 | **First line of the result** = `release_recommendation` |
+| G6 | Paste `coverage_gaps` + domain risks |
 | G7 | suite_id, defects, traces, HTML |
 | G8 | `smart_retest_suggestion` |
-| Cuối | Paste `expert_session_report.markdown` |
-| Trước câu pass | `validate_expert_claim` |
+| Finally | Paste `expert_session_report.markdown` |
+| Before saying pass | `validate_expert_claim` |
 
-**Ví dụ prompt:**
+**Example prompt:**
 
 ```text
 /qa-intelligence:test
@@ -398,92 +435,92 @@ URL: https://staging.example.com/orders
 AC:
 - ac-1: User sees order list titled "Orders" (expected_text: Orders)
 - ac-2: Create order posts to /api/orders (expected_network: {url_includes:"/api/orders", method:"POST", status:201})
-Login: dùng secret workspace-secret:staging-password
+Login: use secret workspace-secret:staging-password
 product_root: /Users/you/my-app
 ```
 
 ### 8.2 `/qa-intelligence:dev` (Developer)
 
-**Khi nào:** Trước khi push; AC suy từ code/diff đang mở.
+**When:** Before pushing; AC is inferred from the code/diff currently open.
 
-Agent ưu tiên đọc source → rút AC observable → `run_expert_qa` / `run_auto_qa` trên localhost hoặc staging URL. **Cùng Expert bar** với `:test` (không được nới lỏng gate).
+The agent prefers reading source → extracting observable AC →
+`run_expert_qa` against localhost or a staging URL. **Same Expert bar** as
+`:test` (the gate cannot be loosened).
 
-### 8.3 Hard refuses (Skill cấm)
+### 8.3 Hard refuses (forbidden by the Skill)
 
-Agent **không được** nói ready / ship / pass / all good trừ khi:
+The agent **must not** say ready / ship / pass / all good unless:
 
 1. `expert_checklist.claim_pass_allowed === true`
-2. `validate_expert_claim` → `allowed: true` với **đúng** câu sẽ nói
-3. Đã quote `release_recommendation` từ MCP
-4. Đã nêu `coverage_gaps`
-5. Có plan retest theo `smart_retest_suggestion`
-6. Domain pack OK (hoặc absence acknowledged — **vẫn không pass**)
-7. E2 smells đã exercise hoặc nằm trong blockers
+2. `validate_expert_claim` → `allowed: true` for the **exact** sentence about to be said
+3. `release_recommendation` from the MCP has been quoted
+4. `coverage_gaps` has been stated
+5. There's a retest plan following `smart_retest_suggestion`
+6. Domain pack is OK (or its absence acknowledged — **still not a pass**)
+7. E2 smells have been exercised or are listed among the blockers
 
-Chi tiết: [`RULES.md`](../RULES.md).
+Detail: [`RULES.md`](../RULES.md).
 
 ---
 
-## 9. Cách dùng MCP & tool
+## 9. How to use MCP & tools
 
-### 9.1 Nguyên tắc gọi tool
+### 9.1 Tool-calling principles
 
-1. **Evidence only** — kết luận dựa output MCP.  
-2. **Oracle trên AC** — mỗi AC nên có ≥1: `expected_text` | `expected_url_includes` | `expected_title_includes` | `expected_network`.  
-3. **Secret** — `register_workspace_secret` rồi `password_secret_ref` / `bearer_token_secret_ref`. Không nhét password plain vào tool input.  
-4. **Non-localhost** — `register_workspace_environment` trước khi login/ghi.  
-5. **Retest hẹp** — sau fix dùng `run_regression_suite` + `case_ids` / `related_defect_ids`, không đốt full suite.
+1. **Evidence only** — conclusions must be based on MCP output.  
+2. **Oracle on the AC** — every AC should have ≥1 of: `expected_text` | `expected_url_includes` | `expected_title_includes` | `expected_network`.  
+3. **Secrets** — `register_workspace_secret` then use `password_secret_ref` / `bearer_token_secret_ref`. Never put a plaintext password into tool input.  
+4. **Non-localhost** — `register_workspace_environment` before logging in / writing.  
+5. **Narrow retest** — after a fix, use `run_regression_suite` + `case_ids` / `related_defect_ids` instead of burning the full suite.
 
-### 9.2 Tool lõi (dùng hàng ngày)
+### 9.2 Core tools (used daily)
 
-#### `run_expert_qa` — **entry Expert ưu tiên**
+#### `run_expert_qa` — **preferred Expert entry point**
 
-Bootstrap domain pack (nếu có `product_root`) + full `run_auto_qa`.
+This is the single public full pipeline: bootstraps the domain pack if
+`product_root` is given, then discovers, designs, executes, gathers
+evidence, and reports.
 
-**Input chính:**
+**Main input:**
 
-| Field | Bắt buộc | Mô tả |
+| Field | Required | Description |
 |-------|----------|--------|
-| `url` | ✅ | Target (post-login screen nếu có login_*) |
-| `acceptance_criteria` | ✅ | Mảng AC có id + statement + oracle |
-| `product_root` | khuyến nghị | Absolute path app → domain-knowledge/ |
-| `login_*` | nếu session-gated | Bộ 6 field login (all or none) |
-| `role_b` | khi multi-role | Role thứ 2 để compare |
-| `openapi` / `openapi_path` | khi API | OpenAPI 3 |
-| `include_authz_negatives` | khi API | `true` để có case unauth |
-| `include_workflow_journeys` | khi multi-page | `true` |
-| `execute_extension_cases` | optional | Default true — chạy capped API/journey cùng pass |
-| `api_base_url` | optional | Origin API nếu khác UI url |
-| `include_depth_smokes` | optional | Force on/off depth smoke |
-| `stateful_lifecycle_documented` | optional | Xác nhận create→use→cleanup đã document |
+| `url` | ✅ | Target (post-login screen if `login_*` is set) |
+| `acceptance_criteria` | ✅ | Array of AC with id + statement + oracle |
+| `product_root` | recommended | Absolute app path → domain-knowledge/ |
+| `login_*` | if session-gated | Set of 6 login fields (all or none) |
+| `role_b` | for multi-role | Second role to compare |
+| `openapi` / `openapi_path` | for API | OpenAPI 3 |
+| `include_authz_negatives` | for API | `true` to include unauth cases |
+| `include_workflow_journeys` | for multi-page | `true` |
+| `execute_extension_cases` | optional | Default true — runs capped API/journey in the same pass |
+| `api_base_url` | optional | API origin if different from the UI url |
+| `include_depth_smokes` | optional | Force depth smoke on/off |
+| `stateful_lifecycle_documented` | optional | Confirms create→use→cleanup is documented |
 | `risk_waives` | optional | `[{risk_id, reason_code, rationale}]` |
-| `domain_high_risk_confirmed` | optional | Sau khi human confirm stub money/permission |
-| `acknowledge_domain_pack_absent` | optional | Ghi nhận thiếu pack (vẫn không pass) |
-| `output_path` | optional | Ghi HTML report (trong output dir) |
+| `domain_high_risk_confirmed` | optional | After a human confirms a money/permission stub |
+| `acknowledge_domain_pack_absent` | optional | Acknowledges a missing pack (still not a pass) |
+| `output_path` | optional | Writes the HTML report (inside the output dir) |
 | `browser` | optional | `chromium` \| `firefox` \| `webkit` |
 
-**Output quan trọng:** xem [mục 10](#10-output-expert--đọc-thế-nào).
-
-#### `run_auto_qa`
-
-Giống pipeline trên **không** bắt buộc facade bootstrap. Dùng khi đã có pack hoặc không cần `product_root` trong cùng call. Input gần như `run_expert_qa`.
+**Important output:** see [section 10](#10-expert-output--how-to-read-it).
 
 #### `validate_expert_claim`
 
 ```text
-proposed_claim: câu sẽ nói với user
-expert_checklist: object từ run vừa rồi
+proposed_claim: the exact sentence about to be said to the user
+expert_checklist: the object from the run just completed
 ```
 
 → `allowed` true/false + `refuse_reason` + `host_must`.
 
 #### `run_regression_suite`
 
-Sau fix:
+After a fix:
 
 ```text
-suite_id: <từ auto_registered_suite>
-case_ids: [...]            # hoặc
+suite_id: <from auto_registered_suite>
+case_ids: [...]            # or
 related_defect_ids: ["DEF-DRAFT:..."]
 ```
 
@@ -492,140 +529,149 @@ related_defect_ids: ["DEF-DRAFT:..."]
 ```text
 product_root: /abs/path/to/app
 request_context: "URL + AC text..."
-pack_dirname: domain-knowledge   # hoặc .qa-domain
+pack_dirname: domain-knowledge   # or .qa-domain
 ```
 
 ### 9.3 Discovery
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
-| `discover_ui_surface` | Map 1 trang (không login) |
-| `discover_ui_surface_after_login` | Map sau login semantic |
+| `discover_ui_surface` | Map 1 page (no login) |
+| `discover_ui_surface_after_login` | Map after semantic login |
 | `discover_ui_workflow` | Multi-page + edges |
-| `discover_and_compare_role_ui_surfaces` | So 2 role (authz UI) |
-| `compare_ui_surfaces` | Diff 2 capture thủ công |
+| `discover_and_compare_role_ui_surfaces` | Compare 2 roles (authz UI) |
+| `compare_ui_surfaces` | Diff 2 manual captures |
 
-### 9.4 Design & execute lẻ
+### 9.4 Standalone design & execution
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
-| `generate_test_cases` | Sinh case từ AC + UI map (không full pipeline) |
-| `execute_generated_test_case` | Chạy 1 case |
-| `generate_journey_test_cases` | Journey từ workflow |
-| `generate_exploratory_charter` | Charter exploratory |
-| `execute_exploratory_session` | Probe sống giới hạn |
+| `generate_test_cases` | Generate cases from AC + UI map (not the full pipeline) |
+| `execute_generated_test_case` | Run 1 case |
+| `generate_journey_test_cases` | Journeys from a workflow |
+| `generate_exploratory_charter` | Exploratory charter |
+| `execute_exploratory_session` | Bounded live probe |
 | `run_depth_smokes` | a11y subset + perf + security heuristics |
 
-> `execute_browser_test` = **DEMO ONLY** (seed TC-DEMO). Target thật → `run_auto_qa` / `execute_generated_test_case`.
+> `execute_browser_test` = **DEMO ONLY** (seeds TC-DEMO). For a real full target use `run_expert_qa`; to run one already-designed case use `execute_generated_test_case`.
 
 ### 9.5 API
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
 | `generate_api_smoke_from_openapi` | OpenAPI → cases (+ authz negatives) |
-| `execute_api_smoke` | Chạy HTTP smoke |
+| `execute_api_smoke` | Run the HTTP smoke |
 
-Trong Expert pass, ưu tiên gắn OpenAPI vào `run_auto_qa`/`run_expert_qa` (`openapi` + `include_authz_negatives: true`) để **cùng pass** execute capped.
+In an Expert pass, prefer attaching OpenAPI to `run_expert_qa`
+(`openapi` + `include_authz_negatives: true`) so it executes capped
+**in the same pass**.
 
-### 9.6 Defect & report phụ
+### 9.6 Defect & secondary reporting
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
-| `draft_defects_from_qa_run` | Tái draft từ test_cases fail/flaky |
-| `assess_defect_quality` | Review chất lượng bản draft |
-| `export_defects_for_tracker` | Markdown/Jira **text** để tester tự dán |
-| `assess_ui_accessibility_smoke` | Naming smoke (không phải WCAG full) |
+| `draft_defects_from_qa_run` | Re-draft from failed/flaky test_cases |
+| `assess_defect_quality` | Review the quality of a draft |
+| `export_defects_for_tracker` | Markdown/Jira **text** for the tester to paste manually |
+| `assess_ui_accessibility_smoke` | Naming smoke (not full WCAG) |
 
-> `file_defects_to_tracker` — optional dry-run; không phải SNS. Mặc định không POST trừ `confirm_file=true`.
+> `file_defects_to_tracker` — optional dry-run; not an SNS. Does not POST by default unless `confirm_file=true`.
 
 ### 9.7 Baseline & learning (test/report)
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
 | `capture_ui_baseline` / `compare_ui_baseline` | PNG baseline |
-| `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` | Drift named-control |
-| `list_failure_avoidance_hints` | G0 — hint tránh lỗi cũ |
-| `list_learning_candidates` | Ứng viên học (không auto-promote) |
+| `register_ui_surface_baseline` / `compare_ui_surface_to_baseline` | Named-control drift |
+| `list_failure_avoidance_hints` | G0 — hints to avoid past mistakes |
+| `list_learning_candidates` | Learning candidates (not auto-promoted) |
 
 ### 9.8 Setup
 
-| Tool | Dùng khi |
+| Tool | When to use |
 |------|----------|
-| `register_workspace_secret` / `list_workspace_secrets` | Secret (list không trả value) |
-| `register_workspace_environment` / `list_workspace_environments` | Allowlist URL staging |
-| `register_requirement` / `list_requirements` | Ingest requirement |
-| `register_test_dataset` / `resolve_test_dataset_fields` | Data synthetic |
-| `register_regression_suite` / `list_regression_suites` | Suite thủ công (thường thừa nếu auto suite) |
+| `register_workspace_secret` / `list_workspace_secrets` | Secrets (list never returns the value) |
+| `register_workspace_environment` / `list_workspace_environments` | Staging URL allowlist |
+| `register_requirement` / `list_requirements` | Requirement ingestion |
+| `register_test_dataset` / `resolve_test_dataset_fields` | Synthetic data |
+| `register_regression_suite` / `list_regression_suites` | Manual suite (usually redundant if there's an auto suite) |
 
 ### 9.9 Document assessors / stubs
 
-Các `assess_*_quality` và `generate_*_stub` — hỗ trợ review tài liệu / stub heuristic. **Không** thay Expert execute gate.
+The `assess_*_quality` and `generate_*_stub` tools — support document review /
+heuristic stubs. They **do not** replace the Expert execute gate.
 
-Catalog đầy đủ: [`hosts/README.md`](../hosts/README.md).
+Full catalog: [`hosts/README.md`](../hosts/README.md).
 
 ---
 
-## 10. Output Expert — đọc thế nào
+## 10. Expert output — how to read it
 
-Sau `run_expert_qa` / `run_auto_qa`, đọc **theo thứ tự Senior**:
+After `run_expert_qa`, read in **Senior order**:
 
-### 10.1 Bắt buộc đọc trước
+### 10.1 Must read first
 
-1. **`release_recommendation`** — gate  
+1. **`release_recommendation`** — the gate  
 2. **`expert_checklist.claim_pass_allowed`** + **`blockers`**  
-3. **`coverage_gaps`** — những gì chưa test  
-4. **`expert_session_report.markdown`** — paste cho user  
-5. **`smart_retest_suggestion`** — plan sau fix  
+3. **`coverage_gaps`** — what wasn't tested  
+4. **`expert_session_report.markdown`** — paste for the user (already has the Case results table)
+5. **`smart_retest_suggestion`** — plan after a fix  
 
-### 10.2 Lớp Senior thêm
+HTML: by default `report_html` is **not** embedded in the JSON (saves
+tokens). Open the `report_path` file. Only set `include_report_html: true`
+when debugging.
 
-| Field | Ý nghĩa |
+### 10.2 Additional Senior layer
+
+| Field | Meaning |
 |-------|---------|
 | `expert_judgment` | Charter, oracle_strength, confidence (≤85), stopping, next exploratory |
 | `expert_senior_hardening` | Domain enrich, role-diff, authz negatives, stateful, abuse residual, session delta |
 | `expert_risk_matrix` | Impact × likelihood |
-| `ac_quality_review` | Pushback AC yếu/thiếu oracle |
-| `git_blast_radius` | Gợi ý retest từ diff (khi `product_root` có `.git`) |
-| `extension_execution` | API/journey đã chạy cùng pass? |
-| `depth_smokes` | Kết quả depth (nếu chạy) |
-| `flake_taxonomy` | Phân loại flake |
+| `ac_quality_review` | Pushback on weak/missing-oracle AC |
+| `git_blast_radius` | Retest suggestions from the diff (when `product_root` has `.git`) |
+| `extension_execution` | Did API/journey run in the same pass? |
+| `depth_smokes` | Depth results (if run) |
+| `flake_taxonomy` | Flake classification |
 | `learning` | Hints + candidates |
-| `auto_registered_suite.suite_id` | Để retest |
+| `auto_registered_suite.suite_id` | For retesting |
 | `draft_defects` | Fail/flaky → DEF-DRAFT (suspected only) |
-| `report_html` / `report_path` | Báo cáo HTML |
+| `report_path` | HTML on disk — **do not** dump `report_html` into chat |
+| `report_html_omitted` / `report_html_bytes` | HTML was trimmed from the JSON; re-enable with `include_report_html` |
 
-### 10.3 Giá trị `release_recommendation`
+### 10.3 `release_recommendation` values
 
-| Giá trị | Ý nghĩa ngắn |
+| Value | Short meaning |
 |---------|----------------|
-| `recommend_release` | Gate automation xanh trong scope — **vẫn cần human sign-off** |
-| `pass_with_gaps` | Có khoảng trống đã ghi |
-| `investigate_flakes` | Có flake — không bỏ qua |
-| `changes_required` | Có fail / cần sửa |
-| `do_not_release` | Critical/security-ish — không release |
+| `recommend_release` | Automation gate is green within scope — **still needs human sign-off** |
+| `pass_with_gaps` | There are recorded gaps |
+| `investigate_flakes` | There's a flake — don't ignore it |
+| `changes_required` | There's a failure / something needs fixing |
+| `do_not_release` | Critical/security-adjacent — do not release |
 
-### 10.4 Trước khi nói “pass” với người
+### 10.4 Before saying "pass" to a human
 
 ```text
 validate_expert_claim({ proposed_claim, expert_checklist })
 ```
 
-`allowed=false` → báo **blocked/incomplete**, liệt kê blockers. Không green-wash.
+`allowed=false` → report **blocked/incomplete**, list the blockers. No
+green-washing.
 
-### 10.5 Policy bổ sung wave 1 (governance)
+### 10.5 Wave 1 governance policy add-on
 
-Trước pass claim, bắt buộc thêm:
+Before a pass claim, the following are also mandatory:
 
 1. **Data readiness gate**: dataset/source, seed, cleanup/rollback, oracle mapping
 2. **Flake decision**: `retry_once` | `quarantine_case` | `block_release`
-3. **Drift decision** (nếu có baseline/surface compare): mức ảnh hưởng + owner
-4. **Oracle claimability**: AC không có `expected_*` => `not_claimable`
+3. **Drift decision** (if a baseline/surface compare exists): impact level + owner
+4. **Oracle claimability**: AC with no `expected_*` => `not_claimable`
 
-Thiếu một trong các mục trên => chỉ được kết luận blocked/incomplete hoặc gap report.
+Missing any of the above => the only allowed conclusion is blocked/incomplete or a gap report.
 
 ---
 
-## 11. Kịch bản sử dụng end-to-end
+## 11. End-to-end usage scenarios
 
 ### 11.1 Full feature test (tester)
 
@@ -638,50 +684,50 @@ Thiếu một trong các mục trên => chỉ được kết luận blocked/inco
      role_b?, openapi? + include_authz_negatives?,
      include_workflow_journeys?
    )
-4. Đọc gate + paste expert_session_report.markdown
-5. validate_expert_claim trước mọi câu pass/ship
+4. Read the gate + paste expert_session_report.markdown
+5. validate_expert_claim before any pass/ship sentence
 ```
 
-### 11.2 Retest sau fix
+### 11.2 Retest after a fix
 
 ```text
-1. Lấy suite_id + failed_case_ids / related_defect_ids từ smart_retest_suggestion
+1. Get suite_id + failed_case_ids / related_defect_ids from smart_retest_suggestion
 2. run_regression_suite(...)
-3. Đọc release_recommendation mới
-4. Nếu còn fail: npx playwright show-trace .qa-traces/<file>.zip
+3. Read the new release_recommendation
+4. If still failing: npx playwright show-trace .qa-traces/<file>.zip
 ```
 
-### 11.3 Chỉ API
+### 11.3 API only
 
 ```text
 generate_api_smoke_from_openapi({ openapi, include_authz_negatives: true })
 → execute_api_smoke({ base_url, cases, bearer_token_secret_ref? })
 ```
 
-Hoặc gộp vào `run_expert_qa` với `openapi` + `api_base_url`.
+Or fold it into `run_expert_qa` with `openapi` + `api_base_url`.
 
-### 11.4 Không có AC
+### 11.4 No AC yet
 
 ```text
 discover_ui_surface / discover_ui_surface_after_login
 → generate_exploratory_charter
 → execute_exploratory_session (optional)
-→ soạn AC với PO
+→ draft AC with the PO
 → run_expert_qa
 ```
 
 ### 11.5 Multi-role
 
 ```text
-run_auto_qa / run_expert_qa với login_* (role A) + role_b (role B)
+run_expert_qa with login_* (role A) + role_b (role B)
 ```
 
-Hoặc tool riêng `discover_and_compare_role_ui_surfaces`.  
-Nếu `only_in_a` / `only_in_b` khác rỗng → triage hoặc `risk_waives` có rationale.
+Or the standalone tool `discover_and_compare_role_ui_surfaces`.  
+If `only_in_a` / `only_in_b` is non-empty → triage or `risk_waives` with a rationale.
 
 ---
 
-## 12. Bí mật, môi trường, domain pack
+## 12. Secrets, environments, domain pack
 
 ### 12.1 Secrets
 
@@ -690,11 +736,11 @@ register_workspace_secret({ name: "staging-password", value: "..." })
 → password_secret_ref: "workspace-secret:staging-password"
 ```
 
-`list_workspace_secrets` chỉ metadata — **không** trả lại value.
+`list_workspace_secrets` only returns metadata — **never** the value.
 
 ### 12.2 Environment
 
-URL không phải loopback:
+For a non-loopback URL:
 
 ```text
 register_workspace_environment({
@@ -711,20 +757,21 @@ Templates: `hosts/templates/domain-knowledge/`.
 bootstrap_domain_pack / run_expert_qa(product_root=...)
 ```
 
-Tạo/cập nhật `domain-knowledge/` (hoặc `.qa-domain/`) trong app.  
-Stub money/permission → cần human confirm rồi `domain_high_risk_confirmed=true`.  
-Chi tiết: [`hosts/references/domain-pack.md`](../hosts/references/domain-pack.md).
+Creates/updates `domain-knowledge/` (or `.qa-domain/`) inside the app.  
+Money/permission stub → needs human confirmation, then
+`domain_high_risk_confirmed=true`.  
+Detail: [`hosts/references/domain-pack.md`](../hosts/references/domain-pack.md).
 
-### 12.6 Data readiness checklist (trước execute/passing)
+### 12.6 Data readiness checklist (before execute/passing)
 
-- [ ] Dataset/source đã xác định (ref hoặc disclaimer)
-- [ ] Seed strategy rõ cho dữ liệu đầu vào
-- [ ] Cleanup/rollback strategy rõ
-- [ ] Mỗi AC có oracle quan sát được (`expected_*`)
+- [ ] Dataset/source identified (ref or disclaimer)
+- [ ] Seed strategy is clear for input data
+- [ ] Cleanup/rollback strategy is clear
+- [ ] Every AC has an observable oracle (`expected_*`)
 
-Checklist fail => không claim pass.
+Checklist fails => cannot claim a pass.
 
-### 12.4 Waive có cấu trúc (không silent)
+### 12.4 Structured waive (never silent)
 
 ```json
 "risk_waives": [
@@ -736,79 +783,79 @@ Checklist fail => không claim pass.
 ]
 ```
 
-`rationale` ≥ 12 ký tự. Có thể clear blocker khớp `risk_id`.
+`rationale` ≥ 12 characters. Can clear a blocker matching `risk_id`.
 
 ### 12.5 Stateful lifecycle
 
-- `stateful_lifecycle_documented: true` **hoặc**
+- `stateful_lifecycle_documented: true` **or**
 - waive `risk_id: risk-stateful-data`
 
 ---
 
-## 13. File/artifact trên đĩa
+## 13. Files/artifacts on disk
 
-Sống qua restart MCP (thường dưới cwd process):
+Survive across MCP restarts (usually under the process cwd):
 
-| Thư mục | Nội dung |
+| Directory | Content |
 |---------|----------|
 | `.qa-traces/` | Playwright fail traces → `npx playwright show-trace <file>.zip` |
-| `.qa-screenshots/` | Ảnh fail |
+| `.qa-screenshots/` | Failure images |
 | `.qa-baselines/` | PNG baseline |
 | `.qa-surface-baselines/` | Surface baseline |
-| `.qa-regression-suites/` | Suite đã persist |
-| `.qa-avoidance-hints/` | Failure-avoidance durable |
+| `.qa-regression-suites/` | Persisted suites |
+| `.qa-avoidance-hints/` | Durable failure-avoidance hints |
 | `.qa-learning-candidates/` | Learning candidates |
 | `.qa-credentials/` | Credential registry |
 | `.qa-test-datasets/` | Dataset registry |
 | `.qa-knowledge/` | Knowledge records |
-| `domain-knowledge/` | Trong **product_root** (app), không phải repo QA-Intelligence |
+| `domain-knowledge/` | Inside **product_root** (the app), not the QA-Intelligence repo |
 
 ---
 
 ## 14. Troubleshooting
 
-| Triệu chứng | Nguyên nhân thường | Cách xử |
+| Symptom | Common cause | Fix |
 |-------------|-------------------|---------|
-| MCP không hiện tool | Path sai / chưa build / chưa restart | Absolute path + `npm run build` + restart host |
-| `authorization_denied` | Skill/agent version không khớp fixture | Dùng entrypoint đúng repo; đừng tự bịa agent id |
-| Login fail | Thiếu bộ login 6 field / sai accessible_name | Discover login page trước; dùng đúng name |
-| Nhiều `not_executed` | AC thiếu oracle / không bind UI | Thêm expected_* ; xem `ac_quality_review` |
-| `claim_pass_allowed=false` | Đúng hành vi | Đọc `blockers`; đừng green-wash |
+| MCP tools don't show up | Wrong path / not built / not restarted | Absolute path + `npm run build` + restart host |
+| `authorization_denied` | Skill/agent version doesn't match the fixture | Use the correct repo's entrypoint; don't invent an agent id |
+| Login fails | Missing one of the 6 login fields / wrong accessible_name | Discover the login page first; use the correct name |
+| Lots of `not_executed` | AC missing an oracle / not bound to the UI | Add expected_*; check `ac_quality_review` |
+| `claim_pass_allowed=false` | Correct behavior | Read `blockers`; don't green-wash |
 | Flaky | Timing/network | `flake_taxonomy` + targeted retest |
-| Flaky lặp cùng causal class | Test thiếu ổn định thật | `quarantine_case`, gán owner remediation, không pass nếu dính critical path |
-| Staging bị chặn | Chưa register environment | `register_workspace_environment` |
-| UI drift giữa run | Baseline/surface khác biệt | Compare baseline/surface, phân loại severity, block nếu ảnh hưởng critical control |
-| Depth/API chậm | Normal | `execute_extension_cases=false` / `include_depth_smokes=false` khi debug hẹp |
+| Flaky repeats in the same causal class | Test genuinely lacks stability | `quarantine_case`, assign a remediation owner, don't pass if it touches a critical path |
+| Staging is blocked | Environment not registered | `register_workspace_environment` |
+| UI drift between runs | Baseline/surface differs | Compare baseline/surface, classify severity, block if it affects a critical control |
+| Depth/API is slow | Normal | `execute_extension_cases=false` / `include_depth_smokes=false` for narrow debugging |
 | Node engine error | Node ≠ 24 | `nvm install 24 && nvm use 24` |
 
 ---
 
-## 15. Tham chiếu
+## 15. Reference
 
-| Tài liệu | Nội dung |
+| Document | Content |
 |----------|----------|
-| [`PRODUCT.md`](PRODUCT.md) | Ý tưởng 1 trang |
+| [`PRODUCT.md`](PRODUCT.md) | One-page idea |
 | [`../RULES.md`](../RULES.md) | Non-negotiables |
-| [`../hosts/README.md`](../hosts/README.md) | Catalog tool + durable dirs |
+| [`../hosts/README.md`](../hosts/README.md) | Tool catalog + durable dirs |
 | [`../hosts/references/expert-tester-workflow.md`](../hosts/references/expert-tester-workflow.md) | G0–G8 Expert bar |
 | [`../hosts/references/domain-pack.md`](../hosts/references/domain-pack.md) | Domain pack |
-| [`../hosts/claude-code/skills/test/SKILL.md`](../hosts/claude-code/skills/test/SKILL.md) | Skill tester canonical |
-| [`../hosts/claude-code/skills/dev/SKILL.md`](../hosts/claude-code/skills/dev/SKILL.md) | Skill dev |
+| [`../hosts/claude-code/skills/test/SKILL.md`](../hosts/claude-code/skills/test/SKILL.md) | Canonical tester Skill |
+| [`../hosts/claude-code/skills/dev/SKILL.md`](../hosts/claude-code/skills/dev/SKILL.md) | Dev Skill |
 | [`plans/senior-expert-ceiling.md`](plans/senior-expert-ceiling.md) | Competency ceiling |
-| [`NEXT.md`](NEXT.md) | Việc người vs agent |
+| [`NEXT.md`](NEXT.md) | Human work vs agent work |
 
 ---
 
-## Tóm tắt 60 giây
+## 60-second summary
 
 ```text
 npm install && npx playwright install chromium && npm run build
-→ Cấu hình MCP (absolute path tới dist/src/mcp/dev-entrypoint.js)
-→ Cài Skill :test / :dev theo host
+→ Install the `qa-intelligence-mcp` command and configure a workspace id
+→ Install the :test / :dev Skill for your host
 → /qa-intelligence:test + URL + AC (+ product_root)
-→ Đọc release_recommendation + paste expert_session_report.markdown
-→ validate_expert_claim trước mọi câu pass/ship
-→ Sau fix: run_regression_suite theo smart_retest_suggestion
+→ Read release_recommendation + paste expert_session_report.markdown
+→ validate_expert_claim before any pass/ship sentence
+→ After a fix: run_regression_suite following smart_retest_suggestion
 ```
 
-**Skill = kỷ luật. MCP = evidence. Scope = test + report.**
+**Skill = discipline. MCP = evidence. Scope = test + report.**

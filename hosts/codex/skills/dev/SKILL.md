@@ -1,12 +1,9 @@
 ---
 name: dev
 description: >
-  Expert QA for developers — auto domain pack. Trigger: "/qa-intelligence:dev".
+  Expert QA for developers — one MCP call. Trigger: "/qa-intelligence:dev".
 ---
 
 # dev (Codex)
 
-Follow `hosts/references/expert-tester-workflow.md` + `hosts/references/domain-pack.md`.  
-Details: `hosts/claude-code/skills/dev/SKILL.md`.
-
-Prefer MCP `run_expert_qa` + `validate_expert_claim` before merge-ready wording.
+`run_expert_qa` + `headed: true` + `product_root`. Skip extra discover. Never `include_report_html`. Merge-ready only after `validate_expert_claim`.

@@ -1,4 +1,8 @@
-# Slash commands
+# Suggested host skill shortcuts
+
+These shortcuts depend on host support; they are not separate portable command
+executables. If a slash command is unavailable, ask the host in natural language
+to use the QA Intelligence `test` or `dev` skill with the same arguments.
 
 | Command | Who |
 |---------|-----|

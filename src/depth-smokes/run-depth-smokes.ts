@@ -5,7 +5,7 @@
  * findings are never hidden by green counts (SPEC-212 §6 pattern).
  */
 import AxeBuilder from "@axe-core/playwright";
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 
 import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
@@ -120,9 +120,7 @@ export class RunDepthSmokes {
     }
 
     const browserName = request.browser ?? "chromium";
-    const launch =
-      this.#dependencies.launchBrowser ??
-      (browserName === "chromium" ? () => chromium.launch() : createLaunchBrowser(browserName));
+    const launch = this.#dependencies.launchBrowser ?? createLaunchBrowser(browserName);
 
     const startedAt = this.#dependencies.clock.now();
     let browser: Browser;

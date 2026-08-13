@@ -113,7 +113,7 @@ function qaRunWithDraft(draftId: string): AgentRunExecutorResult {
 }
 
 const runAutoQaTool = {
-  name: "run_auto_qa",
+  name: "run_expert_qa",
   description: "test",
   inputSchema: { type: "object" as const, properties: {}, required: [] as const },
   agent: { id: "auto-qa-agent", version: "0.1.0" },
@@ -148,14 +148,14 @@ test("stable causal key: two draft ids with same class+test_ref trip recurrence 
     tools: [runAutoQaTool],
   });
 
-  const first = await registry.call("run_auto_qa", {}, new AbortController().signal);
+  const first = await registry.call("run_expert_qa", {}, new AbortController().signal);
   assert.equal(first.ok, true, first.text);
   assert.equal(tracker.occurrenceCount("workspace-recurrence-001", "avoid:functional:TC-LOGIN-1"), 1);
   const hintsAfterFirst = sessionMemory.list("workspace-recurrence-001", "avoid:");
   assert.equal(hintsAfterFirst.length, 1);
   assert.equal(hintsAfterFirst[0]?.key, "avoid:functional:TC-LOGIN-1");
 
-  const second = await registry.call("run_auto_qa", {}, new AbortController().signal);
+  const second = await registry.call("run_expert_qa", {}, new AbortController().signal);
   assert.equal(second.ok, true, second.text);
   assert.equal(tracker.occurrenceCount("workspace-recurrence-001", "avoid:functional:TC-LOGIN-1"), 2);
 

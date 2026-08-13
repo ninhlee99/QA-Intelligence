@@ -1,0 +1,11 @@
+interface:
+  display_name: "Expert QA Test"
+  short_description: "Run evidence-backed browser QA"
+  default_prompt: "Use $test to test this feature in a real browser and return evidence."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "qa-intelligence"
+      description: "QA Intelligence execution and evidence server"
+policy:
+  allow_implicit_invocation: true

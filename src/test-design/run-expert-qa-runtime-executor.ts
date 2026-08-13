@@ -120,7 +120,7 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
       expert_checklist: reinforcedChecklist,
       expert_facade: {
         tool: "run_expert_qa",
-        wrapped: ["bootstrap_domain_pack?", "run_auto_qa"],
+        pipeline: ["domain_context", "discover", "design", "execute", "evidence", "report"],
         note: "Honor expert_checklist + call validate_expert_claim before any pass/ready/ship wording.",
       },
     };
@@ -148,7 +148,6 @@ export class RunExpertQaRuntimeExecutor implements AgentRunExecutor {
           ...autoResult.value.citations,
           ...(typeof domainPack["pack_path"] === "string" ? [`pack:${domainPack["pack_path"]}`] : []),
           `claim_pass_allowed:${claimPassAllowed}`,
-          `wrapped_skill:${this.#dependencies.auto_qa_skill.id}@${this.#dependencies.auto_qa_skill.version}`,
         ],
         uncertainty: {
           level: claimPassAllowed ? autoResult.value.uncertainty.level : "high",

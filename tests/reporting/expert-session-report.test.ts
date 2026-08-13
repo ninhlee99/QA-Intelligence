@@ -91,6 +91,8 @@ test("draftExpertSessionReport leads with refuse when claim_pass false", () => {
   assert.match(session.headline, /NOT ready/i);
   assert.match(session.verdict_paragraph, /refuse/i);
   assert.ok(session.markdown.includes("## Verdict"));
+  assert.ok(session.markdown.includes("## Case results"));
+  assert.ok(session.markdown.includes("| tc-1 | positive | **failed** | shot.png |"));
   assert.ok(session.critical_findings.some((f) => f.includes("MANDATE")));
   assert.ok(session.what_was_not_tested.some((t) => /money/i.test(t) || /pen-test/i.test(t) || /G0/i.test(t)));
 });

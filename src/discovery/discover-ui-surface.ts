@@ -9,7 +9,7 @@
  * authorization purpose — this is observation, not test execution, and
  * SHALL NOT be authorized under an `execution:*` permission.
  */
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 
 import { extractRawDom } from "../adapters/playwright/extract-raw-dom.js";
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
@@ -37,6 +37,8 @@ export type DiscoverUiSurfaceRequest = Readonly<{
   url: string;
   /** Phase 9 — defaults to chromium when omitted. */
   browser?: BrowserName;
+  /** Visible browser window. Default: `QA_INTELLIGENCE_HEADED` env, else headless. */
+  headed?: boolean;
   /** Dogfood GAP-1 — write a full-page PNG and return screenshot_path. */
   include_screenshot?: boolean;
   /** Override default `.qa-screenshots/<operation_id>/`. */
@@ -52,6 +54,8 @@ type Dependencies = Readonly<{
   clock: Clock;
   authorizer: WorkspaceAuthorizer;
   launchBrowser?: () => Promise<Browser>;
+  /** Persistent state root for the default screenshot directory. Defaults to `process.cwd()` only for standalone/test use — production wiring must supply the caller's persist base dir. */
+  screenshotBaseDir?: string;
 }>;
 
 /** Final element count an MCP caller actually receives — bounded to stay well inside a single tool-call response's token budget. */
@@ -65,11 +69,13 @@ export class DiscoverUiSurface {
   readonly #authorizer: WorkspaceAuthorizer;
   readonly #launchBrowser: () => Promise<Browser>;
   readonly #cleaner = new DeterministicDomCleaner();
+  readonly #screenshotBaseDir: string;
 
   constructor(dependencies: Dependencies) {
     this.#clock = dependencies.clock;
     this.#authorizer = dependencies.authorizer;
-    this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
+    this.#screenshotBaseDir = dependencies.screenshotBaseDir ?? process.cwd();
   }
 
   async discover(request: DiscoverUiSurfaceRequest): Promise<SemanticUiDiscoveryResult> {
@@ -97,7 +103,11 @@ export class DiscoverUiSurface {
     let browser: Browser;
     try {
       const launch =
-        request.browser !== undefined ? createLaunchBrowser(request.browser) : this.#launchBrowser;
+        request.browser !== undefined || request.headed !== undefined
+          ? createLaunchBrowser(request.browser ?? "chromium", {
+              ...(request.headed !== undefined ? { headed: request.headed } : {}),
+            })
+          : this.#launchBrowser;
       browser = await launch();
     } catch (error) {
       return {
@@ -227,7 +237,7 @@ export class DiscoverUiSurface {
 
     let screenshot_path: string | undefined;
     if (request.include_screenshot === true) {
-      const dir = request.screenshot_dir ?? defaultScreenshotDir(request.operation_id);
+      const dir = request.screenshot_dir ?? defaultScreenshotDir(request.operation_id, this.#screenshotBaseDir);
       screenshot_path = await capturePageScreenshot(page, dir, sanitizeBasename(request.operation_id));
       if (screenshot_path === undefined) {
         limitations.push("screenshot_capture_failed");

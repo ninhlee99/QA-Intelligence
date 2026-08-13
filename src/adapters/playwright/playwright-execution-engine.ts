@@ -1,9 +1,10 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, realpath, unlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { chromium, type Browser } from "playwright";
+import { type Browser } from "playwright";
 
 import { newFullSizePage } from "./full-size-page.js";
+import { createLaunchBrowser } from "./browser-launcher.js";
 import { accessibleNamesMatch } from "../../shared/accessible-name.js";
 import {
   executionRequestDigest,
@@ -34,6 +35,7 @@ import type {
   WorkspaceContext,
 } from "../../requirement-review/public.js";
 import { DeterministicDomCleaner } from "../dom-cleaner/deterministic-dom-cleaner.js";
+import { QaExecutionKillSwitch } from "../../observability/qa-operations.js";
 import { extractRawDom } from "./extract-raw-dom.js";
 import {
   pushNetworkObservation,
@@ -71,11 +73,20 @@ export interface Clock {
 export type PlaywrightInteractionTarget = Readonly<{
   accessible_name: string;
   accessible_role?: string;
+  /** Optional accessible name of the containing iframe. Never a selector. */
+  frame_accessible_name?: string;
 }>;
 
 export type PlaywrightInteractionStep =
-  | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget }>
-  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string }>
+  | Readonly<{ kind: "click"; target: PlaywrightInteractionTarget; switch_to_popup?: boolean }>
+  | Readonly<{ kind: "check"; target: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "uncheck"; target: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "press"; target: PlaywrightInteractionTarget; key: string }>
+  | Readonly<{ kind: "hover"; target: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "drag_to"; target: PlaywrightInteractionTarget; destination: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "upload"; target: PlaywrightInteractionTarget; artifact_refs: readonly string[] }>
+  | Readonly<{ kind: "download"; target: PlaywrightInteractionTarget }>
+  | Readonly<{ kind: "type"; target: PlaywrightInteractionTarget; text?: string; secret_ref?: string; sensitive?: boolean }>
   | Readonly<{
       kind: "select";
       target: PlaywrightInteractionTarget;
@@ -114,6 +125,8 @@ export type PlaywrightExecutionPlan = Readonly<{
   assert(cleaned: import("../../dom-cleaner/public.js").CleanedDomNode, context: PlaywrightAssertContext): boolean;
 }>;
 
+export type VideoEvidencePolicy = "off" | "failure_only" | "all";
+
 /** SPEC-407 §4 "approved injection": resolves a Workspace-scoped credential reference to its value, out-of-band from any MCP caller. */
 export interface SecretResolver {
   resolve(secretRef: string, workspace: WorkspaceContext): Promise<string | undefined>;
@@ -140,6 +153,22 @@ type Dependencies = Readonly<{
    * Video / full HAR remain out of scope.
    */
   traceDir?: string;
+  /** Directory opt-in Playwright videos are written under. Omitted by default to avoid storage cost. */
+  videoDir?: string;
+  /** Default `all` when videoDir is configured; `off` avoids recording entirely. */
+  videoPolicy?: VideoEvidencePolicy;
+  /** Upload refs must resolve inside this root; upload is refused when omitted. */
+  fileArtifactRoot?: string;
+  /** Completed downloads are saved here and returned as evidence; download is refused when omitted. */
+  downloadDir?: string;
+  /** Explicit opt-in browser storage-state reuse between sequential starts. Finalize deletes it. */
+  sessionStatePath?: string;
+  /** Batch runners set false and own one final cleanup after the last case. Default true. */
+  cleanupSessionOnFinalize?: boolean;
+  /** Off by default. unique_name may repair only a uniquely named ARIA-role drift and emits evidence. */
+  semanticRecovery?: "off" | "unique_name";
+  /** Emergency production stop checked immediately before browser side effects. */
+  executionKillSwitch?: Readonly<{ state(): Readonly<{ disabled: boolean; reason: string }> }>;
 }>;
 
 type AttemptRecord = Readonly<{
@@ -180,6 +209,14 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
   readonly #screenshotDir: string | undefined;
   readonly #alwaysScreenshot: boolean;
   readonly #traceDir: string | undefined;
+  readonly #videoDir: string | undefined;
+  readonly #videoPolicy: VideoEvidencePolicy;
+  readonly #fileArtifactRoot: string | undefined;
+  readonly #downloadDir: string | undefined;
+  readonly #sessionStatePath: string | undefined;
+  readonly #cleanupSessionOnFinalize: boolean;
+  readonly #semanticRecovery: "off" | "unique_name";
+  readonly #executionKillSwitch: Dependencies["executionKillSwitch"];
   readonly #cleaner = new DeterministicDomCleaner();
   readonly #attempts = new Map<string, AttemptRecord>();
   readonly #cancelled = new Set<string>();
@@ -189,11 +226,19 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     this.#authorizer = dependencies.authorizer;
     this.#provider = dependencies.provider;
     this.#plans = dependencies.plans;
-    this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
     this.#secrets = dependencies.secrets;
     this.#screenshotDir = dependencies.screenshotDir;
     this.#alwaysScreenshot = dependencies.alwaysScreenshot === true;
     this.#traceDir = dependencies.traceDir;
+    this.#videoDir = dependencies.videoDir;
+    this.#videoPolicy = dependencies.videoPolicy ?? (dependencies.videoDir === undefined ? "off" : "all");
+    this.#fileArtifactRoot = dependencies.fileArtifactRoot;
+    this.#downloadDir = dependencies.downloadDir;
+    this.#sessionStatePath = dependencies.sessionStatePath;
+    this.#cleanupSessionOnFinalize = dependencies.cleanupSessionOnFinalize !== false;
+    this.#semanticRecovery = dependencies.semanticRecovery ?? "off";
+    this.#executionKillSwitch = dependencies.executionKillSwitch ?? new QaExecutionKillSwitch();
   }
 
   async descriptor(request: DescriptorRequest): Promise<ExecutionEngineResult<"descriptor">> {
@@ -263,6 +308,15 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     const authorized = await this.#authorize(request, "start");
     if (!authorized.ok) return this.#deny(request, "start", authorized.failure);
 
+    const killSwitch = this.#executionKillSwitch?.state();
+    if (killSwitch?.disabled === true) {
+      return this.#envelope(request, "start", { ok: false, failure: {
+        code: "policy_denied", retryable: false, responsible_domain: "policy",
+        message: `Browser execution disabled by kill switch: ${killSwitch.reason}`,
+        details: { kill_switch: true }, diagnostic_evidence_refs: [],
+      } });
+    }
+
     const attemptKey = attemptStateKey(request.attempt);
     const digest = executionRequestDigest(request);
     const existing = this.#attempts.get(attemptKey);
@@ -330,13 +384,17 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     }
 
     let result: ExecutionEngineResult<"start">;
+    let capturedVideoPath: string | undefined;
     try {
       emit("preparing");
       if (this.#cancelled.has(attemptKey)) {
         emit("cancelled");
         result = this.#cancelledResult(request, startedAt);
       } else {
-        const page = await newFullSizePage(browser);
+        const activeVideoDir = this.#videoPolicy === "off" ? undefined : this.#videoDir;
+        if (activeVideoDir !== undefined) await mkdir(activeVideoDir, { recursive: true });
+        let page = await newFullSizePage(browser, undefined, activeVideoDir, this.#sessionStatePath);
+        const video = page.video();
         let tracingActive = false;
         if (this.#traceDir !== undefined) {
           try {
@@ -380,12 +438,19 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
         const interaction = this.#cancelled.has(attemptKey)
           ? undefined
           : await this.#runSteps(page, plan.steps ?? [], request.workspace, emit);
+        if (interaction?.ok === true) page = interaction.page;
 
         if (this.#cancelled.has(attemptKey)) {
           emit("cancelled");
           result = this.#cancelledResult(request, startedAt);
         } else if (interaction !== undefined && !interaction.ok) {
           emit("failed", { reason: "interaction_failed", step: interaction.stepIndex });
+          const screenshotEvidence = await this.#captureFailureScreenshot(page, request.attempt);
+          const traceEvidence = tracingActive ? await this.#captureFailureTrace(page, request.attempt) : [];
+          if (traceEvidence.length > 0) tracingActive = false;
+          for (const ref of [...screenshotEvidence, ...traceEvidence]) {
+            emit("evidence_created", { kind: ref.endsWith(".png") ? "screenshot" : "trace", ref });
+          }
           result = this.#envelope(request, "start", {
             ok: false,
             failure: {
@@ -394,7 +459,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               responsible_domain: "plugin",
               message: interaction.message,
               details: {},
-              diagnostic_evidence_refs: [],
+              diagnostic_evidence_refs: [...interaction.evidence, ...screenshotEvidence, ...traceEvidence],
             },
           });
         } else {
@@ -421,6 +486,9 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
 
           if (!cleaned.ok) {
             emit("failed", { reason: "dom_clean_failed", code: cleaned.failure.code });
+            const screenshotEvidence = await this.#captureFailureScreenshot(page, request.attempt);
+            const traceEvidence = tracingActive ? await this.#captureFailureTrace(page, request.attempt) : [];
+            if (traceEvidence.length > 0) tracingActive = false;
             result = this.#envelope(request, "start", {
               ok: false,
               failure: {
@@ -429,7 +497,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                 responsible_domain: "plugin",
                 message: cleaned.failure.message,
                 details: {},
-                diagnostic_evidence_refs: [],
+                diagnostic_evidence_refs: [...screenshotEvidence, ...traceEvidence],
               },
             });
           } else {
@@ -479,6 +547,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
                   outcome: passed ? "passed" : "failed",
                   evidence: [
                     cleaned.value.capture_id,
+                    ...(interaction?.ok === true ? interaction.evidence : []),
                     ...screenshotEvidence,
                     ...traceEvidence,
                     ...(network.length > 0 ? [`network-obs:${network.length}`] : []),
@@ -495,11 +564,38 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
             }
           }
         }
+        } catch (error) {
+          const screenshotEvidence = await this.#captureFailureScreenshot(page, request.attempt);
+          const traceEvidence = tracingActive ? await this.#captureFailureTrace(page, request.attempt) : [];
+          if (traceEvidence.length > 0) tracingActive = false;
+          emit("failed", { reason: "page_execution_failed" });
+          result = this.#envelope(request, "start", {
+            ok: false,
+            failure: {
+              code: "infrastructure_failure",
+              retryable: true,
+              responsible_domain: "infrastructure",
+              message: `Playwright page execution failed: ${(error as Error).message}`,
+              details: {},
+              diagnostic_evidence_refs: [...screenshotEvidence, ...traceEvidence],
+            },
+          });
         } finally {
           if (tracingActive) {
             await page.context().tracing.stop().catch(() => undefined);
           }
-          await page.close();
+          if (this.#sessionStatePath !== undefined) {
+            await mkdir(dirname(this.#sessionStatePath), { recursive: true });
+            await page.context().storageState({ path: this.#sessionStatePath }).catch(() => undefined);
+          }
+          await page.context().close();
+          if (video !== null) {
+            try {
+              capturedVideoPath = await video.path();
+            } catch {
+              // Evidence capture is best-effort; the product verdict remains authoritative.
+            }
+          }
         }
       }
     } catch (error) {
@@ -517,6 +613,29 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
       });
     } finally {
       await browser.close();
+    }
+
+    const retainVideo = capturedVideoPath !== undefined && (
+      this.#videoPolicy === "all" ||
+      (this.#videoPolicy === "failure_only" && (!result.ok || result.value.outcome !== "passed"))
+    );
+    if (capturedVideoPath !== undefined && !retainVideo) {
+      await unlink(capturedVideoPath).catch(() => undefined);
+    }
+    if (capturedVideoPath !== undefined && retainVideo) {
+      result = result.ok
+        ? this.#envelope(request, "start", {
+            ok: true,
+            value: { ...result.value, evidence: [...result.value.evidence, capturedVideoPath] },
+          })
+        : this.#envelope(request, "start", {
+            ok: false,
+            failure: {
+              ...result.failure,
+              diagnostic_evidence_refs: [...result.failure.diagnostic_evidence_refs, capturedVideoPath],
+            },
+          });
+      emit("evidence_created", { kind: "video", ref: capturedVideoPath });
     }
 
     this.#attempts.set(attemptKey, { digest, events: emitted, result });
@@ -542,6 +661,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     const authorized = await this.#authorize(request, "finalize");
     if (!authorized.ok) return this.#deny(request, "finalize", authorized.failure);
 
+    if (this.#sessionStatePath !== undefined && this.#cleanupSessionOnFinalize) await unlink(this.#sessionStatePath).catch(() => undefined);
     return this.#envelope(request, "finalize", {
       ok: true,
       value: { cleanup_status: "completed", residual_resources: [] },
@@ -608,7 +728,11 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
     steps: readonly PlaywrightInteractionStep[],
     workspace: WorkspaceContext,
     emit: (type: ExecutionEngineEventType, data?: JsonObject) => void,
-  ): Promise<{ ok: true } | { ok: false; stepIndex: number; message: string }> {
+  ): Promise<
+    | { ok: true; page: import("playwright").Page; evidence: readonly string[] }
+    | { ok: false; stepIndex: number; message: string; evidence: readonly string[] }
+  > {
+    const interactionEvidence: string[] = [];
     for (let index = 0; index < steps.length; index += 1) {
       const step = steps[index]!;
       const raw = await extractRawDom(page);
@@ -626,16 +750,44 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
         capture_authorized: true,
       });
       if (!cleaned.ok) {
-        return { ok: false, stepIndex: index, message: `Interaction step ${index} DOM capture failed: ${cleaned.failure.message}` };
+        return { ok: false, stepIndex: index, message: `Interaction step ${index} DOM capture failed: ${cleaned.failure.message}`, evidence: interactionEvidence };
       }
       // wait_for intentionally skips the pre-existence check — the step's job
       // is to wait until the target appears in the live page.
       // When the cleaned DOM tree misses the target (e.g. label-for resolution
       // not performed by DOM cleaner), fall back to a live Playwright ARIA
       // count check so a real element is not incorrectly rejected.
-      const locator = step.target.accessible_role
-        ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], { name: step.target.accessible_name })
-        : page.getByRole("textbox", { name: step.target.accessible_name }).or(page.getByRole("button", { name: step.target.accessible_name }));
+      const scope = step.target.frame_accessible_name === undefined
+        ? page
+        : page.getByLabel(step.target.frame_accessible_name).contentFrame();
+      let locator = step.target.accessible_role
+        ? scope.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], { name: step.target.accessible_name })
+        : scope.getByRole("textbox", { name: step.target.accessible_name }).or(scope.getByRole("button", { name: step.target.accessible_name }));
+      if (this.#semanticRecovery === "unique_name" && await locator.count() === 0) {
+        const roles = ["button", "link", "textbox", "checkbox", "radio", "combobox", "listbox", "option", "menuitem", "tab", "region"] as const;
+        let recovered = scope.getByRole(roles[0], { name: step.target.accessible_name, exact: true });
+        for (const role of roles.slice(1)) recovered = recovered.or(scope.getByRole(role, { name: step.target.accessible_name, exact: true }));
+        const recoveredCount = await recovered.count();
+        if (recoveredCount > 1) {
+          return {
+            ok: false,
+            stepIndex: index,
+            message: `Interaction step ${index} semantic recovery is ambiguous for accessible_name="${step.target.accessible_name}" (${recoveredCount} candidates).`,
+            evidence: interactionEvidence,
+          };
+        }
+        if (recoveredCount === 1) {
+          locator = recovered.first();
+          interactionEvidence.push(`semantic-recovery:step-${index}:${step.target.accessible_name}`);
+          emit("evidence_created", {
+            stage: "interaction_step",
+            step: index,
+            kind: "semantic_recovery",
+            accessible_name: step.target.accessible_name,
+            stale_role: step.target.accessible_role ?? "unspecified",
+          });
+        }
+      }
 
       // Pre-existence check: cleaned DOM tree may miss label-for associations;
       // use live Playwright ARIA count as the authoritative check for wait_for too.
@@ -648,6 +800,7 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
               ok: false,
               stepIndex: index,
               message: `Interaction step ${index} target not found in the Semantic UI tree: accessible_name="${step.target.accessible_name}"${step.target.accessible_role ? ` role="${step.target.accessible_role}"` : ""}.`,
+              evidence: interactionEvidence,
             };
           }
           // element exists in live Playwright ARIA tree — continue despite cleaned miss
@@ -656,20 +809,73 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
 
       try {
         if (step.kind === "click") {
-          await locator.click();
+          if (step.switch_to_popup === true) {
+            const popupPromise = page.context().waitForEvent("page", { timeout: 5_000 });
+            await locator.click();
+            page = await popupPromise;
+            await page.waitForLoadState("domcontentloaded");
+          } else {
+            await locator.click();
+          }
           // A click-triggered handler that mutates the DOM (or fires a
           // dialog via e.g. an injected <img onerror>) runs asynchronously
           // relative to Playwright's own click resolution — without this,
           // the very next step (or the final assertion capture) can race
           // ahead of that handler and observe stale DOM/no dialog at all.
           await page.waitForTimeout(200);
+        } else if (step.kind === "check") {
+          await locator.check();
+        } else if (step.kind === "uncheck") {
+          await locator.uncheck();
+        } else if (step.kind === "press") {
+          await locator.press(step.key);
+        } else if (step.kind === "hover") {
+          await locator.hover();
+        } else if (step.kind === "drag_to") {
+          const destinationScope = step.destination.frame_accessible_name === undefined
+            ? page
+            : page.getByLabel(step.destination.frame_accessible_name).contentFrame();
+          const destination = step.destination.accessible_role
+            ? destinationScope.getByRole(step.destination.accessible_role as Parameters<typeof page.getByRole>[0], { name: step.destination.accessible_name })
+            : destinationScope.getByText(step.destination.accessible_name, { exact: true });
+          if (await destination.count() === 0) {
+            return { ok: false, stepIndex: index, message: `Interaction step ${index} drag destination not found: accessible_name="${step.destination.accessible_name}".`, evidence: interactionEvidence };
+          }
+          await locator.dragTo(destination.first());
+        } else if (step.kind === "upload") {
+          if (this.#fileArtifactRoot === undefined) {
+            return { ok: false, stepIndex: index, message: `Interaction step ${index} upload requires a governed artifact root.`, evidence: interactionEvidence };
+          }
+          const root = await realpath(resolve(this.#fileArtifactRoot));
+          const paths: string[] = [];
+          for (const ref of step.artifact_refs) {
+            const path = await realpath(resolve(root, ref));
+            if (!isWithinRoot(root, path)) {
+              return { ok: false, stepIndex: index, message: `Interaction step ${index} upload artifact escapes the governed artifact root.`, evidence: interactionEvidence };
+            }
+            paths.push(path);
+          }
+          await locator.setInputFiles(paths);
+        } else if (step.kind === "download") {
+          if (this.#downloadDir === undefined) {
+            return { ok: false, stepIndex: index, message: `Interaction step ${index} download requires a configured download evidence directory.`, evidence: interactionEvidence };
+          }
+          await mkdir(this.#downloadDir, { recursive: true });
+          const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+          await locator.click();
+          const download = await downloadPromise;
+          const safeName = basename(download.suggestedFilename()).replace(/[^A-Za-z0-9._-]/g, "_") || `download-${Date.now()}`;
+          const path = join(this.#downloadDir, safeName);
+          await download.saveAs(path);
+          interactionEvidence.push(path);
+          emit("evidence_created", { stage: "interaction_step", step: index, kind: "download", ref: path });
         } else if (step.kind === "select") {
           const selectLocator = step.target.accessible_role
-            ? page.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], {
+            ? scope.getByRole(step.target.accessible_role as Parameters<typeof page.getByRole>[0], {
                 name: step.target.accessible_name,
               })
-            : page.getByRole("combobox", { name: step.target.accessible_name }).or(
-                page.getByLabel(step.target.accessible_name),
+            : scope.getByRole("combobox", { name: step.target.accessible_name }).or(
+                scope.getByLabel(step.target.accessible_name),
               );
           await selectLocator.selectOption(
             step.option_labels !== undefined && step.option_labels.length > 0
@@ -682,26 +888,53 @@ export class PlaywrightExecutionEngine implements ExecutionEngine {
           await locator.first().waitFor({ state: "visible", timeout });
         } else {
           let text = step.text ?? "";
+          const visuallySensitive = step.sensitive === true || isSensitiveAccessibleName(step.target.accessible_name);
           if (step.secret_ref !== undefined) {
             if (this.#secrets === undefined) {
-              return { ok: false, stepIndex: index, message: `Interaction step ${index} references secret_ref "${step.secret_ref}" but no SecretResolver is configured.` };
+              return { ok: false, stepIndex: index, message: `Interaction step ${index} references secret_ref "${step.secret_ref}" but no SecretResolver is configured.`, evidence: interactionEvidence };
             }
             const resolved = await this.#secrets.resolve(step.secret_ref, workspace);
             if (resolved === undefined) {
-              return { ok: false, stepIndex: index, message: `Interaction step ${index} secret_ref "${step.secret_ref}" did not resolve.` };
+              return { ok: false, stepIndex: index, message: `Interaction step ${index} secret_ref "${step.secret_ref}" did not resolve.`, evidence: interactionEvidence };
             }
             text = resolved;
+          }
+          if (step.secret_ref !== undefined || visuallySensitive) {
+            // Playwright action traces serialize fill arguments. There is no
+            // supported per-action value redactor, so retaining that trace
+            // would leak the secret even when pixels and DOM are masked.
+            // Stop and discard tracing before the sensitive side effect;
+            // screenshot/video remain visually protected and completeness
+            // reporting will truthfully flag the omitted trace.
+            await page.context().tracing.stop().catch(() => undefined);
+            interactionEvidence.push(`trace-omitted:sensitive-input:step-${index}`);
+            await locator.first().evaluate((element) => {
+              const htmlElement = element as unknown as {
+                tagName?: string;
+                type?: string;
+                style: { setProperty(name: string, value: string, priority?: string): void };
+              };
+              // CSS protects pixels; password mode also avoids exposing the
+              // value through ordinary rendered UI inspection.
+              if (htmlElement.tagName?.toLowerCase() === "input" && htmlElement.type !== "password") {
+                htmlElement.type = "password";
+              }
+              htmlElement.style.setProperty("color", "transparent", "important");
+              htmlElement.style.setProperty("caret-color", "transparent", "important");
+              htmlElement.style.setProperty("text-shadow", "none", "important");
+            });
+            emit("evidence_created", { stage: "interaction_step", step: index, kind: step.secret_ref !== undefined ? "secret_masked" : "pii_masked" });
           }
           await locator.fill(text);
         }
       } catch (error) {
-        return { ok: false, stepIndex: index, message: `Interaction step ${index} (${step.kind}) failed: ${(error as Error).message}` };
+        return { ok: false, stepIndex: index, message: `Interaction step ${index} (${step.kind}) failed: ${(error as Error).message}`, evidence: interactionEvidence };
       }
 
       // Never log the typed value — it may be a resolved secret.
       emit("evidence_created", { stage: "interaction_step", step: index, kind: step.kind });
     }
-    return { ok: true };
+    return { ok: true, page, evidence: interactionEvidence };
   }
 
   #cancelledResult(request: StartRequest, startedAt: Date): ExecutionEngineResult<"start"> {
@@ -803,4 +1036,13 @@ function nodeExists(
   const roleMatches = target.accessible_role === undefined || node.accessible_role === target.accessible_role;
   if (nameMatches && roleMatches) return true;
   return node.children.some((child) => nodeExists(child, target));
+}
+
+function isWithinRoot(root: string, candidate: string): boolean {
+  const child = relative(root, candidate);
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+}
+
+function isSensitiveAccessibleName(name: string): boolean {
+  return /password|passcode|secret|token|api[ _-]?key|email|e-mail|phone|mobile|card|cvv|cvc|ssn|tax[ _-]?id/i.test(name);
 }

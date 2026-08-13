@@ -8,7 +8,7 @@ import type {
 } from "../runtime/executor.js";
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
-import { isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
+import { createLaunchBrowser, headedFromInput, isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import type { InMemoryWorkspaceEnvironmentRegistry } from "../environments/workspace-environment-registry.js";
 
 export type UiSurfaceDiscoveryRuntimeExecutorDependencies = Readonly<{
@@ -80,11 +80,13 @@ export class UiSurfaceDiscoveryRuntimeExecutor implements AgentRunExecutor {
       browser = name;
     }
 
+    const headed = headedFromInput(input.start_request.input["headed"]);
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
       context: input.execution.workspace_context,
       url,
       ...(browser !== undefined ? { browser } : {}),
+      ...(headed !== undefined ? { headed } : {}),
       ...(input.start_request.input["include_screenshot"] === true ? { include_screenshot: true } : {}),
       ...(typeof input.start_request.input["max_elements"] === "number"
         ? { max_elements: input.start_request.input["max_elements"] }

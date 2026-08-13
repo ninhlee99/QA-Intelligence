@@ -197,7 +197,7 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
   }
 
   /**
-   * SPEC-108 §7.3 / SPEC-105 §9a: when `run_auto_qa` completes with draft
+   * SPEC-108 §7.3 / SPEC-105 §9a: when canonical `run_expert_qa` completes with draft
    * defects, retain avoidance hints under a *stable* causal key
    * (`avoid:<classification>:<test_ref>`), not unique draft ids — so the
    * same mistake recurring across runs can trip MistakeRecurrenceTracker.
@@ -208,7 +208,7 @@ export class AgentRuntimeToolRegistry implements McpToolRegistry {
     definition: AgentRuntimeToolDefinition,
     result: AgentRunResult,
   ): Promise<void> {
-    if (definition.name !== "run_auto_qa" || result.outcome !== "completed") return;
+    if (definition.name !== "run_expert_qa" || result.outcome !== "completed") return;
     const sessionMemory = this.#dependencies.sessionMemory;
     if (sessionMemory === undefined) return;
     const output = result.output;

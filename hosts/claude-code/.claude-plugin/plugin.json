@@ -1,17 +1,16 @@
 {
   "name": "qa-intelligence",
-  "version": "0.1.0-dev",
-  "description": "QA Intelligence Expert Tester (0.1.0-dev): :test and :dev Skills (env from URL) + MCP evidence, targeted retest by case/screen. See hosts/references/expert-tester-workflow.md.",
+  "version": "0.9.0",
+  "description": "Expert QA browser testing with governed evidence, reporting, regression and retest workflows.",
   "author": {
     "name": "QA Intelligence"
   },
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": ["/Users/ninh.le/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
+      "command": "qa-intelligence-mcp",
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-code-dev",
-        "QA_INTELLIGENCE_DEV_DOMAIN": "daijob6-companytools"
+        "QA_INTELLIGENCE_WORKSPACE_ID": "replace-with-project-id",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert"
       }
     }
   }

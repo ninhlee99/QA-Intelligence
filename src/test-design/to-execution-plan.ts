@@ -70,6 +70,13 @@ export function testCaseToExecutionPlan(
     if (
       step.action !== "type" &&
       step.action !== "click" &&
+      step.action !== "check" &&
+      step.action !== "uncheck" &&
+      step.action !== "press" &&
+      step.action !== "hover" &&
+      step.action !== "drag_to" &&
+      step.action !== "upload" &&
+      step.action !== "download" &&
       step.action !== "select" &&
       step.action !== "wait_for"
     ) {
@@ -86,12 +93,74 @@ export function testCaseToExecutionPlan(
       };
     }
     const accessibleRole = step.input?.["accessible_role"];
+    const frameAccessibleName = step.input?.["frame_accessible_name"];
     const target = typeof accessibleRole === "string" && accessibleRole.trim().length > 0
-      ? { accessible_name: accessibleName, accessible_role: accessibleRole }
-      : { accessible_name: accessibleName };
+      ? {
+          accessible_name: accessibleName,
+          accessible_role: accessibleRole,
+          ...(typeof frameAccessibleName === "string" && frameAccessibleName.trim().length > 0
+            ? { frame_accessible_name: frameAccessibleName.trim() }
+            : {}),
+        }
+      : {
+          accessible_name: accessibleName,
+          ...(typeof frameAccessibleName === "string" && frameAccessibleName.trim().length > 0
+            ? { frame_accessible_name: frameAccessibleName.trim() }
+            : {}),
+        };
 
     if (step.action === "click") {
-      steps.push({ kind: "click", target });
+      steps.push({
+        kind: "click",
+        target,
+        ...(step.input?.["switch_to_popup"] === true ? { switch_to_popup: true } : {}),
+      });
+      continue;
+    }
+    if (step.action === "check" || step.action === "uncheck") {
+      steps.push({ kind: step.action, target });
+      continue;
+    }
+    if (step.action === "hover") {
+      steps.push({ kind: "hover", target });
+      continue;
+    }
+    if (step.action === "upload") {
+      const artifactRefs = step.input?.["artifact_refs"];
+      if (!Array.isArray(artifactRefs) || artifactRefs.length === 0 || !artifactRefs.every((ref) => typeof ref === "string" && ref.trim().length > 0)) {
+        return { ok: false, failure: { code: "missing_step_target", message: `Test case "${testCase.id}" has an upload step with no valid artifact_refs.` } };
+      }
+      steps.push({ kind: "upload", target, artifact_refs: artifactRefs.map((ref) => String(ref).trim()) });
+      continue;
+    }
+    if (step.action === "download") {
+      steps.push({ kind: "download", target });
+      continue;
+    }
+    if (step.action === "drag_to") {
+      const destinationName = step.input?.["destination_accessible_name"];
+      if (typeof destinationName !== "string" || destinationName.trim().length === 0) {
+        return { ok: false, failure: { code: "missing_step_target", message: `Test case "${testCase.id}" has a drag_to step with no destination_accessible_name.` } };
+      }
+      const destinationRole = step.input?.["destination_accessible_role"];
+      const destinationFrame = step.input?.["destination_frame_accessible_name"];
+      steps.push({
+        kind: "drag_to",
+        target,
+        destination: {
+          accessible_name: destinationName.trim(),
+          ...(typeof destinationRole === "string" && destinationRole.trim().length > 0 ? { accessible_role: destinationRole.trim() } : {}),
+          ...(typeof destinationFrame === "string" && destinationFrame.trim().length > 0 ? { frame_accessible_name: destinationFrame.trim() } : {}),
+        },
+      });
+      continue;
+    }
+    if (step.action === "press") {
+      const key = step.input?.["key"];
+      if (typeof key !== "string" || key.trim().length === 0) {
+        return { ok: false, failure: { code: "missing_step_target", message: `Test case "${testCase.id}" has a press step with no key.` } };
+      }
+      steps.push({ kind: "press", target, key: key.trim() });
       continue;
     }
     if (step.action === "wait_for") {
@@ -146,7 +215,7 @@ export function testCaseToExecutionPlan(
       typeof generatedValue === "string"
         ? generatedValue
         : fieldValues?.get(accessibleName) ?? "";
-    steps.push({ kind: "type", target, text });
+    steps.push({ kind: "type", target, text, ...(step.input?.["sensitive"] === true ? { sensitive: true } : {}) });
   }
 
   const expectedUrl = assertion.expected_url_includes;

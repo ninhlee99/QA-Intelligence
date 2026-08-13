@@ -1,16 +1,23 @@
 {
   "name": "qa-intelligence",
-  "version": "0.1.0-dev",
-  "description": "QA Intelligence Expert Tester (0.1.0-dev): :test / :dev (env from URL) + MCP evidence + targeted retest. See hosts/references/expert-tester-workflow.md.",
-  "mcp": {
-    "servers": {
-      "qa-intelligence": {
-        "command": "node",
-        "args": ["../../../dist/src/mcp/dev-entrypoint.js"],
-        "env": {
-          "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-codex-dev"
-        }
-      }
-    }
+  "version": "0.9.0",
+  "description": "Expert QA browser testing with governed evidence, reporting, regression and retest workflows.",
+  "author": { "name": "QA Intelligence" },
+  "license": "MIT",
+  "keywords": ["qa", "testing", "playwright", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "QA Intelligence",
+    "shortDescription": "Expert browser QA for coding agents",
+    "longDescription": "Design and execute traceable browser tests with screenshots, video, defects and release-quality evidence.",
+    "developerName": "QA Intelligence",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Test this feature in a real browser and return evidence.",
+      "Create traceable test cases for this change.",
+      "Retest the failed cases and assess release readiness."
+    ]
   }
 }

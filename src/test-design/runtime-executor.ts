@@ -11,6 +11,7 @@ import type {
 } from "../runtime/executor.js";
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
+import { writeTestcaseDesignArtifact } from "./testcase-design-artifact.js";
 
 /**
  * Composes two already-governed Skills — Discovery (Phase 1) then Test
@@ -25,6 +26,7 @@ import type { AgentRunFailure } from "../runtime/public.js";
  * (dogfood BUG-3).
  */
 export type GenerateTestCasesRuntimeExecutorDependencies = Readonly<{
+  clock: { now(): Date };
   requirements: RequirementResolver;
   discovery: DiscoverUiSurface;
   generator: GenerateTestCases;
@@ -32,6 +34,8 @@ export type GenerateTestCasesRuntimeExecutorDependencies = Readonly<{
   expected_skill: VersionReference;
   /** Required when callers pass login_* fields. */
   discoverAfterLogin?: DiscoverAfterLogin;
+  /** Root for QA→QC design handoff artifacts. Defaults to process.cwd(). */
+  artifactBaseDir?: string;
 }>;
 
 export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
@@ -166,11 +170,29 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
       ...generated.value.findings.flatMap((finding) => finding.evidence),
       ...(loginFields !== undefined ? [`login-url:${loginFields.login_url}`] : []),
     ]);
+    const artifact = await writeTestcaseDesignArtifact({
+      output_dir: joinArtifactDir(this.#dependencies.artifactBaseDir ?? process.cwd(), input.execution.operation_id),
+      workspace_id: input.reference.workspace_id,
+      requirement_ref: requirementRef,
+      generated_at: this.#dependencies.clock.now().toISOString(),
+      test_cases: generated.value.test_cases,
+      generated_assertions: generated.value.generated_assertions,
+      findings: generated.value.findings,
+    });
+    if (!artifact.ok) {
+      return { ok: false, failure: failure("orchestration", "unavailable", artifact.message, true) };
+    }
+    const output: JsonObject = {
+      ...generationResultJson(generated.value.test_cases, generated.value.findings, generated.value.generated_assertions, requirementRef, input.reference.workspace_id),
+      testcase_design_path: artifact.path,
+      testcase_design_sha256: artifact.sha256,
+    };
+    evidence.push(`testcase-design:${artifact.path}`);
 
     return {
       ok: true,
       value: {
-        output: generationResultJson(generated.value.test_cases, generated.value.findings, generated.value.generated_assertions, requirementRef, input.reference.workspace_id),
+        output,
         output_validated: true,
         satisfied_evidence_requirements: [],
         resolved_versions: {
@@ -191,6 +213,10 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
       },
     };
   }
+}
+
+function joinArtifactDir(root: string, operationId: string): string {
+  return `${root}/.qa-testcases/${operationId.replace(/[^A-Za-z0-9._-]/g, "_")}`;
 }
 
 function validateConfiguration(

@@ -480,8 +480,3 @@ function readMdSnippets(path: string): Readonly<{ raw: string; hints: string[] }
     return { raw: "", hints: [] };
   }
 }
-
-export function readJsonObjectArray(value: JsonValue | undefined): readonly JsonObject[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((e): e is JsonObject => typeof e === "object" && e !== null && !Array.isArray(e));
-}

@@ -1,6 +1,6 @@
 # Host Integration Packages
 
-MCP connection configs and Skills for Claude Code, Cursor, and Codex.
+MCP connection configs and Skills for Claude Code, Cursor, Codex, and Antigravity.
 These packages carry **no QA business logic** — they only connect a host
 to the QA Intelligence MCP server (ADR-016 §2).
 
@@ -10,22 +10,23 @@ Host  →  Host Integration Package  →  QA Intelligence MCP  →  Agent Runtim
 
 **Scope:** test + report only. No SNS / Slack / email notify integrations.
 
-> **Hướng dẫn cài đặt & sử dụng chi tiết (tiếng Việt):**  
+> **Detailed install & usage guide:**  
 > [`docs/GUIDE.md`](../docs/GUIDE.md)
 
-## Status: `0.1.0-dev`
+## Status: `0.9.0` release candidate
 
-Development-only server. Auth is a fixture verifier (stdio) or self-minted
-OIDC (remote) — not a real IdP. Knowledge Store is in-memory seed.
-Production blocked on GOV-012 G2–G6.
+Production-local stdio is supported with the coding-agent host as its trust
+boundary. Remote HTTP remains a development demo and must not be deployed for
+team use until external identity and operational gates pass.
 
 ---
 
 ## Install (one-time, per host)
 
-**Prerequisites:** `npm run build` from repo root first. Prefer Node 24 + `npx playwright install chromium`.
+**Prerequisites:** Node 24 and Chromium. From the repository root run
+`npm install`, `npx playwright install chromium`, then `npm install --global .`.
 
-Chi tiết từng bước (Cursor / Claude Code / Codex / remote): xem **[docs/GUIDE.md §5–§6](../docs/GUIDE.md)**.
+Step-by-step detail (Cursor / Claude Code / Codex / remote): see **[docs/GUIDE.md §5–§6](../docs/GUIDE.md)**.
 
 ### Claude Code
 
@@ -43,9 +44,8 @@ Or add to `.mcp.json` / `~/.claude.json`:
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
-      "env": { "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-dev" }
+      "command": "qa-intelligence-mcp",
+      "env": { "QA_INTELLIGENCE_WORKSPACE_ID": "my-project" }
     }
   }
 }
@@ -53,16 +53,17 @@ Or add to `.mcp.json` / `~/.claude.json`:
 
 ### Cursor
 
-Copy `hosts/cursor/mcp.json.example` into Cursor MCP settings.
-Replace the placeholder with an **absolute** path (Cursor does not accept relative paths):
+Copy `hosts/cursor/mcp.json.example` into Cursor MCP settings:
 
 ```json
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": ["/absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"],
-      "env": { "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev" }
+      "command": "qa-intelligence-mcp",
+      "env": {
+        "QA_INTELLIGENCE_WORKSPACE_ID": "my-project",
+        "QA_INTELLIGENCE_HEADED": "1"
+      }
     }
   }
 }
@@ -77,23 +78,42 @@ Install plugin from `hosts/codex/` or add to `~/.codex/config.yaml`:
 ```yaml
 mcpServers:
   qa-intelligence:
-    command: node
-    args:
-      - /absolute/path/to/QA-Intelligence/dist/src/mcp/dev-entrypoint.js
+    command: qa-intelligence-mcp
     env:
-      QA_INTELLIGENCE_DEV_WORKSPACE_ID: workspace-codex-dev
+      QA_INTELLIGENCE_WORKSPACE_ID: my-project
 ```
 
-### Remote transport (shared/team)
+### Antigravity
+
+Copy `hosts/antigravity/mcp_config.json.example` to the workspace
+`.agents/mcp_config.json` and choose a unique workspace id. The skill format is
+open-standard; import the required folders from `hosts/codex/skills/` rather
+than maintaining another fork.
+
+### Remote transports
+
+The remote server supports both MCP transport forms:
+
+- Streamable HTTP: `POST /mcp` (preferred for new clients).
+- Legacy SSE compatibility: `GET /sse` plus the advertised authenticated
+  `POST /messages?sessionId=...` endpoint.
+
+Every request requires a bearer token. SSE sessions are bound to the
+authenticated workspace and actor. For Internet or team deployment, expose
+these routes only through reviewed HTTPS termination; direct non-loopback HTTP
+binding is refused by default.
+
+### Remote transport demo — not production
 
 Start the HTTP server:
 ```sh
-node dist/src/mcp/remote-dev-entrypoint.js
+npm run mcp:remote:demo
 # Prints a signed demo bearer token to stderr
 # Listens on http://127.0.0.1:8787/mcp
 ```
 
-Then connect with the printed token — see `hosts/cursor/mcp-remote.json.example`.
+The self-issued token demonstrates transport interoperability only. Do not use
+it for shared or production environments.
 
 ---
 
@@ -104,6 +124,12 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 
 | Trigger | Skill | Who |
 |---------|-------|-----|
+| `$testcase` | `testcase` | Test designer — executable cases only, no run |
+| `$qa` | `qa` | QA — requirement, risk, strategy, coverage design |
+| `$qc` | `qc` | QC — real-browser execution, evidence, verdict |
+| `$exploratory` | `exploratory` | Bounded exploratory charter + live observations |
+| `$retest` | `retest` | Targeted regression / defect retest |
+| `$defect-triage` | `defect-triage` | Evidence-backed defect drafting and review |
 | `/qa-intelligence:test` | `test` | Tester — URL + spec |
 | `/qa-intelligence:dev` | `dev` | Dev — URL + source AC |
 
@@ -113,13 +139,16 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 
 ## MCP Tool Catalog
 
+Machine-check the scoped 90% QA/QC workload claim with `npm run benchmark:qa-qc`.
+The generated JSON distinguishes automated, assisted, and permanently
+human-only responsibilities; a missing critical proof fails the command.
+
 ### Core pipeline
 
 | Tool | Purpose |
 |------|---------|
-| `run_auto_qa` | Full pipeline: discover → a11y smoke → generate variants → execute → HTML report + `coverage_gaps` + `smart_retest_suggestion` + release gate + Expert judgment/hardening |
 | `run_regression_suite` | Re-run a saved suite; subset by `case_ids` or `related_defect_ids` |
-| `run_expert_qa` | **Preferred Expert entry:** domain pack + `run_auto_qa` (suite, E2 hooks, flake taxonomy, learning) |
+| `run_expert_qa` | **Only public full-pipeline entry:** optional domain bootstrap + discover/design/execute/evidence/report + suite, E2 hooks, flake taxonomy, and learning |
 | `validate_expert_claim` | Hard refuse pass/ready/ship wording when `claim_pass_allowed` is false |
 | `bootstrap_domain_pack` | Create/update product `domain-knowledge/` from templates + request |
 | `register_regression_suite` / `list_regression_suites` | Persist + list test suites (manual; usually skipped when auto suite_id present) |
@@ -181,7 +210,7 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 | `list_workspace_environments` | List registered environments |
 | `register_workspace_secret` | Register secret (value never listed back) |
 | `list_workspace_secrets` | List secret refs/metadata only |
-| `register_requirement` / `list_requirements` | Ingest real requirements for generate/run_auto_qa |
+| `register_requirement` / `list_requirements` | Ingest real requirements for design and expert execution |
 | `register_test_dataset` / `list_test_datasets` / `resolve_test_dataset_fields` | Synthetic field samples + resolve fills |
 | `register_knowledge_record` | Durable Knowledge seed under `.qa-knowledge/` |
 | `create_automation_asset` | AutomationAsset stub → `.qa-automation-assets/` |
@@ -238,7 +267,7 @@ Domain pack: [`references/domain-pack.md`](references/domain-pack.md) · templat
 
 ## Expert output fields (read in this order)
 
-After `run_expert_qa` / `run_auto_qa`, hosts should surface:
+After `run_expert_qa`, hosts should surface:
 
 1. `release_recommendation`
 2. `expert_checklist` (`claim_pass_allowed`, `blockers`)

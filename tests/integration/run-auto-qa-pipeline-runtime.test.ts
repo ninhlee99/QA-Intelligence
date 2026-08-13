@@ -156,6 +156,8 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
       acceptance_criteria: [
         { id: "AC-1", statement: 'The "Sign in" action authenticates a user who entered valid Username and Password.', expected_text: "Welcome" },
       ],
+      include_report_html: true,
+      include_video: true,
     },
     allowed_skills: [SKILL],
     allowed_tools: [{ id: "playwright-execution-engine", version: "0.1.0" }, { id: "playwright-dom-pipeline", version: "0.1.0" }],
@@ -180,6 +182,7 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.equal(executed.ok, true, JSON.stringify(executed));
   if (!executed.ok) return;
   assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
+  assert.equal(executed.value.cleanup_status, "completed");
 
   const output = executed.value.output as {
     test_cases: Array<{ test_case_id: string; variant: string; outcome: string; skip_reason: string | null; evidence: string[] }>;
@@ -190,6 +193,11 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
     variant_coverage: unknown[];
     report_html: string;
     report_path: string | null;
+    evidence_manifest_path: string;
+    testcase_results_json_path: string;
+    testcase_results_csv_path: string;
+    evidence_capture_status: { status: string; video_policy: string; expected_video_count: number; captured_video_count: number; warnings: string[] };
+    report_html_omitted?: boolean;
   } | null;
   assert.ok(output, "expected a QaRunReport output");
 
@@ -218,6 +226,11 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   // the executor is not fabricating a "passed" outcome either.
   const positive = output!.test_cases.find((testCase) => testCase.variant === "positive")!;
   assert.equal(positive.outcome, "failed", JSON.stringify(positive));
+  for (const testCase of output!.test_cases) {
+    const videoPath = testCase.evidence.find((e: string) => e.endsWith(".webm"));
+    assert.ok(videoPath, `${testCase.test_case_id} should carry opted-in video evidence`);
+    assert.ok(existsSync(videoPath!), `video evidence should exist: ${videoPath}`);
+  }
 
   // Phase 4 Senior-QA surfaces: failed positive → draft defect + non-green gate.
   assert.ok(output!.draft_defects.length >= 1);
@@ -229,7 +242,15 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.ok(output!.report_html.includes("QA run report"));
   assert.ok(output!.report_html.includes("Release gate:"));
   assert.ok(output!.report_html.includes("19"), "rendered HTML should surface the generated count");
+  assert.equal(output!.report_html_omitted, false);
   assert.equal(output!.report_path, null, "no output_path was supplied");
+  assert.ok(existsSync(output!.evidence_manifest_path), "full run should write a compact evidence integrity manifest");
+  assert.ok(existsSync(output!.testcase_results_json_path), "full run should return a reusable testcase JSON artifact");
+  assert.ok(existsSync(output!.testcase_results_csv_path), "full run should return a tester-friendly testcase CSV artifact");
+  assert.equal(output!.evidence_capture_status.status, "partial", "a failed case that entered a password must omit its unsafe Playwright trace");
+  assert.ok(output!.evidence_capture_status.warnings.some((warning) => warning.includes("trace evidence")));
+  assert.equal(output!.evidence_capture_status.video_policy, "all");
+  assert.equal(output!.evidence_capture_status.expected_video_count, output!.evidence_capture_status.captured_video_count);
 
   // Decision 1 (Option A): even with no output_path (JSON-only mode), a
   // real screenshot file is written for the one failing (positive-variant)
@@ -247,6 +268,7 @@ test("run_auto_qa discovers, generates, executes, and reports on a real page in 
   assert.ok(output!.report_html.includes(`file://${screenshotPath}`), "the inline report_html should embed the same screenshot as a file:// <img>");
 
   await rm(join(process.cwd(), ".qa-screenshots"), { recursive: true, force: true });
+  await rm(join(process.cwd(), ".qa-videos"), { recursive: true, force: true });
 });
 
 test("run_auto_qa writes the HTML report to output_path when supplied", async () => {
@@ -321,11 +343,15 @@ test("run_auto_qa writes the HTML report to output_path when supplied", async ()
 
     const output = executed.value.output as {
       report_path: string | null;
+      report_html?: string;
+      report_html_omitted?: boolean;
       release_recommendation?: string;
       draft_defects?: unknown[];
       test_cases: Array<{ variant: string; evidence: string[]; outcome: string }>;
     } | null;
     assert.equal(output!.report_path, outputPath);
+    assert.equal(output!.report_html, undefined, "HTML stays on disk — omit from MCP JSON by default");
+    assert.equal(output!.report_html_omitted, true);
     assert.ok(typeof output!.release_recommendation === "string");
     assert.ok(Array.isArray(output!.draft_defects));
     // Fixture positive case intentionally fails (wrong credentials path) —

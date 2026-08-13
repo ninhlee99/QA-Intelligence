@@ -1,0 +1,4 @@
+interface:
+  display_name: "Regression Retest"
+  short_description: "Select and run targeted regression coverage"
+  default_prompt: "Use $retest to select and execute the smallest safe regression scope for this change."

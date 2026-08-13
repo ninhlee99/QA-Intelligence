@@ -13,7 +13,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { JsonObject, JsonValue, VersionReference } from "../requirement-review/public.js";
 import type { DiscoverUiSurface } from "../discovery/discover-ui-surface.js";
 import type { DiscoverAfterLogin } from "../discovery/discover-after-login.js";
-import { createLaunchBrowser, isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
+import { createLaunchBrowser, headedFromInput, isBrowserName, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { SessionMemory } from "../memory/session-memory.js";
@@ -22,6 +22,10 @@ import { RunAutoQaPipeline, type QaPipelineDiscover } from "./run-auto-qa-pipeli
 import { expertChecklistFromQaRunReport, type DomainPackGateInput, type ExpertChecklistFromReportOptions } from "../reporting/expert-checklist.js";
 import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveFlakeTaxonomy, flakeTaxonomyJson } from "../reporting/flake-taxonomy.js";
+import { writeEvidenceManifest } from "../reporting/evidence-manifest.js";
+import { exportTestcaseResults } from "../reporting/testcase-result-export.js";
+import { assessEvidenceCaptureStatus } from "../reporting/evidence-capture-status.js";
+import { resolveStandardEvidenceProfile } from "../reporting/standard-evidence-profile.js";
 import {
   buildExpertObservations,
   detectExpertRiskSignals,
@@ -117,13 +121,13 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
 
     const url = input.start_request.input["url"];
     if (typeof url !== "string" || url.trim().length === 0) {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "run_auto_qa requires an exact url input (the login target when login fields are supplied)." ) };
+      return { ok: false, failure: failure("orchestration", "invalid_request", "run_expert_qa requires an exact url input (the login target when login fields are supplied)." ) };
     }
     const requirementRef = readOptionalString(input.start_request.input["requirement_ref"]) ?? `auto-qa:${url}`;
     const requirementTitle = readOptionalString(input.start_request.input["requirement_title"]) ?? url;
     const acceptanceCriteria = readAcceptanceCriteriaArray(input.start_request.input["acceptance_criteria"]);
     if (acceptanceCriteria === undefined || acceptanceCriteria.length === 0) {
-      return { ok: false, failure: failure("orchestration", "invalid_request", "run_auto_qa requires a non-empty acceptance_criteria array — this executor never invents what a page should do (SPEC-207 §6).") };
+      return { ok: false, failure: failure("orchestration", "invalid_request", "run_expert_qa requires a non-empty acceptance_criteria array — this executor never invents what a page should do (SPEC-207 §6).") };
     }
     const requestedOutputPath = readOptionalString(input.start_request.input["output_path"]);
     let outputPath: string | undefined;
@@ -196,12 +200,20 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       }
       browser = name;
     }
+    const headed = headedFromInput(input.start_request.input["headed"]);
     const launchBrowser =
-      this.#dependencies.launchBrowser !== undefined
+      this.#dependencies.launchBrowser !== undefined && headed === undefined
         ? this.#dependencies.launchBrowser
-        : createLaunchBrowser(browser);
+        : createLaunchBrowser(browser, headed !== undefined ? { headed } : undefined);
 
-    const includeScreenshot = input.start_request.input["include_screenshot"] === true;
+    const evidenceProfile = resolveStandardEvidenceProfile({
+      screenshot_policy: input.start_request.input["screenshot_policy"],
+      video_policy: input.start_request.input["video_policy"],
+      include_screenshot: input.start_request.input["include_screenshot"],
+      include_video: input.start_request.input["include_video"],
+    });
+    if ("ok" in evidenceProfile) return { ok: false, failure: failure("orchestration", "invalid_request", evidenceProfile.message) };
+    const includeScreenshot = evidenceProfile.screenshot_policy === "all";
     const maxElements =
       typeof input.start_request.input["max_elements"] === "number"
         ? input.start_request.input["max_elements"]
@@ -239,6 +251,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
               : {}),
             ...(includeScreenshot ? { include_screenshot: true, screenshot_dir: screenshotDir } : {}),
             ...(maxElements !== undefined ? { max_elements: maxElements } : {}),
+            ...(headed !== undefined ? { headed } : {}),
           })
       : (operationId, context) =>
           this.#dependencies.discoverUiSurface.discover({
@@ -248,16 +261,23 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
             browser,
             ...(includeScreenshot ? { include_screenshot: true, screenshot_dir: screenshotDir } : {}),
             ...(maxElements !== undefined ? { max_elements: maxElements } : {}),
+            ...(headed !== undefined ? { headed } : {}),
           });
 
     const traceDir =
       outputPath !== undefined
         ? join(dirname(outputPath), ".qa-traces", input.execution.operation_id)
         : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-traces", input.execution.operation_id);
-    let screenshotDirReady = true;
+    const videoDir =
+      outputPath !== undefined
+        ? join(dirname(outputPath), ".qa-videos", input.execution.operation_id)
+        : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-videos", input.execution.operation_id);
+    let screenshotDirReady = evidenceProfile.screenshot_policy !== "off";
     let traceDirReady = true;
+    const videoPolicy = evidenceProfile.video_policy;
+    let videoDirReady = videoPolicy !== "off";
     try {
-      await mkdir(screenshotDir, { recursive: true });
+      if (screenshotDirReady) await mkdir(screenshotDir, { recursive: true });
     } catch {
       // Best-effort: screenshot capture is optional evidence, never a
       // reason to fail the whole run_auto_qa call.
@@ -268,6 +288,13 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     } catch {
       traceDirReady = false;
     }
+    if (videoDirReady) {
+      try {
+        await mkdir(videoDir, { recursive: true });
+      } catch {
+        videoDirReady = false;
+      }
+    }
 
     const pipeline = new RunAutoQaPipeline({
       clock: this.#dependencies.clock,
@@ -276,8 +303,11 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       generator: this.#dependencies.generator,
       launchBrowser,
       ...(screenshotDirReady ? { screenshotDir } : {}),
-      ...(input.start_request.input["include_screenshot"] === true ? { alwaysScreenshot: true } : {}),
+      ...(evidenceProfile.screenshot_policy === "all" ? { alwaysScreenshot: true } : {}),
       ...(traceDirReady ? { traceDir } : {}),
+      ...(videoDirReady ? { videoDir } : {}),
+      videoPolicy,
+      semanticRecovery: input.start_request.input["semantic_recovery"] === true ? "unique_name" : "off",
     });
 
     const result = await pipeline.run({
@@ -780,6 +810,31 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       session_delta_message: hardening.session_delta.message,
     });
 
+    const includeReportHtml = input.start_request.input["include_report_html"] === true;
+    const evidenceCaptureStatus = assessEvidenceCaptureStatus({ screenshot_policy: evidenceProfile.screenshot_policy, video_policy: videoPolicy, test_cases: report.test_cases });
+    const evidenceManifestDir = outputPath !== undefined
+      ? join(dirname(outputPath), ".qa-evidence", input.execution.operation_id)
+      : join(this.#dependencies.outputBaseDir ?? process.cwd(), ".qa-evidence", input.execution.operation_id);
+    await mkdir(evidenceManifestDir, { recursive: true });
+    const evidenceManifest = await writeEvidenceManifest({
+      manifest_path: join(evidenceManifestDir, "manifest.json"),
+      run_id: input.reference.run_id,
+      generated_at: report.generated_at,
+      test_cases: report.test_cases,
+    });
+    if (!evidenceManifest.ok) {
+      return { ok: false, failure: failure("infrastructure", "infrastructure_failure", evidenceManifest.message, true) };
+    }
+    const testcaseExport = await exportTestcaseResults({
+      output_dir: evidenceManifestDir,
+      run_id: input.reference.run_id,
+      target_url: report.target_url,
+      generated_at: report.generated_at,
+      test_cases: report.test_cases,
+    });
+    if (!testcaseExport.ok) {
+      return { ok: false, failure: failure("infrastructure", "infrastructure_failure", testcaseExport.message, true) };
+    }
     const reportJson = qaRunReportJson(
       report,
       html,
@@ -790,12 +845,18 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       gaps,
       retest,
       expertChecklist,
+      includeReportHtml,
     );
     return {
       ok: true,
       value: {
         output: {
           ...reportJson,
+          evidence_manifest_path: evidenceManifest.manifest_path,
+          evidence_manifest_warnings: [...evidenceManifest.warnings],
+          evidence_capture_status: evidenceCaptureStatus,
+          testcase_results_json_path: testcaseExport.json_path,
+          testcase_results_csv_path: testcaseExport.csv_path,
           expert_extensions: hooks.extensions,
           expert_observations: expertObservations,
           expert_session_report: expertSessionReportJson(sessionReport),
@@ -872,7 +933,7 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
         policy_events: [],
         usage: { steps: 3, duration_seconds: 0, tool_calls: report.test_cases.length + 1, retries: 0 },
         evidence: unique(evidence),
-        cleanup_status: "not_required",
+        cleanup_status: result.value.cleanup_status === "partial" ? "incomplete" : result.value.cleanup_status,
         knowledge_candidates: [],
       },
     };
@@ -970,6 +1031,7 @@ function qaRunReportJson(
   gaps: readonly JsonObject[],
   retest: JsonObject,
   expertChecklist: JsonObject,
+  includeReportHtml: boolean,
 ): JsonObject {
   const suitePresent =
     checklistOptions?.suiteIdPresent === true ||
@@ -1058,7 +1120,9 @@ function qaRunReportJson(
     auto_registered_suite: autoSuite ?? null,
     flake_taxonomy: flakeTaxonomyJson(flakeTaxonomy),
     expert_checklist: expertChecklist,
-    report_html: html,
+    ...(includeReportHtml ? { report_html: html } : {}),
+    report_html_omitted: !includeReportHtml,
+    report_html_bytes: Buffer.byteLength(html, "utf8"),
     report_path: writtenPath ?? null,
   };
 }
