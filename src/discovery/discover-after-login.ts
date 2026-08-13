@@ -62,6 +62,8 @@ type Dependencies = Readonly<{
   clock: Clock;
   authorizer: WorkspaceAuthorizer;
   launchBrowser?: () => Promise<Browser>;
+  /** Persistent state root for the default screenshot directory. Forwarded to the inner `DiscoverUiSurface`. */
+  screenshotBaseDir?: string;
 }>;
 
 /** Deep module: one `discover()` call hides the login sequence and the post-login capture behind a single operation. */
@@ -75,7 +77,12 @@ export class DiscoverAfterLogin {
     this.#clock = dependencies.clock;
     this.#authorizer = dependencies.authorizer;
     this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
-    this.#inner = new DiscoverUiSurface({ clock: dependencies.clock, authorizer: dependencies.authorizer, ...(dependencies.launchBrowser !== undefined ? { launchBrowser: dependencies.launchBrowser } : {}) });
+    this.#inner = new DiscoverUiSurface({
+      clock: dependencies.clock,
+      authorizer: dependencies.authorizer,
+      ...(dependencies.launchBrowser !== undefined ? { launchBrowser: dependencies.launchBrowser } : {}),
+      ...(dependencies.screenshotBaseDir !== undefined ? { screenshotBaseDir: dependencies.screenshotBaseDir } : {}),
+    });
   }
 
   async discover(request: DiscoverAfterLoginRequest): Promise<SemanticUiDiscoveryResult> {

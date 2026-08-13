@@ -500,14 +500,14 @@ export function buildDevFixture(options: {
     clock,
     provider_ref: "playwright-execution-engine@0.1.0",
   });
-  const uiDiscoverySkill = new DiscoverUiSurface({ clock, authorizer });
+  const uiDiscoverySkill = new DiscoverUiSurface({ clock, authorizer, screenshotBaseDir: persistBaseDir });
   const uiWorkflowSkill = new DiscoverUiWorkflow({ clock, authorizer, discoverUiSurface: uiDiscoverySkill });
   const regressionSuites = new FileBackedRegressionSuiteRegistry(
     clock,
     join(persistBaseDir, ".qa-regression-suites"),
   );
 
-  const discoverAfterLoginSkill = new DiscoverAfterLogin({ clock, authorizer });
+  const discoverAfterLoginSkill = new DiscoverAfterLogin({ clock, authorizer, screenshotBaseDir: persistBaseDir });
   const requirementResolver = new InMemoryRequirementResolver(
     workspaceId,
     [seedRequirement(workspaceId), seedLoginRequirement(workspaceId)],
@@ -1315,6 +1315,7 @@ export function buildDevFixture(options: {
       expected_skill: SURFACE_BASELINE_REGISTER_SKILL,
       mode: "register",
       clock,
+      rootDir: join(persistBaseDir, ".qa-surface-baselines"),
     }),
   );
   executorMap.set(
@@ -1324,6 +1325,7 @@ export function buildDevFixture(options: {
       expected_skill: SURFACE_BASELINE_COMPARE_SKILL,
       mode: "compare",
       clock,
+      rootDir: join(persistBaseDir, ".qa-surface-baselines"),
     }),
   );
   executorMap.set(

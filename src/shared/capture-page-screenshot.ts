@@ -21,6 +21,7 @@ export async function capturePageScreenshot(
   }
 }
 
-export function defaultScreenshotDir(operationId: string): string {
-  return join(process.cwd(), ".qa-screenshots", operationId);
+/** `baseDir` should come from the caller's persistent state root, never `process.cwd()` — screenshots must not land inside the product repo being tested. */
+export function defaultScreenshotDir(operationId: string, baseDir: string): string {
+  return join(baseDir, ".qa-screenshots", operationId);
 }
