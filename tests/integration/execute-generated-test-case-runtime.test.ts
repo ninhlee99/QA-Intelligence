@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -9,6 +12,7 @@ import {
 import { DiscoverUiSurface } from "../../src/discovery/discover-ui-surface.js";
 import { GenerateTestCases } from "../../src/test-design/generate-test-cases.js";
 import { ExecuteGeneratedTestCaseRuntimeExecutor } from "../../src/test-design/execute-generated-test-case-runtime-executor.js";
+import { writeTestcaseDesignArtifact } from "../../src/test-design/testcase-design-artifact.js";
 import type { WorkspaceContext } from "../../src/requirement-review/public.js";
 import { CompositeAgentRunExecutor } from "../../src/runtime/composite-executor.js";
 import type { AgentRunExecutor } from "../../src/runtime/executor.js";
@@ -124,6 +128,18 @@ test("executes a freshly generated TestCase end to end, filling real credentials
   assert.ok(positive, "expected a positive test case");
   const positiveAssertion = generated.value.generated_assertions.find((assertion) => assertion.test_case_id === positive!.id);
   assert.ok(positiveAssertion, "expected a generated assertion for the positive case");
+  const artifactRoot = await mkdtemp(join(tmpdir(), "qa-qc-handoff-"));
+  const artifact = await writeTestcaseDesignArtifact({
+    output_dir: join(artifactRoot, ".qa-testcases", "design-1"),
+    workspace_id: WORKSPACE_ID,
+    requirement_ref: "REQ-E2E-001@1.0.0",
+    generated_at: NOW,
+    test_cases: generated.value.test_cases,
+    generated_assertions: generated.value.generated_assertions,
+    findings: generated.value.findings,
+  });
+  assert.equal(artifact.ok, true, JSON.stringify(artifact));
+  if (!artifact.ok) return;
 
   // Step 2: execute the exact generated TestCase through the runtime,
   // supplying real credentials the generator never invented.
@@ -131,7 +147,7 @@ test("executes a freshly generated TestCase end to end, filling real credentials
     new Map([
       [
         AGENT.id,
-        new ExecuteGeneratedTestCaseRuntimeExecutor({ clock, authorizer, expected_agent: AGENT, expected_skill: SKILL }),
+        new ExecuteGeneratedTestCaseRuntimeExecutor({ clock, authorizer, expected_agent: AGENT, expected_skill: SKILL, testcaseBaseDir: artifactRoot, screenshotBaseDir: artifactRoot }),
       ],
     ]),
   );
@@ -147,8 +163,8 @@ test("executes a freshly generated TestCase end to end, filling real credentials
     purpose: "Execute a freshly generated TestCase with real credentials.",
     consequence_class: "reversible",
     input: {
-      test_case: JSON.parse(JSON.stringify(positive)),
-      generated_assertion: JSON.parse(JSON.stringify(positiveAssertion)),
+      testcase_file: artifact.path,
+      test_case_id: positive!.id,
       field_values: { Username: "real-user", Password: "real-pass" },
     },
     allowed_skills: [SKILL],
@@ -175,7 +191,12 @@ test("executes a freshly generated TestCase end to end, filling real credentials
   if (!executed.ok) return;
   assert.equal(executed.value.outcome, "completed", JSON.stringify(executed.value, null, 2));
 
-  const output = executed.value.output as { outcome: string } | null;
+  const output = executed.value.output as { outcome: string; evidence: string[]; evidence_capture_status: { screenshot_policy: string; video_policy: string; status: string } } | null;
   assert.ok(output, "expected an execution outcome output");
   assert.equal(output!.outcome, "passed", `expected the filled-in real credentials to pass: ${JSON.stringify(executed.value, null, 2)}`);
+  assert.equal(output!.evidence.some((ref) => ref.endsWith(".png")), true, "standard MCP execution should automatically return pass screenshot evidence");
+  assert.equal(output!.evidence.some((ref) => ref.endsWith(".webm")), false, "failure-only default should avoid storing video for a passing testcase");
+  assert.deepEqual({ screenshot_policy: output!.evidence_capture_status.screenshot_policy, video_policy: output!.evidence_capture_status.video_policy, status: output!.evidence_capture_status.status }, { screenshot_policy: "all", video_policy: "failure_only", status: "complete" });
+  assert.equal(output!.evidence.some((ref) => ref.startsWith("testcase-design-sha256:")), true, "QC result should retain the exact QA artifact digest");
+  await rm(artifactRoot, { recursive: true, force: true });
 });

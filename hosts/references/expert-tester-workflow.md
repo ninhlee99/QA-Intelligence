@@ -114,9 +114,9 @@ Output field: `Domain pack: created | loaded | updated (<path>); risks: …`
 
 | Signal | MUST |
 |--------|------|
-| ≥2 roles matter | Prefer `run_auto_qa` with `role_b` (auto role compare in `expert_extensions`) **or** `discover_and_compare_role_ui_surfaces` — authz gaps in G6 |
-| OpenAPI / HTTP API in scope | Prefer `run_auto_qa` with `openapi`/`openapi_path` + `include_authz_negatives: true` — capped subset **executes in same Expert pass** (`execute_extension_cases` default true; optional `api_base_url`) |
-| Multi-page journey | Prefer `run_auto_qa` with `include_workflow_journeys: true` — capped journey subset executes same pass |
+| ≥2 roles matter | Prefer `run_expert_qa` with `role_b` (auto role compare in `expert_extensions`) **or** `discover_and_compare_role_ui_surfaces` — authz gaps in G6 |
+| OpenAPI / HTTP API in scope | Prefer `run_expert_qa` with `openapi`/`openapi_path` + `include_authz_negatives: true` — capped subset **executes in same Expert pass** (`execute_extension_cases` default true; optional `api_base_url`) |
+| Multi-page journey | Prefer `run_expert_qa` with `include_workflow_journeys: true` — capped journey subset executes same pass |
 | AC has submit→API | Prefer `expected_network` on AC / assertion |
 | UI layout regression concern | `compare_ui_baseline` and/or `compare_ui_surface_to_baseline` |
 | Security-sensitive surface | Consider `run_depth_smokes`; never claim pen-test |
@@ -137,6 +137,13 @@ Skip only with explicit reason in G6.
 MCP uses a **real browser** (Playwright). Failures that look like “tool won’t click”
 are almost always **AC binding**, not headless vs headed.
 
+**Token:** when using Strategy A (`run_expert_qa`), **do not** call
+`discover_ui_surface*` first — the pipeline rediscovers. Discover-first only when
+AC has no field/action names yet and you must rewrite before execute.
+
+Set `headed: true` (or MCP env `QA_INTELLIGENCE_HEADED=1`) to open a visible window.
+Default is headless (CI-safe).
+
 Two layers:
 
 1. **Discovery** — live page → Semantic UI Map (`accessible_name` / role). Usually fine.
@@ -146,14 +153,15 @@ Two layers:
 
 ### Mandatory host procedure
 
-1. **Discover first** — `discover_ui_surface` or `discover_ui_surface_after_login`
+1. **If AC already names fields/actions + oracle** → skip extra discover; go to G4.
+2. **Else discover first** — `discover_ui_surface` or `discover_ui_surface_after_login`
    (login_* from discovered login labels). Read real field/button names (often JP/EN).
-2. **Rewrite each AC** so `statement` **mentions those exact `accessible_name`s** and
+3. **Rewrite each AC** so `statement` **mentions those exact `accessible_name`s** and
    carries at least one oracle:
    - `expected_text` / `expected_url_includes` / `expected_title_includes` /
      `expected_network` / `expected_result_count`
-3. **Shape:** action + input + oracle — not “search X or Y returns correct logic”.
-4. **Oracle claimability:** if AC lacks executable oracle, mark **not_claimable** and rewrite before pass claim.
+4. **Shape:** action + input + oracle — not “search X or Y returns correct logic”.
+5. **Oracle claimability:** if AC lacks executable oracle, mark **not_claimable** and rewrite before pass claim.
 
 Bad:
 
@@ -179,7 +187,7 @@ No single-run “B ≥ A across two searches” oracle yet. Pattern:
 2. Two ACs / cases with absolute `expected_result_count` (or note counts from two runs).
 3. Host compares (OR count ≥ AND count; not OR ≫ AND via `%or%` false positives).
 
-Prefer `include_screenshot=true` on discovery/execution when judging UI.  
+Standard evidence is automatic: PNG for every executed testcase, trace/WebM for non-pass. Use `video_policy=all` only for complete audit video; override `screenshot_policy` or `video_policy` only with an explicit storage/privacy reason.
 `lite_mode=true` only for ad-hoc smoke — never Expert pass claim.
 
 ### Claimable vs not-claimable AC examples
@@ -249,7 +257,6 @@ Rules:
 ```
 G0 + learning hints
 → run_expert_qa(product_root, url, AC, [role_b|openapi|journeys])
-   # OR: bootstrap_domain_pack → run_auto_qa
 → use auto_registered_suite.suite_id + flake_taxonomy + learning
 → [optional] capture baselines first time
 ```
@@ -272,7 +279,7 @@ Default after fix: use prior `smart_retest_suggestion` — **do not** full suite
 discover → generate_exploratory_charter → execute_exploratory_session
 → list AC candidates + manual_follow_up
 → STOP for human confirm on AC
-→ Strategy A (run_auto_qa → suite_id)
+→ Strategy A (`run_expert_qa` → suite_id)
 ```
 
 **Forbidden:** end at exploratory observations and claim “tested”. Expert closes loop into AC + suite.
@@ -285,7 +292,7 @@ discover → generate_exploratory_charter → execute_exploratory_session
 |--------|-----|
 | Cases | `run_regression_suite` + `case_ids` |
 | Defects | `related_defect_ids: ["DEF-DRAFT:…"]` |
-| One screen | suite for screen **or** `run_auto_qa` that URL only |
+| One screen | suite for screen **or** `run_expert_qa` for that URL only |
 | One case object | `execute_generated_test_case` |
 
 Always report: retested set + **not** retested (residual).
@@ -303,12 +310,13 @@ Always report: retested set + **not** retested (residual).
 - Domain pack: absent | loaded (<paths>); risks considered: …
 - Prior learning hints: n (applied: … / none)
 - release_recommendation: …          # FIRST verdict field
+- Case results: table from expert_session_report (id | variant | status | evidence)
 - Rationale: …
 - Critical / security / authz: …
 - Coverage gaps: …                   # from MCP + domain not tested
 - Retest plan: case_ids […] | defects […] | screen … | none (why)
 - suite_id: … | missing (why)
-- Artifacts: report_path, traces
+- Artifacts: report_path (HTML on disk — do not dump report_html into chat)
 - Drift/flake decisions: retry_once | quarantine_case | block_release (with owner)
 - Human still required for: release sign-off | pen-test | novel domain
 - NOT claimed: full WCAG / load / pen-test (unless run)
@@ -322,7 +330,7 @@ Always report: retested set + **not** retested (residual).
 
 | Purpose | Tool |
 |---------|------|
-| Full run | `run_auto_qa` |
+| Full run | `run_expert_qa` |
 | Retest | `run_regression_suite` / `execute_generated_test_case` |
 | Suite | `register_regression_suite` / `list_regression_suites` |
 | Discover / roles | `discover_ui_surface*` / `discover_and_compare_role_ui_surfaces` |

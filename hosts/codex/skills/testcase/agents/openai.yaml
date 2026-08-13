@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Case Designer"
+  short_description: "Design traceable, executable QA test cases"
+  default_prompt: "Use $testcase to design executable test cases from this requirement and target URL."

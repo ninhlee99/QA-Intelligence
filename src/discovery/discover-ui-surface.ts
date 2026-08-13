@@ -9,7 +9,7 @@
  * authorization purpose — this is observation, not test execution, and
  * SHALL NOT be authorized under an `execution:*` permission.
  */
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 
 import { extractRawDom } from "../adapters/playwright/extract-raw-dom.js";
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
@@ -37,6 +37,8 @@ export type DiscoverUiSurfaceRequest = Readonly<{
   url: string;
   /** Phase 9 — defaults to chromium when omitted. */
   browser?: BrowserName;
+  /** Visible browser window. Default: `QA_INTELLIGENCE_HEADED` env, else headless. */
+  headed?: boolean;
   /** Dogfood GAP-1 — write a full-page PNG and return screenshot_path. */
   include_screenshot?: boolean;
   /** Override default `.qa-screenshots/<operation_id>/`. */
@@ -69,7 +71,7 @@ export class DiscoverUiSurface {
   constructor(dependencies: Dependencies) {
     this.#clock = dependencies.clock;
     this.#authorizer = dependencies.authorizer;
-    this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
   }
 
   async discover(request: DiscoverUiSurfaceRequest): Promise<SemanticUiDiscoveryResult> {
@@ -97,7 +99,11 @@ export class DiscoverUiSurface {
     let browser: Browser;
     try {
       const launch =
-        request.browser !== undefined ? createLaunchBrowser(request.browser) : this.#launchBrowser;
+        request.browser !== undefined || request.headed !== undefined
+          ? createLaunchBrowser(request.browser ?? "chromium", {
+              ...(request.headed !== undefined ? { headed: request.headed } : {}),
+            })
+          : this.#launchBrowser;
       browser = await launch();
     } catch (error) {
       return {

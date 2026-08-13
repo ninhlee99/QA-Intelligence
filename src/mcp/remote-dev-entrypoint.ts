@@ -54,6 +54,7 @@ const MEMBERSHIP: MembershipRecord = {
     "knowledge:read",
     "assessment:create",
     "execution:read",
+    "evidence:delete",
     "execution:execute",
     "execution:cancel",
     "execution:cleanup",

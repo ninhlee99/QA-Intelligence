@@ -65,6 +65,7 @@ type TrialOutcome = Readonly<{
   evidence: readonly string[];
   timing: Readonly<{ started_at: string; completed_at: string; duration_seconds: number }>;
   resource_usage: import("../requirement-review/public.js").JsonObject;
+  cleanup_status: "completed" | "partial" | "failed";
 }> | Readonly<{
   ok: false;
   failure: ExecuteBrowserTestFailure;
@@ -203,7 +204,7 @@ export class ExecuteBrowserTest {
       },
     );
 
-    await engine.finalize({
+    const finalized = await engine.finalize({
       operation: "finalize",
       operationId: `${request.operation_id}:finalize:${attempt.attempt_id}`,
       attempt,
@@ -213,6 +214,10 @@ export class ExecuteBrowserTest {
       version,
       payload: { environment_lease: prepared.value.environment_lease, cleanup_policy_ref: "default" },
     });
+
+    if (!finalized.ok) {
+      return { ok: false, failure: engineFailure("infrastructure", finalized.failure) };
+    }
 
     if (!started.ok) {
       const failureClass = started.failure.responsible_domain === "infrastructure" ? "infrastructure" : "engine";
@@ -230,6 +235,7 @@ export class ExecuteBrowserTest {
         duration_seconds: started.value.timing.duration_ms / 1000,
       },
       resource_usage: started.value.resource_usage,
+      cleanup_status: finalized.value.cleanup_status,
     };
   }
 
@@ -275,7 +281,7 @@ export class ExecuteBrowserTest {
         completed_at: last.timing.completed_at,
         duration_seconds: last.timing.duration_seconds,
       },
-      resource_usage: last.resource_usage,
+      resource_usage: { ...last.resource_usage, cleanup_status: last.cleanup_status },
       ...(retryOfRef !== undefined ? { retry_of_ref: retryOfRef } : {}),
     };
     return { ok: true, value: record };

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -120,6 +121,7 @@ test("generates TestCases bound to discovered UI elements, and reports an unbind
       [
         AGENT.id,
         new GenerateTestCasesRuntimeExecutor({
+          clock,
           requirements,
           discovery,
           generator,
@@ -169,6 +171,8 @@ test("generates TestCases bound to discovered UI elements, and reports an unbind
     test_cases: Array<{ id: string; traceability: string[]; steps: Array<{ action: string; input: Record<string, string> }>; expected_results: Array<{ assertion: string; authority: string }>; tags: string[] }>;
     findings: Array<{ category: string; message: string }>;
     generated_assertions: Array<{ test_case_id: string; expected_text: string | null; forbidden_text: string[] }>;
+    testcase_design_path: string;
+    testcase_design_sha256: string;
   } | null;
   assert.ok(output, "expected a TestCaseGenerationResult output");
 
@@ -178,6 +182,8 @@ test("generates TestCases bound to discovered UI elements, and reports an unbind
   // unicode) + 0 type_confusion (neither field name looks numeric) + 4
   // adversarial probes = 9 per field, 2 fields x 9 = 18, +1 positive = 19.
   assert.equal(output!.test_cases.length, 19, JSON.stringify(output!.test_cases, null, 2));
+  assert.ok(existsSync(output!.testcase_design_path), "QA design must produce a reusable QC handoff artifact");
+  assert.match(output!.testcase_design_sha256, /^[a-f0-9]{64}$/);
   const positive = output!.test_cases.find((testCase) => testCase.tags.includes("positive"))!;
   assert.ok(positive, "expected a positive-variant test case");
   assert.ok(positive.traceability.includes(`${REQUIREMENT_REF}#AC-1`));
@@ -249,7 +255,7 @@ test("generates TestCases from inline acceptance_criteria against a real externa
     new Map([
       [
         AGENT.id,
-        new GenerateTestCasesRuntimeExecutor({ requirements, discovery, generator, expected_agent: AGENT, expected_skill: SKILL }),
+        new GenerateTestCasesRuntimeExecutor({ clock, requirements, discovery, generator, expected_agent: AGENT, expected_skill: SKILL }),
       ],
     ]),
   );

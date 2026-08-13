@@ -543,6 +543,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
         commandKey,
         fingerprint,
         observed.value,
+        false,
       );
     }
 
@@ -1186,6 +1187,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     commandKey: string,
     fingerprint: string,
     observation?: AgentRunExecutorValue,
+    retainDiagnosticOutput = true,
   ): AgentRuntimeResult<AgentRunResult> {
     const state = terminalStateForFailure(failureValue);
     const eventType = terminalEventForState(state);
@@ -1216,6 +1218,7 @@ export class InMemoryAgentRuntime implements AgentRuntime {
     // (e.g. expert_checklist/blockers) — refuse green-wash on conclusions,
     // not on diagnosis (dogfood BUG-1).
     const diagnosticOutput =
+      retainDiagnosticOutput &&
       observation?.output !== undefined &&
       typeof observation.output === "object" &&
       observation.output !== null &&

@@ -3,7 +3,7 @@
  * a start URL (depth-bounded). Does NOT invent Region/State/Permission
  * concepts — only Page captures + link graph edges grounded in live hrefs.
  */
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 
 import { createLaunchBrowser, type BrowserName } from "../adapters/playwright/browser-launcher.js";
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
@@ -81,7 +81,7 @@ export class DiscoverUiWorkflow {
     this.#clock = dependencies.clock;
     this.#authorizer = dependencies.authorizer;
     this.#discover = dependencies.discoverUiSurface;
-    this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
   }
 
   async discover(request: DiscoverUiWorkflowRequest): Promise<

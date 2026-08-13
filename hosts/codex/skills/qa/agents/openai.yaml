@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Engineer"
+  short_description: "Review risks and design preventive QA coverage"
+  default_prompt: "Use $qa to review this requirement and design risk-based test coverage."

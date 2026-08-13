@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "qa-intelligence": {
+      "command": "qa-intelligence-mcp",
+      "env": {
+        "QA_INTELLIGENCE_WORKSPACE_ID": "replace-with-project-id",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert"
+      }
+    }
+  }
+}

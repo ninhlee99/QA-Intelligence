@@ -31,6 +31,7 @@ export type QaRunTestCaseResult = Readonly<{
   /** Populated only when outcome is "not_executed" — e.g. no generated assertion to check against (SPEC-207 §6). */
   skip_reason?: string;
   evidence: readonly string[];
+  cleanup_status?: "completed" | "partial" | "failed";
 }>;
 
 export type QaRunReport = Readonly<{

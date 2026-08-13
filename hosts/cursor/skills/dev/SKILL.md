@@ -1,12 +1,11 @@
 ---
 name: dev
 description: >
-  Expert QA for developers — source AC. Trigger: "/qa-intelligence:dev".
+  Expert QA for developers — one MCP call. Trigger: "/qa-intelligence:dev".
 ---
 
 # dev (Cursor)
 
-Follow `hosts/references/expert-tester-workflow.md` + `hosts/references/domain-pack.md`.  
-Details: `hosts/claude-code/skills/dev/SKILL.md`.
+`run_expert_qa` + `headed: true` + `product_root` = this repo. Skip extra discover. Never `include_report_html`.
 
-Prefer MCP `run_expert_qa` + `validate_expert_claim` before merge-ready wording.
+Paste gate + case matrix + `report_path`. After fix: `run_regression_suite`. Merge-ready only after `validate_expert_claim`.

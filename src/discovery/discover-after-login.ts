@@ -11,9 +11,10 @@
  * repository holds to), submit, then capture the target screen on the
  * exact same session/cookies the login produced.
  */
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 
 import { newFullSizePage } from "../adapters/playwright/full-size-page.js";
+import { createLaunchBrowser } from "../adapters/playwright/browser-launcher.js";
 import { accessibleNamesMatch } from "../shared/accessible-name.js";
 import { DiscoverUiSurface } from "./discover-ui-surface.js";
 import type { WorkspaceAuthorizer, WorkspaceContext } from "../requirement-review/public.js";
@@ -53,6 +54,8 @@ export type DiscoverAfterLoginRequest = Readonly<{
   include_screenshot?: boolean;
   screenshot_dir?: string;
   max_elements?: number;
+  /** Visible browser window. Default: `QA_INTELLIGENCE_HEADED` env, else headless. */
+  headed?: boolean;
 }>;
 
 type Dependencies = Readonly<{
@@ -71,7 +74,7 @@ export class DiscoverAfterLogin {
   constructor(dependencies: Dependencies) {
     this.#clock = dependencies.clock;
     this.#authorizer = dependencies.authorizer;
-    this.#launchBrowser = dependencies.launchBrowser ?? (() => chromium.launch());
+    this.#launchBrowser = dependencies.launchBrowser ?? createLaunchBrowser();
     this.#inner = new DiscoverUiSurface({ clock: dependencies.clock, authorizer: dependencies.authorizer, ...(dependencies.launchBrowser !== undefined ? { launchBrowser: dependencies.launchBrowser } : {}) });
   }
 
@@ -99,7 +102,11 @@ export class DiscoverAfterLogin {
 
     let browser: Browser;
     try {
-      browser = await this.#launchBrowser();
+      const launch =
+        request.headed !== undefined
+          ? createLaunchBrowser("chromium", { headed: request.headed })
+          : this.#launchBrowser;
+      browser = await launch();
     } catch (error) {
       return {
         ok: false,

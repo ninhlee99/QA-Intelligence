@@ -3,9 +3,9 @@
 [![CI](https://github.com/ninhlee99/QA-Intelligence/actions/workflows/repository-validation.yml/badge.svg)](https://github.com/ninhlee99/QA-Intelligence/actions/workflows/repository-validation.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-24-green.svg)](.nvmrc)
-[![Status](https://img.shields.io/badge/status-0.1.0--dev-yellow.svg)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-0.9.0--release--candidate-orange.svg)](CHANGELOG.md)
 
-**MCP server that acts as an Expert QA Engineer** inside Claude Code, Cursor, and Codex.
+**Production-oriented MCP server that acts as an Expert QA Engineer** inside Claude Code, Cursor, Codex, and Antigravity.
 
 Point it at a live URL + spec. It discovers the UI, designs risk-based tests, executes with Playwright, drafts defects with evidence, and returns a **release gate** — not a green pass count.
 
@@ -23,6 +23,10 @@ Agent:
 | `/qa-intelligence:test` | Tester — URL + spec |
 | `/qa-intelligence:dev` | Dev — URL + AC from source |
 
+Slash syntax depends on the host. If unavailable, ask the agent to use the QA
+Intelligence `test` or `dev` skill; both converge on the canonical
+`run_expert_qa` workflow.
+
 Env (local/staging) = **endpoint URL**, not a separate command.  
 Retest: by `case_ids`, defect ids, or one screen URL — see [`hosts/references/expert-tester-workflow.md`](hosts/references/expert-tester-workflow.md).
 
@@ -34,6 +38,7 @@ cd QA-Intelligence
 npm install
 npx playwright install chromium
 npm run build
+npm install --global .
 ```
 
 **Hướng dẫn chi tiết (cài MCP, Skill, dùng tool, đọc report):**  
@@ -43,9 +48,10 @@ Connect one host (tóm tắt — chi tiết trong GUIDE):
 
 | Host | Setup |
 |------|--------|
-| **Claude Code** | Plugin: `hosts/claude-code/` → `:test` / `:dev` + MCP entrypoint |
-| **Cursor** | Copy `hosts/cursor/mcp.json.example` (**absolute** path) + Skills `hosts/cursor/skills/` |
-| **Codex** | Plugin / config: `hosts/codex/` |
+| **Claude Code** | Plugin: `hosts/claude-code/` plus `qa-intelligence-mcp` |
+| **Cursor** | Copy `hosts/cursor/mcp.json.example` plus Skills `hosts/cursor/skills/` |
+| **Codex** | Validated plugin at `hosts/codex/` |
+| **Antigravity** | Copy `hosts/antigravity/mcp_config.json.example`; reuse the open-standard Skills |
 
 **Scope:** Skill + MCP = **test + report** only (no SNS / Slack notify).
 
@@ -66,13 +72,12 @@ Rules: **[RULES.md](RULES.md)** · Idea: **[docs/PRODUCT.md](docs/PRODUCT.md)** 
 
 | Tool | Use when |
 |------|----------|
-| `run_expert_qa` | **Preferred** Expert entry: domain pack + full pipeline |
-| `run_auto_qa` | Full pipeline on a URL + AC (auto suite, optional E2 hooks) |
+| `run_expert_qa` | **Canonical full run:** domain context → discovery → design → execution → evidence → report |
 | `validate_expert_claim` | Before any pass/ready/ship wording |
 | `run_regression_suite` | Retest after fix (`case_ids` / `related_defect_ids`) |
 | `discover_ui_workflow` | Multi-page product |
 | `discover_and_compare_role_ui_surfaces` | Permission / role gaps |
-| `execute_api_smoke` | HTTP contract checks (or via `openapi` on run_auto_qa) |
+| `execute_api_smoke` | Standalone HTTP contract checks (or pass `openapi` to `run_expert_qa`) |
 | `export_defects_for_tracker` | Paste-ready defect **text** (tester pastes tracker manually) |
 
 Full catalog + durable dirs: **[hosts/README.md](hosts/README.md)**  
@@ -95,16 +100,19 @@ schemas/       Optional JSON Schema examples
 ```sh
 npm run typecheck
 npm test
-npm run mcp:dev      # stdio MCP
-npm run mcp:remote   # HTTP MCP + demo token on stderr
+npm run mcp:start          # production-local stdio MCP
+npm run mcp:fixture        # development fixture only
+npm run mcp:remote:demo    # development-only HTTP identity demo
 ```
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## Status
 
-`0.1.0-dev` — usable against real targets in development hosts.  
-Production IdP / Vault / GOV production gates are not claimed yet.
+`0.9.0` release candidate. Production-local stdio is the supported deployment:
+the coding-agent host is the trust boundary and configuration fails closed.
+Remote/team deployment remains unsupported until an external IdP, membership
+store, secret manager and operational attestations pass the release gates.
 
 ## License
 

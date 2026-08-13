@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Lead"
+  short_description: "Govern continuous QA and deep testing gates"
+  default_prompt: "Use $qa-lead to select regression scope and evaluate continuous/deep quality gates."

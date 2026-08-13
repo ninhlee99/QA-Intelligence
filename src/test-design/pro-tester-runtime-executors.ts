@@ -2,7 +2,7 @@
  * MCP adapters: regression suite register/list + run; OpenAPI→cases;
  * defect tracker export; UI surface compare.
  */
-import { mkdir } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
@@ -62,6 +62,7 @@ export type RegressionSuiteRuntimeExecutorDependencies = Readonly<{
   browserAuthorizer: WorkspaceAuthorizer;
   apiSmoke?: ExecuteApiSmoke;
   credentials?: import("../credentials/workspace-credential-registry.js").WorkspaceCredentialRegistry;
+  artifactBaseDir?: string;
 }>;
 
 export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
@@ -192,6 +193,10 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
     const results: JsonObject[] = [];
     const qaResults: QaRunTestCaseResult[] = [];
     let nonPassed = 0;
+    const reuseSession = input.start_request.input["reuse_session"] === true;
+    const sessionStatePath = reuseSession
+      ? join(this.#dependencies.artifactBaseDir ?? process.cwd(), ".qa-session-state", `${input.execution.operation_id}.json`)
+      : undefined;
 
     for (const item of casesToRun) {
       if (item.kind === "api") {
@@ -277,6 +282,9 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
         ...(this.#dependencies.credentials !== undefined ? { secrets: this.#dependencies.credentials } : {}),
         screenshotDir,
         traceDir,
+        ...(sessionStatePath !== undefined ? { sessionStatePath, cleanupSessionOnFinalize: false } : {}),
+        fileArtifactRoot: join(this.#dependencies.artifactBaseDir ?? process.cwd(), ".qa-upload-artifacts"),
+        downloadDir: join(this.#dependencies.artifactBaseDir ?? process.cwd(), ".qa-downloads", input.execution.operation_id, item.test_case.id),
       });
       const skill = new ExecuteBrowserTest({
         engine,
@@ -314,6 +322,8 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
       qaResults.push(row.qa);
       if (outcome !== "passed") nonPassed += 1;
     }
+
+    if (sessionStatePath !== undefined) await unlink(sessionStatePath).catch(() => undefined);
 
     const requirementRef =
       readString(input.start_request.input["requirement_ref"]) ?? `regression-suite:${suite.id}`;

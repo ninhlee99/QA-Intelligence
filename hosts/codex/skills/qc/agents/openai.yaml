@@ -1,0 +1,4 @@
+interface:
+  display_name: "QC Test Executor"
+  short_description: "Execute browser tests with governed evidence"
+  default_prompt: "Use $qc to execute these defined test cases and return evidence-backed results."

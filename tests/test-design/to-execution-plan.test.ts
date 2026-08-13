@@ -98,6 +98,46 @@ test("a TestCase with no generated assertion is refused, never converted into an
   assert.equal(result.failure.code, "no_generated_assertion");
 });
 
+test("converts authored check, uncheck, and press TestCase steps", () => {
+  const authored: TestCase = {
+    ...generatedTestCase(),
+    steps: [
+      { action: "navigate", input: { url: LOGIN_PAGE } },
+      { action: "check", input: { accessible_name: "Remember", accessible_role: "checkbox" } },
+      { action: "uncheck", input: { accessible_name: "Remember", accessible_role: "checkbox" } },
+      { action: "press", input: { accessible_name: "Username", accessible_role: "textbox", key: "Enter" } },
+    ],
+  };
+  const result = testCaseToExecutionPlan(authored, [{ test_case_id: authored.id, expected_text: "Welcome" }]);
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.deepEqual(result.value.steps?.map((step) => step.kind), ["check", "uncheck", "press"]);
+});
+
+test("preserves iframe, popup, pointer, upload, and download actions from authored TestCases", () => {
+  const authored: TestCase = {
+    ...generatedTestCase(),
+    steps: [
+      { action: "navigate", input: { url: LOGIN_PAGE } },
+      { action: "type", input: { frame_accessible_name: "Payment", accessible_name: "Card number", accessible_role: "textbox", value: "4111" } },
+      { action: "click", input: { accessible_name: "Receipt", accessible_role: "button", switch_to_popup: true } },
+      { action: "hover", input: { accessible_name: "Help", accessible_role: "button" } },
+      { action: "drag_to", input: { accessible_name: "Card", accessible_role: "button", destination_accessible_name: "Done", destination_accessible_role: "region" } },
+      { action: "upload", input: { accessible_name: "Attachment", artifact_refs: ["fixture.pdf"] } },
+      { action: "download", input: { accessible_name: "Receipt", accessible_role: "link" } },
+    ],
+  };
+  const result = testCaseToExecutionPlan(authored, [{ test_case_id: authored.id, expected_text: "Welcome" }]);
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (!result.ok) return;
+  assert.deepEqual(result.value.steps?.map((step) => step.kind), ["type", "click", "hover", "drag_to", "upload", "download"]);
+  assert.equal(result.value.steps?.[0]?.target.frame_accessible_name, "Payment");
+  assert.equal(result.value.steps?.[1]?.kind === "click" && result.value.steps[1].switch_to_popup, true);
+  assert.equal(result.value.steps?.[3]?.kind === "drag_to" && result.value.steps[3].destination.accessible_name, "Done");
+});
+
 test("the converted plan runs through the real ExecutionEngine — fails because generated type steps carry no literal data (SPEC-207 §6: no invented test data)", async () => {
   const assertions: TestCaseGeneratedAssertion[] = [{ test_case_id: "test-case-1", expected_text: "Welcome" }];
   const converted = testCaseToExecutionPlan(generatedTestCase(), assertions);

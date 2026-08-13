@@ -329,6 +329,16 @@ export function draftExpertSessionReport(input: ExpertSessionReportInput): Exper
     "",
     ...what_was_tested.map((line) => `- ${line}`),
     "",
+    `## Case results`,
+    "",
+    `| Case | Variant | Status | Evidence |`,
+    `|---|---|---|---|`,
+    ...report.test_cases.map((t) => {
+      const evidence = t.evidence.length > 0 ? t.evidence.map(shortEvidence).join("; ") : "—";
+      const skip = t.skip_reason ? ` (${t.skip_reason})` : "";
+      return `| ${t.test_case_id} | ${t.variant} | **${t.outcome}**${skip} | ${evidence} |`;
+    }),
+    "",
     `## What was NOT tested`,
     "",
     ...what_was_not_tested.map((line) => `- ${line}`),
@@ -377,4 +387,10 @@ export function expertSessionReportJson(report: ExpertSessionReport): JsonObject
     human_must: [...report.human_must],
     markdown: report.markdown,
   };
+}
+
+function shortEvidence(ref: string): string {
+  const normalized = ref.replace(/\\/g, "/");
+  const slash = normalized.lastIndexOf("/");
+  return slash >= 0 ? normalized.slice(slash + 1) : ref;
 }

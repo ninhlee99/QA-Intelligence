@@ -1,12 +1,13 @@
 ---
 name: test
 description: >
-  Expert QA tester — auto domain pack. Trigger: "/qa-intelligence:test".
+  Expert QA tester — one MCP call, visible browser. Trigger: "/qa-intelligence:test".
 ---
 
 # test (Codex)
 
-Follow `hosts/references/expert-tester-workflow.md` + `hosts/references/domain-pack.md`.  
-Details: `hosts/claude-code/skills/test/SKILL.md`.
+Fast path: `run_expert_qa` with `headed: true`. Skip extra discover. Never `include_report_html`.
 
-Prefer MCP `run_expert_qa` then `validate_expert_claim` before pass wording.
+Keep the automatic standard evidence profile: PNG per executed case, trace/WebM on non-pass. Use `video_policy: all` only for complete audit video.
+
+Paste gate + case results matrix + `report_path`. Pass only after `validate_expert_claim`.

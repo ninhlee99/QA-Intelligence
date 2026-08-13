@@ -1,3 +1,4 @@
+import { headedFromInput } from "../adapters/playwright/browser-launcher.js";
 import type { JsonObject, VersionReference } from "../requirement-review/public.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
 import { resolveBasicAuthPassword, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
@@ -122,6 +123,7 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
         ? mfaTimeoutRaw
         : undefined;
 
+    const headed = headedFromInput(input.start_request.input["headed"]);
     const discovered = await this.#dependencies.skill.discover({
       operation_id: input.execution.operation_id,
       context: input.execution.workspace_context,
@@ -149,6 +151,7 @@ export class DiscoverAfterLoginRuntimeExecutor implements AgentRunExecutor {
       ...(typeof input.start_request.input["max_elements"] === "number"
         ? { max_elements: input.start_request.input["max_elements"] }
         : {}),
+      ...(headed !== undefined ? { headed } : {}),
     });
     if (!discovered.ok) return { ok: false, failure: mapSkillFailure(discovered.failure) };
 

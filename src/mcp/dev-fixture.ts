@@ -142,6 +142,8 @@ import { compactMcpInput } from "./mcp-input.js";
 import type { AgentRuntimeToolDefinition } from "./agent-runtime-tool-registry.js";
 import { FileBackedUserPreferences } from "../preferences/user-preferences.js";
 import { UserPreferenceRuntimeExecutor } from "../preferences/runtime-executor.js";
+import { EvidenceLifecycleRuntimeExecutor } from "../reporting/evidence-lifecycle-runtime-executor.js";
+import { QualityIntelligenceRuntimeExecutor } from "../continuous-qa/quality-intelligence-runtime-executor.js";
 
 export const AGENT = { id: "requirement-review-agent", version: "0.1.0" } as const;
 export const SKILL = { id: "assess-requirement-quality", version: "0.1.0" } as const;
@@ -266,6 +268,12 @@ export const USER_PREF_SET_AGENT = { id: "user-preference-set-agent", version: "
 export const USER_PREF_SET_SKILL = { id: "set-user-preference", version: "0.1.0" } as const;
 export const USER_PREF_GET_AGENT = { id: "user-preference-get-agent", version: "0.1.0" } as const;
 export const USER_PREF_GET_SKILL = { id: "get-user-preference", version: "0.1.0" } as const;
+export const EVIDENCE_LIFECYCLE_AGENT = { id: "evidence-lifecycle-agent", version: "0.1.0" } as const;
+export const EVIDENCE_LIFECYCLE_SKILL = { id: "manage-evidence-lifecycle", version: "0.1.0" } as const;
+export const CONTINUOUS_QA_AGENT = { id: "continuous-qa-agent", version: "0.1.0" } as const;
+export const CONTINUOUS_QA_SKILL = { id: "assess-continuous-qa", version: "0.1.0" } as const;
+export const DEEP_TEST_AGENT = { id: "deep-test-agent", version: "0.1.0" } as const;
+export const DEEP_TEST_SKILL = { id: "assess-deep-testing", version: "0.1.0" } as const;
 export const DEMO_LOGIN_REQUIREMENT_REF = "REQ-DEMO-002@1.0.0";
 export const DEMO_PASSWORD_SECRET_REF = "workspace-secret:demo-password";
 export const DEMO_PAGE_ENVIRONMENT_REF = "environment:dev-fixture-page";
@@ -367,6 +375,8 @@ export function buildDevFixture(options: {
    * `~/.workspaces/<domain>/test-engineer`.
    */
   persistBaseDir?: string;
+  /** Optional distribution boundary; omitted by tests/development to expose the full catalog. */
+  exposeTool?: (name: string) => boolean;
 }): DevFixtureBuild {
   const { workspaceId, policyVersion, authorizer, clock, sessionMemory } = options;
   const persistBaseDir = options.persistBaseDir ?? process.cwd();
@@ -838,12 +848,14 @@ export function buildDevFixture(options: {
       [
         TEST_CASE_GENERATION_AGENT.id,
         new GenerateTestCasesRuntimeExecutor({
+          clock,
           requirements: requirementResolver,
           discovery: uiDiscoverySkill,
           generator: testCaseGenerator,
           expected_agent: TEST_CASE_GENERATION_AGENT,
           expected_skill: TEST_CASE_GENERATION_SKILL,
           discoverAfterLogin: discoverAfterLoginSkill,
+          artifactBaseDir: persistBaseDir,
         }),
       ],
       [
@@ -854,6 +866,8 @@ export function buildDevFixture(options: {
           expected_agent: EXECUTE_GENERATED_AGENT,
           expected_skill: EXECUTE_GENERATED_SKILL,
           credentials,
+          testcaseBaseDir: persistBaseDir,
+          uploadArtifactBaseDir: join(persistBaseDir, ".qa-upload-artifacts"),
         }),
       ],
       [
@@ -1353,6 +1367,7 @@ export function buildDevFixture(options: {
       browserAuthorizer: authorizer,
       apiSmoke: apiSmokeSkill,
       credentials,
+      artifactBaseDir: persistBaseDir,
     }),
   );
   executorMap.set(
@@ -1367,6 +1382,7 @@ export function buildDevFixture(options: {
       browserAuthorizer: authorizer,
       apiSmoke: apiSmokeSkill,
       credentials,
+      artifactBaseDir: persistBaseDir,
     }),
   );
   executorMap.set(
@@ -1381,6 +1397,7 @@ export function buildDevFixture(options: {
       browserAuthorizer: authorizer,
       apiSmoke: apiSmokeSkill,
       credentials,
+      artifactBaseDir: persistBaseDir,
     }),
   );
   executorMap.set(
@@ -1454,11 +1471,18 @@ export function buildDevFixture(options: {
       mode: "get",
     }),
   );
-  const registeredAgentIds = [...executorMap.keys()];
-  const executor: AgentRunExecutor = new CompositeAgentRunExecutor(executorMap);
-
-  const runtime = new InMemoryAgentRuntime(clock, ids, authorizer, executor);
-
+  executorMap.set(
+    EVIDENCE_LIFECYCLE_AGENT.id,
+    new EvidenceLifecycleRuntimeExecutor({
+      authorizer,
+      expected_agent: EVIDENCE_LIFECYCLE_AGENT,
+      expected_skill: EVIDENCE_LIFECYCLE_SKILL,
+      artifact_root: persistBaseDir,
+      clock,
+    }),
+  );
+  executorMap.set(CONTINUOUS_QA_AGENT.id, new QualityIntelligenceRuntimeExecutor({ authorizer, expected_agent: CONTINUOUS_QA_AGENT, expected_skill: CONTINUOUS_QA_SKILL, mode: "continuous" }));
+  executorMap.set(DEEP_TEST_AGENT.id, new QualityIntelligenceRuntimeExecutor({ authorizer, expected_agent: DEEP_TEST_AGENT, expected_skill: DEEP_TEST_SKILL, mode: "deep" }));
   const tools: AgentRuntimeToolDefinition[] = [
     {
       name: "assess_requirement_quality",
@@ -1487,7 +1511,7 @@ export function buildDevFixture(options: {
     {
       name: "execute_browser_test",
       description:
-        "DEMO ONLY — executes a seeded Playwright plan (TC-DEMO-001 navigate+assert, TC-DEMO-002 login). For real targets use run_auto_qa or execute_generated_test_case. Target elements resolve by accessible name/role, never raw selectors (ADR-022 §4); credentials for TC-DEMO-002 resolve through a Workspace-scoped SecretResolver.",
+        "DEMO ONLY — executes a seeded Playwright plan (TC-DEMO-001 navigate+assert, TC-DEMO-002 login). For real targets use run_expert_qa or execute_generated_test_case. Target elements resolve by accessible name/role, never raw selectors (ADR-022 §4); credentials for TC-DEMO-002 resolve through a Workspace-scoped SecretResolver.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1520,6 +1544,8 @@ export function buildDevFixture(options: {
           browser: { type: "string", description: "chromium | firefox | webkit (default chromium)" },
           include_screenshot: { type: "boolean", description: "When true, write full-page PNG and return screenshot_path." },
           max_elements: { type: "number", description: "Max Semantic UI elements returned (default 120, max 2000)." },
+          headed: { type: "boolean", description: "Visible browser window. Default: env QA_INTELLIGENCE_HEADED, else headless." },
+          semantic_recovery: { type: "boolean", description: "Bounded recovery for a stale role only when accessible_name is unique; every recovery emits evidence." },
         },
         required: [],
       },
@@ -1537,6 +1563,8 @@ export function buildDevFixture(options: {
           browser: (args["browser"] as string | undefined) ?? "",
           include_screenshot: args["include_screenshot"] === true ? true : undefined,
           max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
+          headed: args["headed"] === true ? true : args["headed"] === false ? false : undefined,
+          semantic_recovery: args["semantic_recovery"] === true ? true : undefined,
         }),
     },
     {
@@ -1564,6 +1592,7 @@ export function buildDevFixture(options: {
           basic_auth_password_secret_ref: { type: "string" },
           include_screenshot: { type: "boolean", description: "When true, write full-page PNG of target screen and return screenshot_path." },
           max_elements: { type: "number", description: "Max Semantic UI elements returned (default 120, max 2000)." },
+          headed: { type: "boolean", description: "Visible browser window. Default: env QA_INTELLIGENCE_HEADED, else headless." },
         },
         required: ["login_url", "target_url"],
       },
@@ -1594,6 +1623,7 @@ export function buildDevFixture(options: {
           basic_auth_password_secret_ref: (args["basic_auth_password_secret_ref"] as string | undefined) ?? "",
           include_screenshot: args["include_screenshot"] === true ? true : undefined,
           max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
+          headed: args["headed"] === true ? true : args["headed"] === false ? false : undefined,
         }),
     },
     {
@@ -1681,12 +1711,14 @@ export function buildDevFixture(options: {
     {
       name: "execute_generated_test_case",
       description:
-        "Closes the generate->execute loop: takes the exact test_case and generated_assertion objects a prior generate_test_cases call returned and runs them via ExecuteBrowserTest (flake-aware). Prefer field_secret_refs (Phase 6) over putting passwords in field_values. Assertion may include expected_network (xhr/fetch url_includes + optional method/status/body_includes) to couple UI submit→API in the same run.",
+        "Closes the QA→QC loop without regeneration: execute one exact case from testcase_file + test_case_id returned by generate_test_cases, or pass inline test_case + generated_assertion for compatibility. Runs via ExecuteBrowserTest (flake-aware) and retains the design artifact digest. Prefer field_secret_refs over raw secrets.",
       inputSchema: {
         type: "object",
         properties: {
           test_case: { type: "object", description: "The exact test_case object from a generate_test_cases response's test_cases array." },
           generated_assertion: { type: "object", description: "The matching entry from that same response's generated_assertions array (same test_case_id)." },
+          testcase_file: { type: "string", description: "Versioned testcase_design_path returned by generate_test_cases." },
+          test_case_id: { type: "string", description: "Exact testcase id to load from testcase_file." },
           field_values: {
             type: "object",
             description: "Literal values keyed by field accessible_name. Prefer field_secret_refs for secrets.",
@@ -1697,10 +1729,18 @@ export function buildDevFixture(options: {
           },
           include_screenshot: {
             type: "boolean",
-            description: "When true, capture PNG even on pass (path appears in evidence).",
+            description: "Compatibility flag. Omitted/true captures PNG for every executed testcase; false keeps failure-only PNG.",
           },
+          screenshot_policy: { type: "string", description: "off | failure_only | all. Default all; overrides include_screenshot." },
+          include_video: {
+            type: "boolean",
+            description: "When true, record a WebM video for this testcase and return its path in evidence.",
+          },
+          video_policy: { type: "string", description: "off | failure_only | all. Default failure_only; overrides include_video." },
+          semantic_recovery: { type: "boolean", description: "Bounded unique-name semantic recovery with evidence; ambiguous candidates fail closed." },
+          headed: { type: "boolean", description: "Visible browser window. Default: env QA_INTELLIGENCE_HEADED, else headless." },
         },
-        required: ["test_case", "generated_assertion"],
+        required: [],
       },
       agent: EXECUTE_GENERATED_AGENT,
       purpose: "Execute a freshly generated test case via MCP, against any real target",
@@ -1711,11 +1751,18 @@ export function buildDevFixture(options: {
       budgets: { max_steps: 8, max_duration_seconds: 120, max_tool_calls: 10, max_retries: 1 },
       buildInput: (args) =>
         compactMcpInput({
-          test_case: (args["test_case"] as JsonValue | undefined) ?? {},
-          generated_assertion: (args["generated_assertion"] as JsonValue | undefined) ?? {},
+          test_case: args["test_case"] as JsonValue | undefined,
+          generated_assertion: args["generated_assertion"] as JsonValue | undefined,
+          testcase_file: (args["testcase_file"] as string | undefined) ?? "",
+          test_case_id: (args["test_case_id"] as string | undefined) ?? "",
           field_values: (args["field_values"] as JsonValue | undefined) ?? {},
           field_secret_refs: (args["field_secret_refs"] as JsonValue | undefined) ?? {},
-          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          include_screenshot: typeof args["include_screenshot"] === "boolean" ? args["include_screenshot"] : undefined,
+          screenshot_policy: (args["screenshot_policy"] as string | undefined) ?? "",
+          include_video: typeof args["include_video"] === "boolean" ? args["include_video"] : undefined,
+          video_policy: (args["video_policy"] as string | undefined) ?? "",
+          semantic_recovery: args["semantic_recovery"] === true ? true : undefined,
+          headed: args["headed"] === true ? true : args["headed"] === false ? false : undefined,
         }),
     },
     {
@@ -1868,9 +1915,23 @@ export function buildDevFixture(options: {
           },
           include_screenshot: {
             type: "boolean",
-            description: "Capture PNG on discovery and on pass/fail execution (GAP-1).",
+            description: "Compatibility flag. Omitted/true captures PNG on discovery and every testcase; false keeps failure-only PNG.",
           },
+          screenshot_policy: { type: "string", description: "off | failure_only | all. Default all; overrides include_screenshot." },
+          include_video: {
+            type: "boolean",
+            description: "Record a WebM video for every executed testcase; paths are returned as evidence.",
+          },
+          video_policy: { type: "string", description: "off | failure_only | all. Default failure_only; overrides include_video." },
           max_elements: { type: "number", description: "Discovery truncate limit (default 120, max 2000)." },
+          headed: {
+            type: "boolean",
+            description: "Visible browser window. Default: env QA_INTELLIGENCE_HEADED, else headless.",
+          },
+          include_report_html: {
+            type: "boolean",
+            description: "Default false. When true, embed full HTML in JSON (expensive for AI context). Prefer report_path on disk.",
+          },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -1924,8 +1985,13 @@ export function buildDevFixture(options: {
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
           lite_mode: args["lite_mode"] === true ? true : undefined,
-          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          include_screenshot: typeof args["include_screenshot"] === "boolean" ? args["include_screenshot"] : undefined,
+          screenshot_policy: (args["screenshot_policy"] as string | undefined) ?? "",
+          include_video: typeof args["include_video"] === "boolean" ? args["include_video"] : undefined,
+          video_policy: (args["video_policy"] as string | undefined) ?? "",
           max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
+          headed: args["headed"] === true ? true : args["headed"] === false ? false : undefined,
+          include_report_html: args["include_report_html"] === true ? true : undefined,
         }),
     },
     {
@@ -1966,7 +2032,7 @@ export function buildDevFixture(options: {
     {
       name: "run_expert_qa",
       description:
-        "Expert facade (P4): optional bootstrap_domain_pack via product_root + full run_auto_qa (auto suite, E2 hooks, flake_taxonomy, learning). Prefer this for :test/:dev when product workspace path is known. Same inputs as run_auto_qa plus product_root / request_context / pack_dirname.",
+        "Canonical one-call QA entry for real targets. Optionally bootstraps the product domain pack, discovers the UI, designs and executes browser testcases, runs bounded expert extensions, captures governed evidence, registers regression coverage, drafts defects, exports testcase JSON/CSV plus an evidence manifest, and returns an evidence-backed release recommendation. Pass product_root when available; acceptance_criteria must contain observable oracles. This is the only public full-pipeline tool; specialist tools remain available for explicit QA/QC handoffs.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2009,9 +2075,16 @@ export function buildDevFixture(options: {
           include_depth_smokes: { type: "boolean" },
           acknowledge_domain_pack_absent: { type: "boolean" },
           domain_high_risk_confirmed: { type: "boolean" },
+          reuse_session: { type: "boolean", description: "Reuse browser cookies/storage across sequential browser cases, then delete state after the batch." },
           lite_mode: { type: "boolean" },
           include_screenshot: { type: "boolean" },
+          screenshot_policy: { type: "string", description: "off | failure_only | all. Default all." },
+          include_video: { type: "boolean" },
+          video_policy: { type: "string" },
+          semantic_recovery: { type: "boolean" },
           max_elements: { type: "number" },
+          headed: { type: "boolean" },
+          include_report_html: { type: "boolean" },
         },
         required: ["url", "acceptance_criteria"],
       },
@@ -2069,9 +2142,16 @@ export function buildDevFixture(options: {
             typeof args["include_depth_smokes"] === "boolean" ? args["include_depth_smokes"] : undefined,
           acknowledge_domain_pack_absent: args["acknowledge_domain_pack_absent"] === true ? true : undefined,
           domain_high_risk_confirmed: args["domain_high_risk_confirmed"] === true ? true : undefined,
+          reuse_session: args["reuse_session"] === true ? true : undefined,
           lite_mode: args["lite_mode"] === true ? true : undefined,
-          include_screenshot: args["include_screenshot"] === true ? true : undefined,
+          include_screenshot: typeof args["include_screenshot"] === "boolean" ? args["include_screenshot"] : undefined,
+          screenshot_policy: (args["screenshot_policy"] as string | undefined) ?? "",
+          include_video: typeof args["include_video"] === "boolean" ? args["include_video"] : undefined,
+          video_policy: (args["video_policy"] as string | undefined) ?? "",
+          semantic_recovery: args["semantic_recovery"] === true ? true : undefined,
           max_elements: typeof args["max_elements"] === "number" ? args["max_elements"] : undefined,
+          headed: args["headed"] === true ? true : args["headed"] === false ? false : undefined,
+          include_report_html: args["include_report_html"] === true ? true : undefined,
         }),
     },
     {
@@ -2087,7 +2167,7 @@ export function buildDevFixture(options: {
           },
           expert_checklist: {
             type: "object",
-            description: "expert_checklist object from run_expert_qa / run_auto_qa / run_regression_suite.",
+            description: "expert_checklist object from run_expert_qa or run_regression_suite.",
           },
         },
         required: ["proposed_claim", "expert_checklist"],
@@ -2208,7 +2288,7 @@ export function buildDevFixture(options: {
     {
       name: "assess_defect_quality",
       description:
-        "Assess a Defect document against SPEC-211 (completeness, cause integrity, closure governance). Pass a draft from run_auto_qa.draft_defects (or a hand-authored defect). Never confirms root cause — only reviews contract quality. Requires defect:read permission.",
+        "Assess a Defect document against SPEC-211 (completeness, cause integrity, closure governance). Pass a draft from run_expert_qa.draft_defects (or a hand-authored defect). Never confirms root cause — only reviews contract quality. Requires defect:read permission.",
       inputSchema: {
         type: "object",
         properties: {
@@ -3364,7 +3444,59 @@ export function buildDevFixture(options: {
       budgets: { max_steps: 2, max_duration_seconds: 10, max_tool_calls: 0, max_retries: 0 },
       buildInput: () => ({}),
     },
+    {
+      name: "manage_evidence_lifecycle",
+      description: "Preview or purge expired QA evidence referenced by a manifest. Preview is default. Purge requires confirm_purge=true and evidence:delete authority. Supports outcome TTL and legal hold; paths outside the configured artifact root are never deleted.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          manifest_path: { type: "string" }, confirm_purge: { type: "boolean" }, legal_hold: { type: "boolean" },
+          passed_days: { type: "number" }, failed_days: { type: "number" }, flaky_days: { type: "number" }, other_days: { type: "number" },
+        },
+        required: ["manifest_path"],
+      },
+      agent: EVIDENCE_LIFECYCLE_AGENT,
+      purpose: "Govern QA evidence retention",
+      consequence_class: "high_consequence",
+      policy_version: policyVersion,
+      allowed_skills: [EVIDENCE_LIFECYCLE_SKILL],
+      budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 0, max_retries: 0 },
+      buildInput: (args) => compactMcpInput({
+        manifest_path: (args["manifest_path"] as string | undefined) ?? "",
+        confirm_purge: args["confirm_purge"] === true ? true : undefined,
+        legal_hold: args["legal_hold"] === true ? true : undefined,
+        passed_days: args["passed_days"] as number | undefined, failed_days: args["failed_days"] as number | undefined,
+        flaky_days: args["flaky_days"] as number | undefined, other_days: args["other_days"] as number | undefined,
+      }),
+    },
+    {
+      name: "assess_continuous_qa",
+      description: "Select a traceable incremental regression scope and assess release quality trend. Shared-runtime changes escalate to full regression; missing trend evidence fails closed.",
+      inputSchema: { type: "object", properties: { changed_paths: { type: "array" }, cases: { type: "array" }, critical_smoke_ids: { type: "array" }, quality_windows: { type: "array" }, max_pass_rate_drop: { type: "number" }, max_flake_rate: { type: "number" }, max_escaped_defects: { type: "number" } }, required: ["changed_paths", "cases", "critical_smoke_ids", "quality_windows"] },
+      agent: CONTINUOUS_QA_AGENT, purpose: "Assess continuous QA scope and trend", consequence_class: "advisory", policy_version: policyVersion, allowed_skills: [CONTINUOUS_QA_SKILL], budgets: { max_steps: 4, max_duration_seconds: 30, max_tool_calls: 0, max_retries: 0 },
+      buildInput: (args) => compactMcpInput({ changed_paths: (args["changed_paths"] as JsonValue | undefined) ?? [], cases: (args["cases"] as JsonValue | undefined) ?? [], critical_smoke_ids: (args["critical_smoke_ids"] as JsonValue | undefined) ?? [], quality_windows: (args["quality_windows"] as JsonValue | undefined) ?? [], max_pass_rate_drop: args["max_pass_rate_drop"] as number | undefined, max_flake_rate: args["max_flake_rate"] as number | undefined, max_escaped_defects: args["max_escaped_defects"] as number | undefined }),
+    },
+    {
+      name: "assess_deep_testing",
+      description: "Run deterministic responsive, API contract, performance, state-model, and mutation adequacy analysis. Returns evidence-oriented gate outputs without inventing measurements.",
+      inputSchema: { type: "object", properties: { browsers: { type: "array" }, api_baseline: { type: "object" }, api_candidate: { type: "object" }, performance_observations: { type: "array" }, performance_budgets: { type: "object" }, initial_state: { type: "string" }, transitions: { type: "array" }, max_steps: { type: "number" }, mutants: { type: "array" }, minimum_mutation_score: { type: "number" } }, required: ["browsers", "api_baseline", "api_candidate", "performance_observations", "performance_budgets", "initial_state", "transitions", "mutants"] },
+      agent: DEEP_TEST_AGENT, purpose: "Assess deterministic deep-testing gates", consequence_class: "advisory", policy_version: policyVersion, allowed_skills: [DEEP_TEST_SKILL], budgets: { max_steps: 6, max_duration_seconds: 30, max_tool_calls: 0, max_retries: 0 },
+      buildInput: (args) => compactMcpInput({ browsers: (args["browsers"] as JsonValue | undefined) ?? [], api_baseline: (args["api_baseline"] as JsonValue | undefined) ?? {}, api_candidate: (args["api_candidate"] as JsonValue | undefined) ?? {}, performance_observations: (args["performance_observations"] as JsonValue | undefined) ?? [], performance_budgets: (args["performance_budgets"] as JsonValue | undefined) ?? {}, initial_state: (args["initial_state"] as string | undefined) ?? "", transitions: (args["transitions"] as JsonValue | undefined) ?? [], max_steps: args["max_steps"] as number | undefined, mutants: (args["mutants"] as JsonValue | undefined) ?? [], minimum_mutation_score: args["minimum_mutation_score"] as number | undefined }),
+    },
   ];
 
-  return { runtime, tools, registeredAgentIds, mistakeRecurrenceTracker, candidateRepository, userPreferences };
+  // `run_auto_qa` remains an internal implementation seam used by the
+  // canonical Expert facade. Exposing both taught hosts two near-identical
+  // interfaces and caused inconsistent domain-gate behavior.
+  const publicTools = tools.filter(
+    (tool) => tool.name !== "run_auto_qa" && (options.exposeTool?.(tool.name) ?? true),
+  );
+  const publicAgentIds = new Set(publicTools.map((tool) => tool.agent.id));
+  const exposedExecutors = new Map(
+    [...executorMap].filter(([agentId]) => publicAgentIds.has(agentId)),
+  );
+  const registeredAgentIds = [...exposedExecutors.keys()];
+  const executor: AgentRunExecutor = new CompositeAgentRunExecutor(exposedExecutors);
+  const runtime = new InMemoryAgentRuntime(clock, ids, authorizer, executor);
+  return { runtime, tools: publicTools, registeredAgentIds, mistakeRecurrenceTracker, candidateRepository, userPreferences };
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Defect Triage"
+  short_description: "Draft and quality-check evidence-backed defects"
+  default_prompt: "Use $defect-triage to classify these failures and prepare evidence-backed defect drafts."

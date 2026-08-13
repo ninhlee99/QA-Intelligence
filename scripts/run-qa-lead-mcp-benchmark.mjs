@@ -1,0 +1,11 @@
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { buildDevFixture } from "../dist/src/mcp/dev-fixture.js";
+import { SessionMemory } from "../dist/src/memory/session-memory.js";
+const clock = { now: () => new Date("2026-08-13T00:00:00.000Z") }; const authorizer = { authorize: async (request) => ({ ok: true, value: { policy_version: request.context.policy_version, effective_permissions: [...request.required_permissions], authorized_resource_refs: [...request.resource_refs], decision_evidence: ["benchmark:allow"] } }) };
+const fixture = buildDevFixture({ workspaceId: "benchmark", policyVersion: "benchmark@1.0.0", authorizer, clock, sessionMemory: new SessionMemory(clock) });
+const names = fixture.tools.map((tool) => tool.name); const required = ["assess_continuous_qa", "assess_deep_testing", "capture_ui_baseline", "compare_ui_baseline", "manage_evidence_lifecycle"];
+const skillPaths = ["hosts/codex/skills/qa-lead/SKILL.md", "hosts/claude-code/skills/qa-lead/SKILL.md", "hosts/cursor/skills/qa-lead/SKILL.md"]; const bodies = await Promise.all(skillPaths.map((path) => readFile(path, "utf8")));
+const bytes = Buffer.byteLength(bodies[0]); const blockers = [...required.filter((name) => !names.includes(name)).map((name) => `missing tool ${name}`), ...(new Set(bodies).size === 1 ? [] : ["host skill drift"]), ...(bytes <= 3000 ? [] : ["skill context budget exceeded"])];
+const report = { passed: blockers.length === 0, blockers, required_tools: required, qa_lead_skill_bytes: bytes, token_proxy: Math.ceil(bytes / 4), method: "UTF-8 bytes / 4; not provider billing", generated_at: new Date().toISOString() };
+const outputDir = join(process.cwd(), ".qa-benchmarks"); await mkdir(outputDir, { recursive: true }); const path = join(outputDir, "qa-lead-mcp.json"); await writeFile(path, `${JSON.stringify(report, null, 2)}\n`); process.stdout.write(`QA Lead MCP benchmark: ${report.passed}\nToken proxy: ${report.token_proxy}\nReport: ${path}\n`); if (!report.passed) process.exitCode = 1;

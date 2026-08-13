@@ -4,7 +4,11 @@
 
 An **Expert-shaped QA agent**: Skills enforce professional discipline; MCP supplies **evidence** (discover → risk-based cases → execute → gate → gaps → targeted retest).
 
-Commands: `/qa-intelligence:test` | `/qa-intelligence:dev`  
+Primary workflow: `run_expert_qa`
+
+Optional host shortcuts: `/qa-intelligence:test` | `/qa-intelligence:dev`
+
+If slash commands are unavailable, request the `test` or `dev` skill in natural language.
 Environment = **URL** you pass (local or staging).
 
 ## Level claim (honest)
@@ -20,7 +24,7 @@ Environment = **URL** you pass (local or staging).
 - Not a recorder / script dump  
 - Not full WCAG / load / pen-test  
 - Not inventing root cause or AC  
-- Not production SaaS IdP yet (`0.1.0-dev`)
+- Local production deployment is supported; remote/SaaS identity is not yet production-ready
 
 ## Mental model
 

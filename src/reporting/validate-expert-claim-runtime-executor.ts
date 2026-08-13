@@ -45,7 +45,7 @@ export class ValidateExpertClaimRuntimeExecutor implements AgentRunExecutor {
         failure: failure(
           "orchestration",
           "invalid_request",
-          "validate_expert_claim requires expert_checklist object from run_auto_qa / run_expert_qa / run_regression_suite.",
+          "validate_expert_claim requires expert_checklist object from run_expert_qa or run_regression_suite.",
         ),
       };
     }

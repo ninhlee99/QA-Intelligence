@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 
 import { createSdkMcpServer, type SdkMcpServerDependencies } from "../sdk-mcp-server.js";
 
@@ -14,7 +15,7 @@ export type BearerAuthenticationFailure = Readonly<{
 }>;
 
 export type BearerAuthenticationResult =
-  | Readonly<{ ok: true; buildServerDependencies(): SdkMcpServerDependencies }>
+  | Readonly<{ ok: true; sessionKey?: string; buildServerDependencies(): SdkMcpServerDependencies }>
   | Readonly<{ ok: false; failure: BearerAuthenticationFailure }>;
 
 /**
@@ -33,6 +34,10 @@ export interface BearerAuthenticator {
 export type StreamableHttpTransportOptions = Readonly<{
   authenticator: BearerAuthenticator;
   path?: string;
+  /** Legacy MCP SSE compatibility endpoint. Defaults to /sse. */
+  ssePath?: string;
+  /** Legacy MCP SSE client-message endpoint. Defaults to /messages. */
+  messagesPath?: string;
   /** Refuses to bind to a non-loopback address unless explicitly overridden (ADR-020 §3.4). Test-only. */
   allowInsecureBind?: boolean;
 }>;
@@ -69,6 +74,7 @@ export type StreamableHttpTransportOptions = Readonly<{
 export class StreamableHttpTransport {
   readonly #options: StreamableHttpTransportOptions;
   readonly #server: Server;
+  readonly #sseSessions = new Map<string, Readonly<{ transport: SSEServerTransport; sessionKey: string }>>();
   #listening = false;
 
   constructor(options: StreamableHttpTransportOptions) {
@@ -98,6 +104,8 @@ export class StreamableHttpTransport {
 
   close(): Promise<void> {
     if (!this.#listening) return Promise.resolve();
+    for (const session of this.#sseSessions.values()) void session.transport.close();
+    this.#sseSessions.clear();
     return new Promise((resolve, reject) => {
       this.#server.close((error) => (error ? reject(error) : resolve()));
       this.#listening = false;
@@ -112,21 +120,26 @@ export class StreamableHttpTransport {
 
   async #handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const path = this.#options.path ?? "/mcp";
-    if (request.method !== "POST" || (request.url ?? "").split("?")[0] !== path) {
+    const ssePath = this.#options.ssePath ?? "/sse";
+    const messagesPath = this.#options.messagesPath ?? "/messages";
+    const requestPath = (request.url ?? "").split("?")[0];
+    if (request.method === "GET" && requestPath === ssePath) {
+      await this.#openSse(request, response, messagesPath);
+      return;
+    }
+    if (request.method === "POST" && requestPath === messagesPath) {
+      await this.#postSse(request, response);
+      return;
+    }
+    if (request.method !== "POST" || requestPath !== path) {
       response.writeHead(404, { "content-type": "application/json" }).end(
         JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32601, message: "Not found" } }),
       );
       return;
     }
 
-    const bearerToken = extractBearerToken(request.headers["authorization"]);
-    const authentication = await this.#options.authenticator.authenticate(bearerToken);
-    if (!authentication.ok) {
-      response.writeHead(authentication.failure.status, { "content-type": "application/json" }).end(
-        JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32000, message: authentication.failure.message } }),
-      );
-      return;
-    }
+    const authentication = await this.#authenticate(request, response);
+    if (authentication === undefined) return;
 
     const body = await readBody(request);
     if (body === undefined) {
@@ -157,6 +170,61 @@ export class StreamableHttpTransport {
     );
     await writeWebResponse(webResponse, response);
   }
+
+  async #openSse(request: IncomingMessage, response: ServerResponse, messagesPath: string): Promise<void> {
+    const authentication = await this.#authenticate(request, response);
+    if (authentication === undefined) return;
+    if (!authentication.sessionKey) {
+      writeAuthenticationFailure(response, "Authenticated identity cannot be bound to an SSE session.");
+      return;
+    }
+    const transport = new SSEServerTransport(messagesPath, response);
+    const sessionId = transport.sessionId;
+    this.#sseSessions.set(sessionId, { transport, sessionKey: authentication.sessionKey });
+    transport.onclose = () => this.#sseSessions.delete(sessionId);
+    const server = createSdkMcpServer(authentication.buildServerDependencies());
+    try {
+      await server.connect(transport);
+    } catch (error) {
+      this.#sseSessions.delete(sessionId);
+      throw error;
+    }
+  }
+
+  async #postSse(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const authentication = await this.#authenticate(request, response);
+    if (authentication === undefined) return;
+    const sessionId = new URL(request.url ?? "/messages", "http://mcp.local").searchParams.get("sessionId");
+    const session = sessionId ? this.#sseSessions.get(sessionId) : undefined;
+    if (session === undefined) {
+      response.writeHead(404, { "content-type": "application/json" }).end(
+        JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unknown SSE session" } }),
+      );
+      return;
+    }
+    if (!authentication.sessionKey || authentication.sessionKey !== session.sessionKey) {
+      response.writeHead(403, { "content-type": "application/json" }).end(
+        JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32002, message: "SSE session identity mismatch" } }),
+      );
+      return;
+    }
+    await session.transport.handlePostMessage(request, response);
+  }
+
+  async #authenticate(request: IncomingMessage, response: ServerResponse): Promise<Extract<BearerAuthenticationResult, { ok: true }> | undefined> {
+    const authentication = await this.#options.authenticator.authenticate(extractBearerToken(request.headers["authorization"]));
+    if (!authentication.ok) {
+      writeAuthenticationFailure(response, authentication.failure.message);
+      return undefined;
+    }
+    return authentication;
+  }
+}
+
+function writeAuthenticationFailure(response: ServerResponse, message: string): void {
+  response.writeHead(401, { "content-type": "application/json" }).end(
+    JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32000, message } }),
+  );
 }
 
 async function writeWebResponse(webResponse: Response, response: ServerResponse): Promise<void> {

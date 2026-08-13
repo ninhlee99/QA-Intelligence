@@ -75,6 +75,7 @@ export class OidcBearerAuthenticator implements BearerAuthenticator {
 
     return {
       ok: true,
+      sessionKey: `${context.workspace_id}:${context.actor_id}`,
       buildServerDependencies: () => ({
         serverInfo: this.#options.serverInfo,
         tools: new AgentRuntimeToolRegistry({

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exploratory Tester"
+  short_description: "Run bounded risk-based exploratory sessions"
+  default_prompt: "Use $exploratory to create and execute a bounded exploratory charter for this target."

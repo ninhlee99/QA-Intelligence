@@ -58,6 +58,23 @@ Bạn đưa **URL sống** + **acceptance criteria (AC)**. Hệ thống:
 |---------|---------|----------------|
 | `/qa-intelligence:test` | Tester | Spec / ticket / hành vi đã nêu |
 | `/qa-intelligence:dev` | Developer | Ưu tiên **source code**; không có thì ticket |
+| `$testcase` | Test designer | Tạo testcase có thể thực thi, chưa chạy browser |
+| `$qa` | QA | Review requirement/risk/strategy và thiết kế coverage |
+| `$qc` | QC | Chạy browser thật, thu evidence và trả verdict |
+| `$exploratory` | Exploratory tester | Charter có time-box và live observations |
+| `$retest` | Regression tester | Chọn scope retest nhỏ nhất nhưng an toàn |
+| `$defect-triage` | Defect analyst | Phân loại, deduplicate và review defect |
+
+Browser workflow nâng cao hỗ trợ authored TestCase actions `upload`,
+`download`, `hover`, `drag_to`, iframe qua `frame_accessible_name`, và popup
+qua `switch_to_popup`. Upload refs chỉ được resolve dưới `.qa-upload-artifacts/`;
+download evidence nằm dưới `.qa-downloads/`. Regression suite chỉ tái sử dụng
+cookies/storage khi truyền `reuse_session: true`, sau đó state bị cleanup.
+
+`semantic_recovery: true` cho phép sửa role đã stale chỉ khi accessible name
+có đúng một candidate. Recovery được giữ trong execution evidence; trường hợp
+ambiguous vẫn fail. Evidence retention hỗ trợ preview/purge theo outcome TTL,
+legal hold và allowed-root isolation; purge thật luôn cần xác nhận tường minh.
 
 **Môi trường** = URL bạn truyền (localhost → local; URL khác → staging hygiene). Không có Skill riêng “local/staging”.
 
@@ -111,53 +128,50 @@ npm run build
 Xác nhận build:
 
 ```sh
-ls dist/src/mcp/dev-entrypoint.js
+ls dist/src/mcp/stdio-entrypoint.js
 npm run typecheck
 # tùy chọn đầy đủ:
 npm test
 ```
 
-**Ghi nhớ đường dẫn tuyệt đối** tới repo, ví dụ:
-
-```text
-/Users/you/Documents/agents/QA-Intelligence
-```
-
-Cursor/Codex **bắt buộc absolute path** tới `dev-entrypoint.js`.
+Đăng ký command production sau khi build: `npm install --global .`. Các host
+gọi `qa-intelligence-mcp`, không phụ thuộc absolute path của repository.
 
 ---
 
 ## 5. Cài đặt MCP
 
-MCP server entrypoint (stdio, dùng hàng ngày):
+MCP server command (stdio, dùng hàng ngày):
 
 ```text
-<REPO>/dist/src/mcp/dev-entrypoint.js
+qa-intelligence-mcp
 ```
 
 Biến môi trường thường dùng:
 
 | Env | Ý nghĩa | Ví dụ |
 |-----|---------|--------|
-| `QA_INTELLIGENCE_DEV_WORKSPACE_ID` | Workspace id fixture | `workspace-cursor-dev` |
-| `QA_INTELLIGENCE_DEV_DOMAIN` | Domain app test để persist artifacts/credentials | `daijob6-companytools` |
+| `QA_INTELLIGENCE_WORKSPACE_ID` | Bắt buộc; định danh workspace an toàn | `billing-web` |
+| `QA_INTELLIGENCE_DATA_DIR` | Optional absolute data root; mặc định XDG state ngoài repo | `/srv/qa-intelligence/billing-web` |
+| `QA_INTELLIGENCE_TOOL_PROFILE` | `expert` mặc định; `full` cho specialist | `expert` |
+| `QA_INTELLIGENCE_DEADLINE_SECONDS` | Deadline 1–3600 giây | `180` |
+| `QA_INTELLIGENCE_HEADED` | `1`/`true` → Playwright mở cửa sổ browser thật (headed). Mặc định headless. | `1` |
 
 ### 5.1 Cursor
 
 1. Mở Cursor Settings → **MCP** (hoặc chỉnh file MCP config của Cursor).
 2. Copy mẫu [`hosts/cursor/mcp.json.example`](../hosts/cursor/mcp.json.example).
-3. Thay `/absolute/path/to/QA-Intelligence` bằng path thật:
+3. Chọn workspace id riêng cho project:
 
 ```json
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": [
-        "/Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"
-      ],
+      "command": "qa-intelligence-mcp",
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-cursor-dev"
+        "QA_INTELLIGENCE_WORKSPACE_ID": "billing-web",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert",
+        "QA_INTELLIGENCE_HEADED": "1"
       }
     }
   }
@@ -171,7 +185,7 @@ Biến môi trường thường dùng:
 
 | Hiện tượng | Cách xử lý |
 |------------|------------|
-| Tools không hiện | Path relative → đổi absolute; restart |
+| Tools không hiện | Kiểm tra `qa-intelligence-mcp` có trong `PATH`; restart |
 | `Cannot find module` | Chạy lại `npm run build` |
 | Node sai version | Dùng Node 24 (`nvm use` / `fnm use`) |
 
@@ -192,12 +206,10 @@ Plugin mang theo Skills. MCP vẫn cần trỏ tới entrypoint (qua cấu hình
 {
   "mcpServers": {
     "qa-intelligence": {
-      "command": "node",
-      "args": [
-        "/Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js"
-      ],
+      "command": "qa-intelligence-mcp",
       "env": {
-        "QA_INTELLIGENCE_DEV_WORKSPACE_ID": "workspace-claude-dev"
+        "QA_INTELLIGENCE_WORKSPACE_ID": "billing-web",
+        "QA_INTELLIGENCE_TOOL_PROFILE": "expert"
       }
     }
   }
@@ -213,21 +225,38 @@ Cài plugin từ `hosts/codex/` **hoặc** thêm vào `~/.codex/config.yaml`:
 ```yaml
 mcpServers:
   qa-intelligence:
-    command: node
-    args:
-      - /Users/you/Documents/agents/QA-Intelligence/dist/src/mcp/dev-entrypoint.js
+    command: qa-intelligence-mcp
     env:
-      QA_INTELLIGENCE_DEV_WORKSPACE_ID: workspace-codex-dev
+      QA_INTELLIGENCE_WORKSPACE_ID: billing-web
+      QA_INTELLIGENCE_TOOL_PROFILE: expert
 ```
 
-### 5.4 Remote MCP (team / máy khác) — tùy chọn
+### 5.4 Antigravity
+
+Copy [`hosts/antigravity/mcp_config.json.example`](../hosts/antigravity/mcp_config.json.example)
+vào `.agents/mcp_config.json` của workspace. Import skill cần dùng từ
+`hosts/codex/skills/`; các skill dùng chuẩn `SKILL.md` chung và không có logic
+phụ thuộc Codex.
+
+### 5.5 Remote MCP transport
+
+Remote runtime hỗ trợ:
+
+- Streamable HTTP tại `POST /mcp` — lựa chọn mặc định cho client mới.
+- SSE tương thích tại `GET /sse` và endpoint `POST /messages` được server quảng bá.
+
+Mọi request đều cần bearer token; SSE session được khóa theo workspace và
+actor. Khi triển khai qua mạng, đặt server sau HTTPS reverse proxy/load
+balancer đã được review. Server từ chối bind non-loopback theo mặc định.
+
+### 5.6 Remote MCP demo — không dùng production
 
 Chỉ khi cần share process (không bắt buộc cho solo):
 
 ```sh
 cd /path/to/QA-Intelligence
 npm run build
-node dist/src/mcp/remote-dev-entrypoint.js
+npm run mcp:remote:demo
 ```
 
 - Listen mặc định: `http://127.0.0.1:8787/mcp`
@@ -258,7 +287,7 @@ claude mcp add --transport http qa-intelligence-remote http://127.0.0.1:8787/mcp
 
 > Dev token **không** dùng lại sau restart server.
 
-### 5.5 Trạng thái auth hiện tại
+### 5.7 Trạng thái auth hiện tại
 
 | Mode | Auth | Ghi chú |
 |------|------|---------|
@@ -327,7 +356,7 @@ Cài qua plugin `hosts/codex/` hoặc đăng ký Skill theo docs Codex. Luôn k�
 ### 6.4 Checklist Skill đã sẵn sàng
 
 - [ ] MCP `qa-intelligence` hiện trong host
-- [ ] Gọi được tool `run_expert_qa` hoặc `run_auto_qa`
+- [ ] Gọi được tool `run_expert_qa`
 - [ ] Skill `:test` / `:dev` hiện hoặc agent nhận instruction workflow
 - [ ] Agent biết **không** nói pass nếu chưa `validate_expert_claim`
 
@@ -343,7 +372,7 @@ Trong chat host:
 2. **Smoke Expert (URL public hoặc local):**
 
 ```text
-Gọi run_auto_qa với:
+Gọi `run_expert_qa` với:
   url: https://example.com
   acceptance_criteria: [
     { id: "ac-1", statement: "Page shows Example Domain heading", expected_text: "Example Domain" }
@@ -382,7 +411,7 @@ validate_expert_claim({
 | G1 | Env từ URL; secret qua `*_secret_ref` |
 | G2 | Discover live qua MCP |
 | G3 | Bind AC — không bịa AC |
-| G4 | `run_expert_qa` hoặc `run_auto_qa` (+ E2 hooks nếu smell) |
+| G4 | `run_expert_qa` (+ E2 hooks nếu smell) |
 | G5 | **Dòng đầu kết quả** = `release_recommendation` |
 | G6 | Dán `coverage_gaps` + domain risks |
 | G7 | suite_id, defects, traces, HTML |
@@ -406,7 +435,7 @@ product_root: /Users/you/my-app
 
 **Khi nào:** Trước khi push; AC suy từ code/diff đang mở.
 
-Agent ưu tiên đọc source → rút AC observable → `run_expert_qa` / `run_auto_qa` trên localhost hoặc staging URL. **Cùng Expert bar** với `:test` (không được nới lỏng gate).
+Agent ưu tiên đọc source → rút AC observable → `run_expert_qa` trên localhost hoặc staging URL. **Cùng Expert bar** với `:test` (không được nới lỏng gate).
 
 ### 8.3 Hard refuses (Skill cấm)
 
@@ -438,7 +467,7 @@ Chi tiết: [`RULES.md`](../RULES.md).
 
 #### `run_expert_qa` — **entry Expert ưu tiên**
 
-Bootstrap domain pack (nếu có `product_root`) + full `run_auto_qa`.
+Đây là full-pipeline public duy nhất: bootstrap domain pack nếu có `product_root`, sau đó discover, design, execute, evidence và report.
 
 **Input chính:**
 
@@ -463,10 +492,6 @@ Bootstrap domain pack (nếu có `product_root`) + full `run_auto_qa`.
 | `browser` | optional | `chromium` \| `firefox` \| `webkit` |
 
 **Output quan trọng:** xem [mục 10](#10-output-expert--đọc-thế-nào).
-
-#### `run_auto_qa`
-
-Giống pipeline trên **không** bắt buộc facade bootstrap. Dùng khi đã có pack hoặc không cần `product_root` trong cùng call. Input gần như `run_expert_qa`.
 
 #### `validate_expert_claim`
 
@@ -516,7 +541,7 @@ pack_dirname: domain-knowledge   # hoặc .qa-domain
 | `execute_exploratory_session` | Probe sống giới hạn |
 | `run_depth_smokes` | a11y subset + perf + security heuristics |
 
-> `execute_browser_test` = **DEMO ONLY** (seed TC-DEMO). Target thật → `run_auto_qa` / `execute_generated_test_case`.
+> `execute_browser_test` = **DEMO ONLY** (seed TC-DEMO). Full target thật → `run_expert_qa`; chạy một case đã thiết kế → `execute_generated_test_case`.
 
 ### 9.5 API
 
@@ -525,7 +550,7 @@ pack_dirname: domain-knowledge   # hoặc .qa-domain
 | `generate_api_smoke_from_openapi` | OpenAPI → cases (+ authz negatives) |
 | `execute_api_smoke` | Chạy HTTP smoke |
 
-Trong Expert pass, ưu tiên gắn OpenAPI vào `run_auto_qa`/`run_expert_qa` (`openapi` + `include_authz_negatives: true`) để **cùng pass** execute capped.
+Trong Expert pass, ưu tiên gắn OpenAPI vào `run_expert_qa` (`openapi` + `include_authz_negatives: true`) để **cùng pass** execute capped.
 
 ### 9.6 Defect & report phụ
 
@@ -567,15 +592,17 @@ Catalog đầy đủ: [`hosts/README.md`](../hosts/README.md).
 
 ## 10. Output Expert — đọc thế nào
 
-Sau `run_expert_qa` / `run_auto_qa`, đọc **theo thứ tự Senior**:
+Sau `run_expert_qa`, đọc **theo thứ tự Senior**:
 
 ### 10.1 Bắt buộc đọc trước
 
 1. **`release_recommendation`** — gate  
 2. **`expert_checklist.claim_pass_allowed`** + **`blockers`**  
 3. **`coverage_gaps`** — những gì chưa test  
-4. **`expert_session_report.markdown`** — paste cho user  
+4. **`expert_session_report.markdown`** — paste cho user (đã có bảng Case results)
 5. **`smart_retest_suggestion`** — plan sau fix  
+
+HTML: mặc định **không** nhét `report_html` vào JSON (tốn token). Mở file `report_path`. Chỉ set `include_report_html: true` khi debug.
 
 ### 10.2 Lớp Senior thêm
 
@@ -592,7 +619,8 @@ Sau `run_expert_qa` / `run_auto_qa`, đọc **theo thứ tự Senior**:
 | `learning` | Hints + candidates |
 | `auto_registered_suite.suite_id` | Để retest |
 | `draft_defects` | Fail/flaky → DEF-DRAFT (suspected only) |
-| `report_html` / `report_path` | Báo cáo HTML |
+| `report_path` | HTML trên disk — **không** dump `report_html` vào chat |
+| `report_html_omitted` / `report_html_bytes` | HTML đã cắt khỏi JSON; bật lại bằng `include_report_html` |
 
 ### 10.3 Giá trị `release_recommendation`
 
@@ -673,7 +701,7 @@ discover_ui_surface / discover_ui_surface_after_login
 ### 11.5 Multi-role
 
 ```text
-run_auto_qa / run_expert_qa với login_* (role A) + role_b (role B)
+run_expert_qa với login_* (role A) + role_b (role B)
 ```
 
 Hoặc tool riêng `discover_and_compare_role_ui_surfaces`.  
@@ -803,7 +831,7 @@ Sống qua restart MCP (thường dưới cwd process):
 
 ```text
 npm install && npx playwright install chromium && npm run build
-→ Cấu hình MCP (absolute path tới dist/src/mcp/dev-entrypoint.js)
+→ Cài command `qa-intelligence-mcp` và cấu hình workspace id
 → Cài Skill :test / :dev theo host
 → /qa-intelligence:test + URL + AC (+ product_root)
 → Đọc release_recommendation + paste expert_session_report.markdown

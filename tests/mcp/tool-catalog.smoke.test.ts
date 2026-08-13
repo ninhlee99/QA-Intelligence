@@ -71,7 +71,6 @@ const EXPECTED_TOOLS = [
   "discover_ui_surface_after_login",
   "generate_test_cases",
   "execute_generated_test_case",
-  "run_auto_qa",
   "bootstrap_domain_pack",
   "run_expert_qa",
   "validate_expert_claim",
@@ -125,6 +124,9 @@ const EXPECTED_TOOLS = [
   "generate_journey_test_cases",
   "set_user_preference",
   "get_user_preference",
+  "manage_evidence_lifecycle",
+  "assess_continuous_qa",
+  "assess_deep_testing",
 ] as const;
 
 test("dev fixture registers the full MCP catalog without duplicates", () => {
@@ -139,6 +141,8 @@ test("dev fixture registers the full MCP catalog without duplicates", () => {
 
   const names = tools.map((tool) => tool.name);
   assert.equal(names.length, new Set(names).size, "duplicate tool names");
+  assert.equal(names.length, EXPECTED_TOOLS.length, "unexpected public MCP tools");
+  assert.equal(names.includes("run_auto_qa"), false, "internal pipeline must not compete with canonical run_expert_qa");
   for (const expected of EXPECTED_TOOLS) {
     assert.equal(names.includes(expected), true, `missing tool ${expected}`);
   }

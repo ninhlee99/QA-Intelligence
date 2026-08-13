@@ -7,7 +7,7 @@
  * reason preserved in `skip_reason` — never rounded up to a fabricated pass
  * or down to a fail (SPEC-207 §6, SPEC-210 §4).
  */
-import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan } from "../adapters/playwright/playwright-execution-engine.js";
+import { PlaywrightExecutionEngine, type PlaywrightExecutionPlan, type VideoEvidencePolicy } from "../adapters/playwright/playwright-execution-engine.js";
 import { draftDefectsFromQaRun } from "../bug-analysis/draft-defects-from-qa-run.js";
 import { assessUiAccessibilitySmoke, type AccessibilitySmokeReport } from "../discovery/assess-ui-accessibility-smoke.js";
 import { ExecuteBrowserTest, MAX_FLAKE_TRIALS } from "../execution/execute-browser-test.js";
@@ -59,6 +59,7 @@ export type RunAutoQaPipelineFailure = Readonly<{
 
 export type RunAutoQaPipelineSuccess = Readonly<{
   report: QaRunReport;
+  cleanup_status: "completed" | "partial" | "failed" | "not_required";
   /** Browser cases eligible for durable regression retest (paired assertion required). */
   regression_browser_cases: readonly import("./regression-suite-registry.js").BrowserRegressionCase[];
 }>;
@@ -79,6 +80,10 @@ type Dependencies = Readonly<{
   alwaysScreenshot?: boolean;
   /** Directory failure Playwright traces are written under. Trace capture is skipped when omitted. */
   traceDir?: string;
+  /** Directory opt-in per-testcase WebM videos are written under. */
+  videoDir?: string;
+  videoPolicy?: VideoEvidencePolicy;
+  semanticRecovery?: "off" | "unique_name";
 }>;
 
 /** Deep module: one `run()` call hides discovery, generation, per-case execution, and report assembly. */
@@ -181,7 +186,15 @@ export class RunAutoQaPipeline {
       return [{ kind: "browser" as const, test_case: testCase, generated_assertion: assertion }];
     });
 
-    return { ok: true, value: { report, regression_browser_cases } };
+    const executedCleanup = testCaseResults
+      .map((testCase) => testCase.cleanup_status)
+      .filter((status): status is NonNullable<typeof status> => status !== undefined);
+    const cleanup_status = executedCleanup.length === 0
+      ? "not_required"
+      : executedCleanup.includes("failed") ? "failed"
+      : executedCleanup.includes("partial") ? "partial"
+      : "completed";
+    return { ok: true, value: { report, regression_browser_cases, cleanup_status } };
   }
 
   async #executeOne(
@@ -223,6 +236,9 @@ export class RunAutoQaPipeline {
       ...(this.#dependencies.screenshotDir !== undefined ? { screenshotDir: this.#dependencies.screenshotDir } : {}),
       ...(this.#dependencies.alwaysScreenshot === true ? { alwaysScreenshot: true } : {}),
       ...(this.#dependencies.traceDir !== undefined ? { traceDir: this.#dependencies.traceDir } : {}),
+      ...(this.#dependencies.videoDir !== undefined ? { videoDir: this.#dependencies.videoDir } : {}),
+      ...(this.#dependencies.videoPolicy !== undefined ? { videoPolicy: this.#dependencies.videoPolicy } : {}),
+      ...(this.#dependencies.semanticRecovery !== undefined ? { semanticRecovery: this.#dependencies.semanticRecovery } : {}),
     });
     const skill = new ExecuteBrowserTest({
       engine,
@@ -246,18 +262,24 @@ export class RunAutoQaPipeline {
         variant,
         outcome: "not_executed",
         skip_reason: `${run.failure.class}: ${run.failure.message}`,
-        evidence: [],
+        evidence: run.failure.evidence,
       };
     }
 
+    const cleanupStatus = readCleanupStatus(run.value.resource_usage?.["cleanup_status"]);
     return {
       test_case_id: testCase.id,
       purpose: testCase.purpose,
       variant,
       ...mapExecutionOutcome(run.value.outcome ?? "indeterminate", run.value.skip_reason),
       evidence: run.value.evidence ?? [],
+      ...(cleanupStatus !== undefined ? { cleanup_status: cleanupStatus } : {}),
     };
   }
+}
+
+function readCleanupStatus(value: unknown): "completed" | "partial" | "failed" | undefined {
+  return value === "completed" || value === "partial" || value === "failed" ? value : undefined;
 }
 
 /** Non-`passed`/`failed`/`cancelled`/`flaky` outcomes are infrastructure noise, not a verdict — reported as `not_executed` with the real outcome kept in `skip_reason`. `infrastructure_error` is deliberately excluded: it is never a product-level verdict (SPEC-210 §4), unlike `flaky`, which IS real information about the test/product. */
