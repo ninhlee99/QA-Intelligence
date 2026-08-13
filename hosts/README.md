@@ -10,7 +10,7 @@ Host  →  Host Integration Package  →  QA Intelligence MCP  →  Agent Runtim
 
 **Scope:** test + report only. No SNS / Slack / email notify integrations.
 
-> **Hướng dẫn cài đặt & sử dụng chi tiết (tiếng Việt):**  
+> **Detailed install & usage guide:**  
 > [`docs/GUIDE.md`](../docs/GUIDE.md)
 
 ## Status: `0.9.0` release candidate
@@ -26,7 +26,7 @@ team use until external identity and operational gates pass.
 **Prerequisites:** Node 24 and Chromium. From the repository root run
 `npm install`, `npx playwright install chromium`, then `npm install --global .`.
 
-Chi tiết từng bước (Cursor / Claude Code / Codex / remote): xem **[docs/GUIDE.md §5–§6](../docs/GUIDE.md)**.
+Step-by-step detail (Cursor / Claude Code / Codex / remote): see **[docs/GUIDE.md §5–§6](../docs/GUIDE.md)**.
 
 ### Claude Code
 

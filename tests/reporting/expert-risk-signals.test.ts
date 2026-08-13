@@ -54,5 +54,4 @@ test("isPassLikeClaim ignores negated wording", () => {
   assert.equal(isPassLikeClaim("Blocked — do not release"), false);
   assert.equal(isPassLikeClaim("Ready to ship"), true);
   assert.equal(isPassLikeClaim("All good, LGTM"), true);
-  assert.equal(isPassLikeClaim("sẵn sàng merge"), true);
 });

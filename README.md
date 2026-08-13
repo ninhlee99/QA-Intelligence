@@ -41,10 +41,10 @@ npm run build
 npm install --global .
 ```
 
-**Hướng dẫn chi tiết (cài MCP, Skill, dùng tool, đọc report):**  
+**Detailed guide (install MCP, install Skill, use tools, read reports):**  
 **[docs/GUIDE.md](docs/GUIDE.md)**
 
-Connect one host (tóm tắt — chi tiết trong GUIDE):
+Connect one host (summary — full detail in GUIDE):
 
 | Host | Setup |
 |------|--------|

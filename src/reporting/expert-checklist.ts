@@ -280,11 +280,11 @@ export function expertChecklistFromQaRunReport(
 }
 
 const PASS_CLAIM_POSITIVE =
-  /\b(passed|pass(?:es|ing)?|ready\s+to\s+(ship|release|merge)|ship\s+it|all\s+good|lgtm|safe\s+to\s+(merge|release)|recommend(?:ed)?\s+release|merge-?ready|go\s+live|production\s+ready|sẵn\s+sàng\s+(merge|release|ship)|đạt\s+yêu\s+cầu)\b/i;
+  /\b(passed|pass(?:es|ing)?|ready\s+to\s+(ship|release|merge)|ship\s+it|all\s+good|lgtm|safe\s+to\s+(merge|release)|recommend(?:ed)?\s+release|merge-?ready|go\s+live|production\s+ready)\b/i;
 
 /** Negation windows — Expert saying "do not pass" is blocked wording, not a pass claim. */
 const PASS_CLAIM_NEGATION =
-  /\b(do\s+not|don't|dont|not|never|cannot|can't|cant|không|chưa|không\s+được)\b[\s\w-]{0,24}\b(pass|passed|ship|release|merge|ready|lgtm|đạt|sẵn\s+sàng)/i;
+  /\b(do\s+not|don't|dont|not|never|cannot|can't|cant)\b[\s\w-]{0,24}\b(pass|passed|ship|release|merge|ready|lgtm)/i;
 
 /**
  * True only when the host is asserting a green pass — not when refusing one.
