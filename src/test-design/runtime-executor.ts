@@ -12,6 +12,7 @@ import type {
 import { failure, unique } from "../runtime/executor-support.js";
 import type { AgentRunFailure } from "../runtime/public.js";
 import { writeTestcaseDesignArtifact } from "./testcase-design-artifact.js";
+import { appendSessionLedgerEntry } from "../reporting/session-ledger.js";
 
 /**
  * Composes two already-governed Skills — Discovery (Phase 1) then Test
@@ -36,6 +37,8 @@ export type GenerateTestCasesRuntimeExecutorDependencies = Readonly<{
   discoverAfterLogin?: DiscoverAfterLogin;
   /** Root for QA→QC design handoff artifacts. Defaults to process.cwd(). */
   artifactBaseDir?: string;
+  /** Root for the session ledger. Defaults to process.cwd(). */
+  ledgerBaseDir?: string;
 }>;
 
 export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
@@ -189,6 +192,19 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
     };
     evidence.push(`testcase-design:${artifact.path}`);
 
+    await appendSessionLedgerEntry({
+      ledger_dir: joinLedgerDir(this.#dependencies.ledgerBaseDir ?? process.cwd(), input.reference.workspace_id, requirementRef),
+      entry: {
+        requirement_ref: requirementRef,
+        workspace_id: input.reference.workspace_id,
+        skill: "testcase",
+        tool: "generate_test_cases",
+        run_id: input.reference.run_id,
+        recorded_at: this.#dependencies.clock.now().toISOString(),
+        testcase_design_sha256: artifact.sha256,
+      },
+    });
+
     return {
       ok: true,
       value: {
@@ -217,6 +233,12 @@ export class GenerateTestCasesRuntimeExecutor implements AgentRunExecutor {
 
 function joinArtifactDir(root: string, operationId: string): string {
   return `${root}/.qa-testcases/${operationId.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
+function joinLedgerDir(root: string, workspaceId: string, requirementRef: string): string {
+  const safeWorkspace = workspaceId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const safeRef = requirementRef.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${root}/.qa-ledger/${safeWorkspace}/${safeRef}`;
 }
 
 function validateConfiguration(

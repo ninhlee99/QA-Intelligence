@@ -803,6 +803,7 @@ export function buildDevFixture(options: {
     discoverUiWorkflow: uiWorkflowSkill,
     apiSmoke: apiSmokeSkill,
     candidateRepository,
+    ledgerBaseDir: persistBaseDir,
     ...(sessionMemory !== undefined ? { sessionMemory } : {}),
   });
 
@@ -856,6 +857,7 @@ export function buildDevFixture(options: {
           expected_skill: TEST_CASE_GENERATION_SKILL,
           discoverAfterLogin: discoverAfterLoginSkill,
           artifactBaseDir: persistBaseDir,
+          ledgerBaseDir: persistBaseDir,
         }),
       ],
       [
@@ -867,7 +869,9 @@ export function buildDevFixture(options: {
           expected_skill: EXECUTE_GENERATED_SKILL,
           credentials,
           testcaseBaseDir: persistBaseDir,
+          screenshotBaseDir: persistBaseDir,
           uploadArtifactBaseDir: join(persistBaseDir, ".qa-upload-artifacts"),
+          ledgerBaseDir: persistBaseDir,
         }),
       ],
       [
@@ -1400,6 +1404,7 @@ export function buildDevFixture(options: {
       apiSmoke: apiSmokeSkill,
       credentials,
       artifactBaseDir: persistBaseDir,
+      ledgerBaseDir: persistBaseDir,
     }),
   );
   executorMap.set(

@@ -61,6 +61,7 @@ const PASS_BLOCKING_PREFIXES = [
   "e2_role_surface_diff",
   "e2_api_authz_negatives",
   "lite_mode:",
+  "qa_intelligence:",
 ] as const;
 
 export function deriveExpertChecklist(input: ExpertChecklistInput): JsonObject {

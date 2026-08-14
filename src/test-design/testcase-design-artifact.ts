@@ -58,7 +58,7 @@ export async function loadTestcaseDesignCase(input: Readonly<{
   workspace_id: string;
   test_case_id: string;
 }>): Promise<
-  | Readonly<{ ok: true; test_case: TestCase; generated_assertion: TestCaseGeneratedAssertion; artifact_sha256: string }>
+  | Readonly<{ ok: true; test_case: TestCase; generated_assertion: TestCaseGeneratedAssertion; artifact_sha256: string; requirement_ref: string }>
   | Readonly<{ ok: false; message: string }>
 > {
   try {
@@ -85,11 +85,15 @@ export async function loadTestcaseDesignCase(input: Readonly<{
     const assertion = parsed["generated_assertions"].find((value) => isRecord(value) && value["test_case_id"] === input.test_case_id);
     if (!isRecord(testCase)) return { ok: false, message: `testcase_file has no testcase ${JSON.stringify(input.test_case_id)}.` };
     if (!isRecord(assertion)) return { ok: false, message: `testcase_file has no generated assertion for ${JSON.stringify(input.test_case_id)}.` };
+    if (typeof parsed["requirement_ref"] !== "string") {
+      return { ok: false, message: "testcase_file has no requirement_ref." };
+    }
     return {
       ok: true,
       test_case: testCase as unknown as TestCase,
       generated_assertion: assertion as unknown as TestCaseGeneratedAssertion,
       artifact_sha256: integrity["digest"],
+      requirement_ref: parsed["requirement_ref"],
     };
   } catch (error) {
     return { ok: false, message: `Failed to load testcase_file: ${(error as Error).message}` };
