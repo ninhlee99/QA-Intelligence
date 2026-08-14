@@ -65,7 +65,6 @@ const EXPERT_TOOL_NAMES = new Set([
   "register_workspace_environment",
   "register_workspace_secret",
   "resolve_test_dataset_fields",
-  "run_auto_qa",
   "run_depth_smokes",
   "run_expert_qa",
   "run_regression_suite",
