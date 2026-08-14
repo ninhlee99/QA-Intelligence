@@ -6,7 +6,7 @@
     "name": "QA Intelligence"
   },
   "mcpServers": {
-    "qa-intelligence": {
+    "mcp": {
       "command": "qa-intelligence-mcp",
       "env": {
         "QA_INTELLIGENCE_WORKSPACE_ID": "replace-with-project-id",
