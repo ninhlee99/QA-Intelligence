@@ -27,7 +27,7 @@
   },
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
-    "build": "npm run clean && tsc --project tsconfig.json",
+    "build": "npm run clean && tsc --project tsconfig.json && chmod +x dist/src/mcp/*-entrypoint.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
     "benchmark:qa-qc": "npm run build && node scripts/run-qa-qc-benchmark.mjs",
