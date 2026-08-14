@@ -131,3 +131,17 @@ test("e2 mandate blockers refuse claim_pass", () => {
   assert.equal(checklist["claim_pass_allowed"], false);
   assert.ok((checklist["blockers"] as string[]).some((b) => b.startsWith("e2_")));
 });
+
+test("qa_intelligence:sequence_gap blocks claim_pass even when every other field is pass-eligible", () => {
+  const checklist = deriveExpertChecklist({
+    ...cleanBase,
+    extra_pass_blockers: ["qa_intelligence:sequence_gap"],
+  });
+  assert.equal(checklist["claim_pass_allowed"], false);
+  assert.ok((checklist["blockers"] as string[]).includes("qa_intelligence:sequence_gap"));
+});
+
+test("qa_intelligence: prefix addition does not affect unrelated blockers (regression guard)", () => {
+  const checklist = deriveExpertChecklist(cleanBase);
+  assert.equal(checklist["claim_pass_allowed"], true);
+});

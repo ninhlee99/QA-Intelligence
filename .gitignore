@@ -21,3 +21,4 @@ node_modules/
 .qa-avoidance-hints/
 .qa-learning-candidates/
 .qa-mistake-occurrences/
+.qa-ledger/

@@ -23,6 +23,7 @@ import { expertChecklistFromQaRunReport, type DomainPackGateInput, type ExpertCh
 import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveFlakeTaxonomy, flakeTaxonomyJson } from "../reporting/flake-taxonomy.js";
 import { writeEvidenceManifest } from "../reporting/evidence-manifest.js";
+import { appendSessionLedgerEntry, lookupSessionLedger } from "../reporting/session-ledger.js";
 import { exportTestcaseResults } from "../reporting/testcase-result-export.js";
 import { assessEvidenceCaptureStatus } from "../reporting/evidence-capture-status.js";
 import { resolveStandardEvidenceProfile } from "../reporting/standard-evidence-profile.js";
@@ -106,6 +107,8 @@ export type RunAutoQaPipelineRuntimeExecutorDependencies = Readonly<{
   apiSmoke?: ExecuteApiSmoke;
   /** P5: surface learning candidates alongside failure-avoidance hints. */
   candidateRepository?: CandidateRepository;
+  /** Root for the session ledger. Defaults to process.cwd(). */
+  ledgerBaseDir?: string;
 }>;
 
 export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
@@ -632,6 +635,10 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       ...(declaredWaives.length > 0 ? { declared_waives: declaredWaives } : {}),
     });
 
+    const ledgerLookup = await lookupSessionLedger({
+      ledger_dir: joinLedgerDir(this.#dependencies.ledgerBaseDir ?? process.cwd(), input.reference.workspace_id, requirementRef),
+      requirement_ref: requirementRef,
+    });
     const rawExtraBlockers = [
       ...riskMatrixPassBlockers(riskMatrix),
       ...acQualityPassBlockers(acQuality),
@@ -639,6 +646,9 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
       ...hardening.pass_blockers,
       ...(depthSmokeJson && depthSmokeJson["has_critical"] === true
         ? ["e2_depth_smoke_critical"]
+        : []),
+      ...(ledgerLookup.ok && (!ledgerLookup.found || !ledgerLookup.has_upstream_testcase)
+        ? ["qa_intelligence:sequence_gap"]
         : []),
     ];
     const waived = applyStructuredWaivesToBlockers(rawExtraBlockers, declaredWaives);
@@ -835,6 +845,31 @@ export class RunAutoQaPipelineRuntimeExecutor implements AgentRunExecutor {
     if (!testcaseExport.ok) {
       return { ok: false, failure: failure("infrastructure", "infrastructure_failure", testcaseExport.message, true) };
     }
+    await writeFile(
+      join(evidenceManifestDir, "expert-checklist.json"),
+      JSON.stringify(
+        {
+          schema_version: "1.0.0",
+          run_id: input.reference.run_id,
+          generated_at: report.generated_at,
+          checklist: expertChecklist,
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    await appendSessionLedgerEntry({
+      ledger_dir: joinLedgerDir(this.#dependencies.ledgerBaseDir ?? process.cwd(), input.reference.workspace_id, requirementRef),
+      entry: {
+        requirement_ref: requirementRef,
+        workspace_id: input.reference.workspace_id,
+        skill: "qc",
+        tool: "run_auto_qa",
+        run_id: input.reference.run_id,
+        recorded_at: report.generated_at,
+      },
+    });
     const reportJson = qaRunReportJson(
       report,
       html,
@@ -996,6 +1031,12 @@ function validateConfiguration(
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function joinLedgerDir(root: string, workspaceId: string, requirementRef: string): string {
+  const safeWorkspace = workspaceId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const safeRef = requirementRef.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${root}/.qa-ledger/${safeWorkspace}/${safeRef}`;
 }
 
 /** Resolves `requestedPath` against `baseDir`, rejecting anything (`../`, an absolute path elsewhere) that lands outside it. */

@@ -30,6 +30,7 @@ import type { AgentRunFailure } from "../runtime/public.js";
 import { assessEvidenceCaptureStatus } from "../reporting/evidence-capture-status.js";
 import { resolveStandardEvidenceProfile } from "../reporting/standard-evidence-profile.js";
 import { loadTestcaseDesignCase } from "./testcase-design-artifact.js";
+import { lookupSessionLedger } from "../reporting/session-ledger.js";
 
 export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   clock: { now(): Date };
@@ -44,6 +45,8 @@ export type ExecuteGeneratedTestCaseRuntimeExecutorDependencies = Readonly<{
   testcaseBaseDir?: string;
   /** Governed root for authored upload artifact_refs. Upload remains disabled when omitted. */
   uploadArtifactBaseDir?: string;
+  /** Root for the session ledger. Defaults to process.cwd(). */
+  ledgerBaseDir?: string;
 }>;
 
 export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor {
@@ -53,6 +56,16 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
     this.#dependencies = dependencies;
   }
 
+  /** Advisory only — never fails execution. A missing/absent ledger just tags the gap for the report/verify script to see. */
+  async #ledgerTag(input: AgentRunExecutorInput, requirementRef: string | undefined): Promise<string | undefined> {
+    if (requirementRef === undefined) return undefined;
+    const ledgerDir = joinLedgerDir(this.#dependencies.ledgerBaseDir ?? process.cwd(), input.reference.workspace_id, requirementRef);
+    const lookup = await lookupSessionLedger({ ledger_dir: ledgerDir, requirement_ref: requirementRef });
+    if (!lookup.ok) return undefined;
+    if (lookup.found && lookup.has_upstream_testcase) return "ledger:upstream_qa_present";
+    return "ledger:sequence_gap";
+  }
+
   async execute(input: AgentRunExecutorInput): Promise<AgentRunExecutorResult> {
     const configurationFailure = validateConfiguration(input, this.#dependencies);
     if (configurationFailure) return { ok: false, failure: configurationFailure };
@@ -60,6 +73,7 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
     let testCaseValue = input.start_request.input["test_case"];
     let assertionValue = input.start_request.input["generated_assertion"];
     let artifactDigest: string | undefined;
+    let ledgerRequirementRef: string | undefined;
     const testcaseFile = input.start_request.input["testcase_file"];
     const testcaseId = input.start_request.input["test_case_id"];
     if (typeof testcaseFile === "string" && testcaseFile.trim().length > 0) {
@@ -79,6 +93,7 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       testCaseValue = loaded.test_case as unknown as JsonValue;
       assertionValue = loaded.generated_assertion as unknown as JsonValue;
       artifactDigest = loaded.artifact_sha256;
+      ledgerRequirementRef = loaded.requirement_ref;
     } else {
       if (!isJsonObject(testCaseValue)) {
         return { ok: false, failure: failure("orchestration", "invalid_request", "Execution requires testcase_file + test_case_id or an exact test_case object.") };
@@ -210,11 +225,13 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       };
     }
 
+    const ledgerTag = await this.#ledgerTag(input, ledgerRequirementRef);
     const outcome = run.value.outcome ?? "indeterminate";
     const evidence = [
       ...(run.value.evidence ?? []),
       `test-case:${testCase.id}`,
       ...(artifactDigest !== undefined ? [`testcase-design-sha256:${artifactDigest}`] : []),
+      ...(ledgerTag !== undefined ? [ledgerTag] : []),
     ];
     return {
       ok: true,
@@ -258,6 +275,12 @@ export class ExecuteGeneratedTestCaseRuntimeExecutor implements AgentRunExecutor
       },
     };
   }
+}
+
+function joinLedgerDir(root: string, workspaceId: string, requirementRef: string): string {
+  const safeWorkspace = workspaceId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const safeRef = requirementRef.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${root}/.qa-ledger/${safeWorkspace}/${safeRef}`;
 }
 
 function validateConfiguration(

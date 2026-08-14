@@ -15,6 +15,7 @@ import { formatDefectsForTracker, type DefectExportFormat } from "../bug-analysi
 import { fileDefectsToTracker, type DefectTrackerProvider } from "../bug-analysis/file-defects-to-tracker.js";
 import { assessDomainPackGate } from "../domain-pack/assess-domain-pack-gate.js";
 import { deriveExpertChecklist } from "../reporting/expert-checklist.js";
+import { appendSessionLedgerEntry } from "../reporting/session-ledger.js";
 import type { FileBackedKnowledgeSearch } from "../knowledge/file-backed-knowledge-search.js";
 import { resolveBearerToken, resolvePasswordInput } from "../credentials/resolve-secret-input.js";
 import type { WorkspaceCredentialRegistry } from "../credentials/workspace-credential-registry.js";
@@ -63,6 +64,8 @@ export type RegressionSuiteRuntimeExecutorDependencies = Readonly<{
   apiSmoke?: ExecuteApiSmoke;
   credentials?: import("../credentials/workspace-credential-registry.js").WorkspaceCredentialRegistry;
   artifactBaseDir?: string;
+  /** Root for the session ledger. Defaults to process.cwd(). */
+  ledgerBaseDir?: string;
 }>;
 
 export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
@@ -375,6 +378,17 @@ export class RegressionSuiteRuntimeExecutor implements AgentRunExecutor {
         domain_high_risk_confirmed: input.start_request.input["domain_high_risk_confirmed"] === true,
       }),
       context: "run_regression_suite",
+    });
+    await appendSessionLedgerEntry({
+      ledger_dir: joinLedgerDir(this.#dependencies.ledgerBaseDir ?? process.cwd(), input.reference.workspace_id, requirementRef),
+      entry: {
+        requirement_ref: requirementRef,
+        workspace_id: input.reference.workspace_id,
+        skill: "retest",
+        tool: "run_regression_suite",
+        run_id: input.reference.run_id,
+        recorded_at: this.#dependencies.clock.now().toISOString(),
+      },
     });
 
     return success(
@@ -1186,6 +1200,12 @@ function mapQaOutcome(raw: string): QaRunTestCaseOutcome {
   if (raw === "passed" || raw === "failed" || raw === "flaky" || raw === "not_executed") return raw;
   if (raw === "cancelled" || raw === "skipped" || raw === "blocked") return "not_executed";
   return "failed";
+}
+
+function joinLedgerDir(root: string, workspaceId: string, requirementRef: string): string {
+  const safeWorkspace = workspaceId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const safeRef = requirementRef.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${root}/.qa-ledger/${safeWorkspace}/${safeRef}`;
 }
 
 function regressionRow(
